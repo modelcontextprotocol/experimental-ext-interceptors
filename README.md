@@ -9,6 +9,7 @@ This repository provides a multi-language reference implementation of the propos
 
 | Language | Directory | Package | Status |
 |----------|-----------|---------|--------|
+| C# | `csharp/sdk/` | `ModelContextProtocol.Interceptors` | In Progress |
 | Go | `go/sdk/` | `github.com/modelcontextprotocol/ext-interceptors/go/sdk` | Planned |
 | Python | `python/sdk/` | `mcp-ext-interceptors` | Planned |
 | TypeScript | `typescript/sdk/` | `@ext-modelcontextprotocol/interceptors` | Planned |

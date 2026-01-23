@@ -5,28 +5,40 @@
 *.so
 *.dylib
 
-# Test binary, built with `go test -c`
-*.test
+# Build results
+[Bb]in/
+[Oo]bj/
+artifacts/
 
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+.idea/
+*.swp
 
-# Go workspace file
-go.work
-go.work.sum
+# Build
+*.log
+msbuild*.binlog
+
+# Test results
+TestResults/
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # env file
 .env
-
-# Editor/IDE
-# .idea/
-# .vscode/
 
 # Node.js / TypeScript
 node_modules/
@@ -40,11 +52,9 @@ yarn-error.log*
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
