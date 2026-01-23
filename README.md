@@ -1,77 +1,30 @@
-# MCP Interceptors (Experimental Extension)
+# MCP Interceptors Extension
 
-> #### **Status:** Experimental. This work is for prototyping and feedback only, and is not an accepted or official MCP extension.
+This repository contains SDK implementations for **SEP-1763: Interceptors for Model Context Protocol** - a standardized framework for intercepting, validating, and transforming MCP messages.
 
-This repository provides a multi-language reference implementation of the proposed interceptor extension for the Model Context Protocol (MCP), as described in [SEP-1763](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763).
+**Specification Reference:** https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763
 
+## SDK Implementations
 
-## Implementations
+| Language | Directory | Status |
+|----------|-----------|--------|
+| C# | [csharp-sdk/](./csharp-sdk/) | Available |
+| Go | `go-sdk/` | Planned |
+| TypeScript | `typescript-sdk/` | Planned |
 
-| Language | Directory | Package | Status |
-|----------|-----------|---------|--------|
-| C# | `csharp/sdk/` | `ModelContextProtocol.Interceptors` | In Progress |
-| Go | `go/sdk/` | `github.com/modelcontextprotocol/ext-interceptors/go/sdk` | Planned |
-| Python | `python/sdk/` | `mcp-ext-interceptors` | Planned |
-| TypeScript | `typescript/sdk/` | `@ext-modelcontextprotocol/interceptors` | Planned |
+## Overview
 
+MCP Interceptors provide three types of message interception:
 
-## CI/CD
+- **Validation** - Validates requests/responses, returns pass/fail with severity levels
+- **Mutation** - Transforms payloads before they continue through the pipeline
+- **Observability** - Fire-and-forget logging/metrics collection, never blocks
 
-This monorepo uses **path-based CI workflows** to efficiently test only what changes:
-
-### How It Works
-
-1. **Language-specific workflows** (`python.yml`, `go.yml`, `typescript.yml`)
-   - Only trigger when their language directory or workflow file changes
-   - Run all tests, linting, and checks for that language
-
-2. **Status check workflow** (`status-check.yml`)
-   - Runs on every PR to verify required checks passed
-   - Determines what needs to pass based on which files changed
-   - This is the only required check in branch protection
-
-### Examples
-
-- Change `python/sdk/file.py` → Only Python CI runs → PR requires Python checks to pass
-- Change both Go and TypeScript files → Both CIs run → PR requires both to pass
-- Change only `README.md` → No language CIs run → PR can merge immediately
-
-### Forcing All Checks
-
-To run all language checks regardless of changed files:
-- **In a PR**: Comment `/test all` (only works for repo owners/members/collaborators)
-- **Manually**: Use GitHub Actions UI or CLI to trigger individual workflows
-
-### Adding New Required Checks
-
-1. **Add your check** to the appropriate language workflow (e.g., `python.yml`):
-   ```yaml
-   python-security-scan:
-     name: "Security Scan"
-     runs-on: ubuntu-latest
-     steps:
-       - name: Run security checks
-         run: # your commands here
-   ```
-
-2. **Update the status check** in `.github/workflows/status-check.yml`:
-   ```javascript
-   const requiredChecks = {
-     python: [
-       'Python CI / Linting',
-       'Python CI / Unit Tests (3.10)',
-       // ... existing checks ...
-       'Python CI / Security Scan'  // ← Add your new check
-     ],
-   ```
-
-3. **Submit PR** - Your new check is now required for all relevant changes!
+Interceptors can operate in different phases:
+- **Request** - Intercept incoming requests
+- **Response** - Intercept outgoing responses
+- **Both** - Intercept in both directions
 
 ## License
 
-Apache License 2.0 - See LICENSE file for details
-
-## Resources
-
-- [Interceptor Framework Specification (SEP-1763)](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763) - Full specification and design details
-- [Model Context Protocol](https://modelcontextprotocol.io/specification)
+MIT
