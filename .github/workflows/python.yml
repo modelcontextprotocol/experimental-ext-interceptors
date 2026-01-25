@@ -1,0 +1,67 @@
+name: Python CI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'python/**'
+      - '.github/workflows/python.yml'
+  pull_request:
+    paths:
+      - 'python/**'
+      - '.github/workflows/python.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-lint:
+    name: "Linting"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          cd python/sdk
+          pip install -e .
+          pip install ruff mypy
+      - name: Run Ruff formatter check
+        run: |
+          cd python/sdk
+          ruff format --check .
+      - name: Run Ruff linter
+        run: |
+          cd python/sdk
+          ruff check .
+      - name: Run mypy
+        run: |
+          cd python/sdk
+          mypy src/mcp_ext_interceptors --ignore-missing-imports
+
+  python-test:
+    name: "Unit Tests"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          cd python/sdk
+          pip install -e .
+          pip install pytest pytest-cov
+      - name: Run tests
+        run: |
+          cd python/sdk
+          pytest -v --cov=src/mcp_ext_interceptors

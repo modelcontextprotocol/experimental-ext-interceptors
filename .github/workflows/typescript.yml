@@ -1,0 +1,61 @@
+name: TypeScript CI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'typescript/**'
+      - '.github/workflows/typescript.yml'
+  pull_request:
+    paths:
+      - 'typescript/**'
+      - '.github/workflows/typescript.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typescript-lint:
+    name: "Linting"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: |
+          cd typescript/sdk
+          npm install
+      - name: Run TypeScript compiler check
+        run: |
+          cd typescript/sdk
+          npm run build
+      - name: Run ESLint
+        run: |
+          cd typescript/sdk
+          npm run lint
+
+  typescript-test:
+    name: "Unit Tests"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ["20", "22"]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Install dependencies
+        run: |
+          cd typescript/sdk
+          npm install
+      - name: Run tests
+        run: |
+          cd typescript/sdk
+          npm test

@@ -1,0 +1,138 @@
+name: Status Check
+
+# This workflow enforces that all relevant CI checks pass based on which files changed.
+# It's the only required status check in branch protection settings.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_run:
+    workflows: ["Python CI", "Go CI", "TypeScript CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  statuses: write
+  checks: write
+  pull-requests: read
+
+jobs:
+  verify-required-checks:
+    name: Verify Required Checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event.workflow_run.conclusion != 'cancelled'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Get PR number
+        id: pr
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            PR_NUMBER=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number')
+            echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          else
+            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get changed files
+        id: changed-files
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            python:
+              - 'python/**'
+              - '.github/workflows/python.yml'
+            go:
+              - 'go/**'
+              - '.github/workflows/go.yml'
+            typescript:
+              - 'typescript/**'
+              - '.github/workflows/typescript.yml'
+
+      - name: Check required statuses
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const ref = context.payload.pull_request?.head.sha || context.payload.workflow_run?.head_sha;
+
+            // Define required checks per language
+            const requiredChecks = {
+              python: [
+                'Python CI / Linting',
+                'Python CI / Unit Tests (3.10)',
+                'Python CI / Unit Tests (3.11)',
+                'Python CI / Unit Tests (3.12)'
+              ],
+              go: [
+                'Go CI / Linting',
+                'Go CI / Unit Tests (1.23)',
+                'Go CI / Unit Tests (1.24)',
+                'Go CI / Unit Tests (1.25)',
+                'Go CI / Race Detection'
+              ],
+              typescript: [
+                'TypeScript CI / Linting',
+                'TypeScript CI / Unit Tests (20)',
+                'TypeScript CI / Unit Tests (22)'
+              ]
+            };
+
+            // Get changed files from previous step
+            const changedFiles = {
+              python: ${{ steps.changed-files.outputs.python }} === 'true',
+              go: ${{ steps.changed-files.outputs.go }} === 'true',
+              typescript: ${{ steps.changed-files.outputs.typescript }} === 'true'
+            };
+
+            // Collect all required checks based on changes
+            let allRequiredChecks = [];
+            for (const [lang, changed] of Object.entries(changedFiles)) {
+              if (changed) {
+                allRequiredChecks = allRequiredChecks.concat(requiredChecks[lang]);
+              }
+            }
+
+            if (allRequiredChecks.length === 0) {
+              console.log('No language files changed, no checks required');
+              return;
+            }
+
+            // Get all check runs for this commit
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref
+            });
+
+            // Verify all required checks have passed
+            const checkStatuses = {};
+            for (const check of checkRuns.check_runs) {
+              checkStatuses[check.name] = check.conclusion;
+            }
+
+            let allPassed = true;
+            let failureMessage = '';
+
+            for (const requiredCheck of allRequiredChecks) {
+              const status = checkStatuses[requiredCheck];
+              if (!status) {
+                allPassed = false;
+                failureMessage += `❌ ${requiredCheck}: Not started\\n`;
+              } else if (status !== 'success') {
+                allPassed = false;
+                failureMessage += `❌ ${requiredCheck}: ${status}\\n`;
+              } else {
+                failureMessage += `✅ ${requiredCheck}: ${status}\\n`;
+              }
+            }
+
+            if (!allPassed) {
+              core.setFailed(`Required checks have not passed:\\n${failureMessage}`);
+            } else {
+              console.log(`All required checks passed:\\n${failureMessage}`);
+            }

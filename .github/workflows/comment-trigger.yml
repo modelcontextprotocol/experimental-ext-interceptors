@@ -1,0 +1,90 @@
+name: Comment Trigger
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: write
+
+jobs:
+  trigger-checks:
+    name: Trigger Checks from Comment
+    if: |
+      github.event.issue.pull_request &&
+      (github.event.comment.body == '/test all' ||
+       github.event.comment.body == '/test-all' ||
+       github.event.comment.body == '/run-all-checks') &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'COLLABORATOR')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get PR branch
+        uses: actions/github-script@v7
+        id: get-pr
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            return pr.data.head.ref;
+
+      - name: Add reaction to comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
+      - name: Trigger Python CI
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'python.yml',
+              ref: '${{ fromJSON(steps.get-pr.outputs.result) }}'
+            });
+
+      - name: Trigger Go CI
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'go.yml',
+              ref: '${{ fromJSON(steps.get-pr.outputs.result) }}'
+            });
+
+      - name: Trigger TypeScript CI
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'typescript.yml',
+              ref: '${{ fromJSON(steps.get-pr.outputs.result) }}'
+            });
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '🚀 All CI checks triggered! Check the Actions tab for progress.'
+            });

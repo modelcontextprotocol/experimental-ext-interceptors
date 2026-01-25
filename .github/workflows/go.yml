@@ -1,0 +1,80 @@
+name: Go CI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'go/**'
+      - '.github/workflows/go.yml'
+  pull_request:
+    paths:
+      - 'go/**'
+      - '.github/workflows/go.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-lint:
+    name: "Linting"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version: "^1.25"
+      - name: Check formatting
+        run: |
+          cd go/sdk
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not properly formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "All Go files are properly formatted"
+      - name: Run Go vet
+        run: |
+          cd go/sdk
+          go vet ./...
+      - name: Run staticcheck
+        uses: dominikh/staticcheck-action@288b4e28bae83c59f35f73651aeb5cab746a06fc # v1.4.0
+        with:
+          install-go: false
+          version: "v0.6.1"
+          working-directory: go/sdk
+
+  go-test:
+    name: "Unit Tests"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.23", "1.24", "1.25"]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Test
+        run: |
+          cd go/sdk
+          go test -v ./...
+
+  go-race-test:
+    name: "Race Detection"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version: "1.24"
+      - name: Test with -race
+        run: |
+          cd go/sdk
+          go test -v -race ./...
