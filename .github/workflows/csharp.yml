@@ -1,0 +1,82 @@
+name: C# CI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'csharp/**'
+      - '.github/workflows/csharp.yml'
+  pull_request:
+    paths:
+      - 'csharp/**'
+      - '.github/workflows/csharp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  csharp-build:
+    name: "Build"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore dependencies
+        run: |
+          cd csharp/sdk
+          dotnet restore
+      - name: Build
+        run: |
+          cd csharp/sdk
+          dotnet build --no-restore --configuration Release
+
+  csharp-test:
+    name: "Unit Tests"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dotnet-version: ['8.0.x', '9.0.x']
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+      - name: Restore dependencies
+        run: |
+          cd csharp/sdk
+          dotnet restore
+      - name: Run tests
+        run: |
+          cd csharp/sdk
+          dotnet test --no-restore --verbosity normal --collect:"XPlat Code Coverage"
+
+  csharp-pack:
+    name: "Package"
+    runs-on: ubuntu-latest
+    needs: [csharp-build, csharp-test]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore dependencies
+        run: |
+          cd csharp/sdk
+          dotnet restore
+      - name: Create NuGet package
+        run: |
+          cd csharp/sdk
+          dotnet pack --no-restore --configuration Release --output ./artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: csharp/sdk/artifacts/*.nupkg

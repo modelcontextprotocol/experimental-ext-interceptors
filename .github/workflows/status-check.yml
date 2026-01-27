@@ -7,7 +7,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_run:
-    workflows: ["Python CI", "Go CI", "TypeScript CI"]
+    workflows: ["C# CI", "Python CI", "Go CI", "TypeScript CI"]
     types: [completed]
 
 permissions:
@@ -42,6 +42,9 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           filters: |
+            csharp:
+              - 'csharp/**'
+              - '.github/workflows/csharp.yml'
             python:
               - 'python/**'
               - '.github/workflows/python.yml'
@@ -62,6 +65,12 @@ jobs:
 
             // Define required checks per language
             const requiredChecks = {
+              csharp: [
+                'C# CI / Build',
+                'C# CI / Unit Tests (8.0.x)',
+                'C# CI / Unit Tests (9.0.x)',
+                'C# CI / Package'
+              ],
               python: [
                 'Python CI / Linting',
                 'Python CI / Unit Tests (3.10)',
@@ -84,6 +93,7 @@ jobs:
 
             // Get changed files from previous step
             const changedFiles = {
+              csharp: ${{ steps.changed-files.outputs.csharp }} === 'true',
               python: ${{ steps.changed-files.outputs.python }} === 'true',
               go: ${{ steps.changed-files.outputs.go }} === 'true',
               typescript: ${{ steps.changed-files.outputs.typescript }} === 'true'
