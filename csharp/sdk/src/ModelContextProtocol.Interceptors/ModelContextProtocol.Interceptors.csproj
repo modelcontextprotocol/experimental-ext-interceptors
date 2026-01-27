@@ -16,7 +16,7 @@
     <Copyright>© FSIG Contributors</Copyright>
     <PackageTags>ModelContextProtocol;mcp;ai;llm;interceptors;validation</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/modelcontextprotocol/ext-interceptors</RepositoryUrl>
+    <RepositoryUrl>https://github.com/modelcontextprotocol/experimental-ext-interceptors</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
