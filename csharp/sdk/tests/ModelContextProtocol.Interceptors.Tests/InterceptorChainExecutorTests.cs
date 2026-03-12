@@ -1,504 +1,344 @@
 using System.Text.Json.Nodes;
-using ModelContextProtocol.Interceptors;
-using ModelContextProtocol.Interceptors.Client;
+using ModelContextProtocol.Interceptors.Protocol;
+using ModelContextProtocol.Interceptors.Server;
+using ModelContextProtocol.Server;
+using Xunit;
 
 namespace ModelContextProtocol.Interceptors.Tests;
 
 public class InterceptorChainExecutorTests
 {
     [Fact]
-    public async Task ExecuteForSendingAsync_MutationsExecuteSequentiallyByPriority()
+    public async Task RequestPhase_ExecutesMutationsBeforeValidations()
     {
-        // Arrange
+        // Track execution order
         var executionOrder = new List<string>();
 
-        var interceptors = new List<McpClientInterceptor>
+        var mutation = CreateInterceptor("mut-1", InterceptorType.Mutation, (req, _, _, _) =>
         {
-            CreateMutationInterceptor("high-priority", -100, payload =>
+            executionOrder.Add("mutation");
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult
             {
-                executionOrder.Add("high-priority");
-                return MutationInterceptorResult.Unchanged(payload);
-            }),
-            CreateMutationInterceptor("medium-priority", 0, payload =>
-            {
-                executionOrder.Add("medium-priority");
-                return MutationInterceptorResult.Unchanged(payload);
-            }),
-            CreateMutationInterceptor("low-priority", 100, payload =>
-            {
-                executionOrder.Add("low-priority");
-                return MutationInterceptorResult.Unchanged(payload);
-            })
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        await executor.ExecuteForSendingAsync(InterceptorEvents.ToolsCall, payload);
-
-        // Assert - Lower priority numbers execute first
-        Assert.Equal(["high-priority", "medium-priority", "low-priority"], executionOrder);
-    }
-
-    [Fact]
-    public async Task ExecuteForSendingAsync_MutationsWithSamePriority_OrderAlphabetically()
-    {
-        // Arrange
-        var executionOrder = new List<string>();
-
-        var interceptors = new List<McpClientInterceptor>
-        {
-            CreateMutationInterceptor("zebra", 0, payload =>
-            {
-                executionOrder.Add("zebra");
-                return MutationInterceptorResult.Unchanged(payload);
-            }),
-            CreateMutationInterceptor("alpha", 0, payload =>
-            {
-                executionOrder.Add("alpha");
-                return MutationInterceptorResult.Unchanged(payload);
-            }),
-            CreateMutationInterceptor("beta", 0, payload =>
-            {
-                executionOrder.Add("beta");
-                return MutationInterceptorResult.Unchanged(payload);
-            })
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        await executor.ExecuteForSendingAsync(InterceptorEvents.ToolsCall, payload);
-
-        // Assert - Same priority, alphabetical order
-        Assert.Equal(["alpha", "beta", "zebra"], executionOrder);
-    }
-
-    [Fact]
-    public async Task ExecuteForSendingAsync_ValidationErrorBlocksExecution()
-    {
-        // Arrange
-        var mutationExecuted = false;
-
-        var interceptors = new List<McpClientInterceptor>
-        {
-            CreateMutationInterceptor("mutator", -1000, payload =>
-            {
-                mutationExecuted = true;
-                return MutationInterceptorResult.Mutated(JsonNode.Parse("{\"mutated\": true}"));
-            }),
-            CreateValidationInterceptor("validator", _ =>
-                ValidationInterceptorResult.Error("Validation failed"))
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        var result = await executor.ExecuteForSendingAsync(InterceptorEvents.ToolsCall, payload);
-
-        // Assert
-        // Mutations execute first in sending direction, so mutator runs before validator
-        Assert.True(mutationExecuted, "Mutation should execute before validation in sending direction");
-        Assert.Equal(InterceptorChainStatus.ValidationFailed, result.Status);
-        Assert.NotNull(result.AbortedAt);
-        Assert.Equal("validator", result.AbortedAt.Interceptor);
-    }
-
-    [Fact]
-    public async Task ExecuteForReceivingAsync_ValidationsExecuteBeforeMutations()
-    {
-        // Arrange
-        var executionOrder = new List<string>();
-
-        var interceptors = new List<McpClientInterceptor>
-        {
-            CreateMutationInterceptor("mutator", 0, payload =>
-            {
-                executionOrder.Add("mutator");
-                return MutationInterceptorResult.Unchanged(payload);
-            }),
-            CreateValidationInterceptor("validator", _ =>
-            {
-                executionOrder.Add("validator");
-                return ValidationInterceptorResult.Success();
-            })
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        await executor.ExecuteForReceivingAsync(InterceptorEvents.ToolsCall, payload);
-
-        // Assert - In receiving direction: Validate → Mutate
-        Assert.Equal("validator", executionOrder[0]);
-        Assert.Equal("mutator", executionOrder[1]);
-    }
-
-    [Fact]
-    public async Task ExecuteForReceivingAsync_ValidationErrorBlocksMutations()
-    {
-        // Arrange
-        var mutationExecuted = false;
-
-        var interceptors = new List<McpClientInterceptor>
-        {
-            CreateMutationInterceptor("mutator", 0, payload =>
-            {
-                mutationExecuted = true;
-                return MutationInterceptorResult.Mutated(JsonNode.Parse("{\"mutated\": true}"));
-            }),
-            CreateValidationInterceptor("validator", _ =>
-                ValidationInterceptorResult.Error("Validation failed"))
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        var result = await executor.ExecuteForReceivingAsync(InterceptorEvents.ToolsCall, payload);
-
-        // Assert - In receiving direction, validation runs first and blocks mutation
-        Assert.False(mutationExecuted);
-        Assert.Equal(InterceptorChainStatus.ValidationFailed, result.Status);
-    }
-
-    [Fact]
-    public async Task ObservabilityInterceptor_NeverBlocksExecution()
-    {
-        // Arrange
-        var observabilityExecuted = false;
-        var mutationExecuted = false;
-
-        var interceptors = new List<McpClientInterceptor>
-        {
-            CreateMutationInterceptor("mutator", 0, payload =>
-            {
-                mutationExecuted = true;
-                return MutationInterceptorResult.Unchanged(payload);
-            }),
-            CreateObservabilityInterceptor("observer", _ =>
-            {
-                observabilityExecuted = true;
-                throw new Exception("Observability failure should not block");
-            })
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        var result = await executor.ExecuteForSendingAsync(InterceptorEvents.ToolsCall, payload);
-
-        // Assert - Observability failures don't block
-        Assert.True(mutationExecuted);
-        Assert.True(observabilityExecuted);
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
-    }
-
-    [Fact]
-    public async Task Timeout_AbortsChainExecution()
-    {
-        // Arrange
-        var interceptors = new List<McpClientInterceptor>
-        {
-            CreateCancellableAsyncMutationInterceptor("slow-mutator", 0, async (payload, ct) =>
-            {
-                // Use the cancellation token so the delay can be cancelled
-                await Task.Delay(5000, ct);
-                return MutationInterceptorResult.Unchanged(payload);
-            })
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        var result = await executor.ExecuteForSendingAsync(
-            InterceptorEvents.ToolsCall,
-            payload,
-            timeoutMs: 100);
-
-        // Assert - The chain should abort (either as Timeout or MutationFailed due to cancellation)
-        // The implementation catches OperationCanceledException from the mutation which gets reported
-        // as MutationFailed rather than Timeout depending on timing
-        Assert.NotEqual(InterceptorChainStatus.Success, result.Status);
-        Assert.NotNull(result.AbortedAt);
-    }
-
-    [Fact]
-    public async Task Mutations_PropagatePayloadThroughChain()
-    {
-        // Arrange
-        var interceptors = new List<McpClientInterceptor>
-        {
-            CreateMutationInterceptor("first", -100, payload =>
-            {
-                var obj = payload!.AsObject();
-                obj["step1"] = true;
-                return MutationInterceptorResult.Mutated(obj);
-            }),
-            CreateMutationInterceptor("second", 0, payload =>
-            {
-                var obj = payload!.AsObject();
-                obj["step2"] = true;
-                return MutationInterceptorResult.Mutated(obj);
-            }),
-            CreateMutationInterceptor("third", 100, payload =>
-            {
-                var obj = payload!.AsObject();
-                obj["step3"] = true;
-                return MutationInterceptorResult.Mutated(obj);
-            })
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        var result = await executor.ExecuteForSendingAsync(InterceptorEvents.ToolsCall, payload);
-
-        // Assert
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
-        var final = result.FinalPayload!.AsObject();
-        Assert.True(final["step1"]!.GetValue<bool>());
-        Assert.True(final["step2"]!.GetValue<bool>());
-        Assert.True(final["step3"]!.GetValue<bool>());
-    }
-
-    [Fact]
-    public async Task ValidationWarning_DoesNotBlockExecution()
-    {
-        // Arrange
-        var mutationExecuted = false;
-
-        var interceptors = new List<McpClientInterceptor>
-        {
-            CreateMutationInterceptor("mutator", -1000, payload =>
-            {
-                mutationExecuted = true;
-                return MutationInterceptorResult.Unchanged(payload);
-            }),
-            CreateValidationInterceptor("validator", _ =>
-                ValidationInterceptorResult.Warning("This is just a warning"))
-        };
-
-        var executor = new InterceptorChainExecutor(interceptors);
-        var payload = JsonNode.Parse("{}");
-
-        // Act
-        var result = await executor.ExecuteForSendingAsync(InterceptorEvents.ToolsCall, payload);
-
-        // Assert - Warnings don't block
-        Assert.True(mutationExecuted);
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
-        Assert.Equal(1, result.ValidationSummary.Warnings);
-    }
-
-    // Helper methods to create test interceptors
-
-    private static McpClientInterceptor CreateMutationInterceptor(
-        string name,
-        int priority,
-        Func<JsonNode?, MutationInterceptorResult> handler)
-    {
-        return new TestMutationInterceptor(name, priority, handler);
-    }
-
-    private static McpClientInterceptor CreateAsyncMutationInterceptor(
-        string name,
-        int priority,
-        Func<JsonNode?, Task<MutationInterceptorResult>> handler)
-    {
-        return new TestAsyncMutationInterceptor(name, priority, handler);
-    }
-
-    private static McpClientInterceptor CreateCancellableAsyncMutationInterceptor(
-        string name,
-        int priority,
-        Func<JsonNode?, CancellationToken, Task<MutationInterceptorResult>> handler)
-    {
-        return new TestCancellableAsyncMutationInterceptor(name, priority, handler);
-    }
-
-    private static McpClientInterceptor CreateValidationInterceptor(
-        string name,
-        Func<JsonNode?, ValidationInterceptorResult> handler)
-    {
-        return new TestValidationInterceptor(name, handler);
-    }
-
-    private static McpClientInterceptor CreateObservabilityInterceptor(
-        string name,
-        Action<JsonNode?> handler)
-    {
-        return new TestObservabilityInterceptor(name, handler);
-    }
-}
-
-// Test interceptor implementations
-
-file class TestMutationInterceptor : McpClientInterceptor
-{
-    private readonly Func<JsonNode?, MutationInterceptorResult> _handler;
-    private readonly Interceptor _protocolInterceptor;
-    private readonly IReadOnlyList<object> _metadata = [];
-
-    public TestMutationInterceptor(string name, int priority, Func<JsonNode?, MutationInterceptorResult> handler)
-    {
-        _protocolInterceptor = new Interceptor
-        {
-            Name = name,
-            Type = InterceptorType.Mutation,
-            Phase = InterceptorPhase.Both,
-            Events = [InterceptorEvents.ToolsCall],
-            PriorityHint = new InterceptorPriorityHint(priority)
-        };
-        _handler = handler;
-    }
-
-    public override Interceptor ProtocolInterceptor => _protocolInterceptor;
-    public override IReadOnlyList<object> Metadata => _metadata;
-
-    public override ValueTask<InterceptorResult> InvokeAsync(
-        ClientInterceptorContext<InvokeInterceptorRequestParams> context,
-        CancellationToken cancellationToken = default)
-    {
-        var result = _handler(context.Params?.Payload);
-        result.Interceptor = ProtocolInterceptor.Name;
-        return new ValueTask<InterceptorResult>(result);
-    }
-}
-
-file class TestAsyncMutationInterceptor : McpClientInterceptor
-{
-    private readonly Func<JsonNode?, Task<MutationInterceptorResult>> _handler;
-    private readonly Interceptor _protocolInterceptor;
-    private readonly IReadOnlyList<object> _metadata = [];
-
-    public TestAsyncMutationInterceptor(string name, int priority, Func<JsonNode?, Task<MutationInterceptorResult>> handler)
-    {
-        _protocolInterceptor = new Interceptor
-        {
-            Name = name,
-            Type = InterceptorType.Mutation,
-            Phase = InterceptorPhase.Both,
-            Events = [InterceptorEvents.ToolsCall],
-            PriorityHint = new InterceptorPriorityHint(priority)
-        };
-        _handler = handler;
-    }
-
-    public override Interceptor ProtocolInterceptor => _protocolInterceptor;
-    public override IReadOnlyList<object> Metadata => _metadata;
-
-    public override async ValueTask<InterceptorResult> InvokeAsync(
-        ClientInterceptorContext<InvokeInterceptorRequestParams> context,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await _handler(context.Params?.Payload);
-        result.Interceptor = ProtocolInterceptor.Name;
-        return result;
-    }
-}
-
-file class TestCancellableAsyncMutationInterceptor : McpClientInterceptor
-{
-    private readonly Func<JsonNode?, CancellationToken, Task<MutationInterceptorResult>> _handler;
-    private readonly Interceptor _protocolInterceptor;
-    private readonly IReadOnlyList<object> _metadata = [];
-
-    public TestCancellableAsyncMutationInterceptor(string name, int priority, Func<JsonNode?, CancellationToken, Task<MutationInterceptorResult>> handler)
-    {
-        _protocolInterceptor = new Interceptor
-        {
-            Name = name,
-            Type = InterceptorType.Mutation,
-            Phase = InterceptorPhase.Both,
-            Events = [InterceptorEvents.ToolsCall],
-            PriorityHint = new InterceptorPriorityHint(priority)
-        };
-        _handler = handler;
-    }
-
-    public override Interceptor ProtocolInterceptor => _protocolInterceptor;
-    public override IReadOnlyList<object> Metadata => _metadata;
-
-    public override async ValueTask<InterceptorResult> InvokeAsync(
-        ClientInterceptorContext<InvokeInterceptorRequestParams> context,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await _handler(context.Params?.Payload, cancellationToken);
-        result.Interceptor = ProtocolInterceptor.Name;
-        return result;
-    }
-}
-
-file class TestValidationInterceptor : McpClientInterceptor
-{
-    private readonly Func<JsonNode?, ValidationInterceptorResult> _handler;
-    private readonly Interceptor _protocolInterceptor;
-    private readonly IReadOnlyList<object> _metadata = [];
-
-    public TestValidationInterceptor(string name, Func<JsonNode?, ValidationInterceptorResult> handler)
-    {
-        _protocolInterceptor = new Interceptor
-        {
-            Name = name,
-            Type = InterceptorType.Validation,
-            Phase = InterceptorPhase.Both,
-            Events = [InterceptorEvents.ToolsCall]
-        };
-        _handler = handler;
-    }
-
-    public override Interceptor ProtocolInterceptor => _protocolInterceptor;
-    public override IReadOnlyList<object> Metadata => _metadata;
-
-    public override ValueTask<InterceptorResult> InvokeAsync(
-        ClientInterceptorContext<InvokeInterceptorRequestParams> context,
-        CancellationToken cancellationToken = default)
-    {
-        var result = _handler(context.Params?.Payload);
-        result.Interceptor = ProtocolInterceptor.Name;
-        result.Phase = context.Params?.Phase ?? InterceptorPhase.Request;
-        return new ValueTask<InterceptorResult>(result);
-    }
-}
-
-file class TestObservabilityInterceptor : McpClientInterceptor
-{
-    private readonly Action<JsonNode?> _handler;
-    private readonly Interceptor _protocolInterceptor;
-    private readonly IReadOnlyList<object> _metadata = [];
-
-    public TestObservabilityInterceptor(string name, Action<JsonNode?> handler)
-    {
-        _protocolInterceptor = new Interceptor
-        {
-            Name = name,
-            Type = InterceptorType.Observability,
-            Phase = InterceptorPhase.Both,
-            Events = [InterceptorEvents.ToolsCall]
-        };
-        _handler = handler;
-    }
-
-    public override Interceptor ProtocolInterceptor => _protocolInterceptor;
-    public override IReadOnlyList<object> Metadata => _metadata;
-
-    public override ValueTask<InterceptorResult> InvokeAsync(
-        ClientInterceptorContext<InvokeInterceptorRequestParams> context,
-        CancellationToken cancellationToken = default)
-    {
-        _handler(context.Params?.Payload);
-        return new ValueTask<InterceptorResult>(new ObservabilityInterceptorResult
-        {
-            Interceptor = ProtocolInterceptor.Name,
-            Observed = true
+                Modified = true,
+                Payload = JsonNode.Parse("""{"mutated":true}"""),
+            });
         });
+
+        var validation = CreateInterceptor("val-1", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            executionOrder.Add("validation");
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        });
+
+        var observability = CreateInterceptor("obs-1", InterceptorType.Observability, (req, _, _, _) =>
+        {
+            executionOrder.Add("observability");
+            return new ValueTask<InterceptorResult>(new ObservabilityInterceptorResult { Observed = true });
+        });
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{"original":true}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [mutation, validation, observability], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(["mutation", "validation", "observability"], executionOrder);
+        Assert.True(result.FinalPayload!["mutated"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task ResponsePhase_ExecutesValidationsBeforeMutations()
+    {
+        var executionOrder = new List<string>();
+
+        var mutation = CreateInterceptor("mut-1", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            executionOrder.Add("mutation");
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        });
+
+        var validation = CreateInterceptor("val-1", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            executionOrder.Add("validation");
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        });
+
+        var observability = CreateInterceptor("obs-1", InterceptorType.Observability, (req, _, _, _) =>
+        {
+            executionOrder.Add("observability");
+            return new ValueTask<InterceptorResult>(new ObservabilityInterceptorResult { Observed = true });
+        });
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Response,
+            Payload = JsonNode.Parse("""{"test":true}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [mutation, validation, observability], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(["validation", "observability", "mutation"], executionOrder);
+    }
+
+    [Fact]
+    public async Task MutationsExecuteSequentiallyByPriority()
+    {
+        var executionOrder = new List<string>();
+
+        var mutHigh = CreateInterceptor("mut-high", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            executionOrder.Add("high-priority");
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: 100);
+
+        var mutLow = CreateInterceptor("mut-low", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            executionOrder.Add("low-priority");
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: -100);
+
+        var mutDefault = CreateInterceptor("mut-default", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            executionOrder.Add("default-priority");
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: 0);
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [mutHigh, mutLow, mutDefault], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(["low-priority", "default-priority", "high-priority"], executionOrder);
+    }
+
+    [Fact]
+    public async Task MutationsChainPayloads()
+    {
+        var mut1 = CreateInterceptor("mut-1", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            var payload = req.Payload;
+            var obj = payload.AsObject();
+            obj["step1"] = true;
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = obj });
+        }, priorityHint: 0);
+
+        var mut2 = CreateInterceptor("mut-2", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            var payload = req.Payload;
+            Assert.True(payload["step1"]!.GetValue<bool>()); // Verify we got mut1's output
+            var obj = payload.AsObject();
+            obj["step2"] = true;
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = obj });
+        }, priorityHint: 1);
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{"original":true}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [mut1, mut2], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.True(result.FinalPayload!["original"]!.GetValue<bool>());
+        Assert.True(result.FinalPayload!["step1"]!.GetValue<bool>());
+        Assert.True(result.FinalPayload!["step2"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task ValidationErrorAbortsChain()
+    {
+        var validation = CreateInterceptor("strict-val", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Failure(
+                new ValidationMessage { Message = "Required field missing", Severity = ValidationSeverity.Error }));
+        });
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [validation], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.ValidationFailed, result.Status);
+        Assert.NotNull(result.AbortedAt);
+        Assert.Equal("strict-val", result.AbortedAt!.Interceptor);
+        Assert.Equal("validation", result.AbortedAt.Type);
+    }
+
+    [Fact]
+    public async Task ObservabilityFailuresAreSwallowed()
+    {
+        var obs = CreateInterceptor("failing-obs", InterceptorType.Observability, (req, _, _, _) =>
+        {
+            throw new InvalidOperationException("Observability failure");
+        });
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [obs], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Single(result.Results);
+        var obsResult = Assert.IsType<ObservabilityInterceptorResult>(result.Results[0]);
+        Assert.False(obsResult.Observed);
+    }
+
+    [Fact]
+    public async Task FiltersInterceptorsByEvent()
+    {
+        var toolsInterceptor = CreateInterceptor("tools-only", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        }, events: [InterceptorEvents.ToolsCall]);
+
+        var promptsInterceptor = CreateInterceptor("prompts-only", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        }, events: [InterceptorEvents.PromptsGet]);
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [toolsInterceptor, promptsInterceptor], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Single(result.Results); // Only the tools interceptor ran
+    }
+
+    [Fact]
+    public async Task FiltersInterceptorsByPhase()
+    {
+        var requestOnly = CreateInterceptor("request-only", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        }, phase: InterceptorPhase.Request);
+
+        var responseOnly = CreateInterceptor("response-only", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        }, phase: InterceptorPhase.Response);
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [requestOnly, responseOnly], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Single(result.Results);
+        Assert.Equal("request-only", result.Results[0].InterceptorName);
+    }
+
+    [Fact]
+    public async Task ValidationSummaryCountsCorrectly()
+    {
+        var val = CreateInterceptor("val", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            return new ValueTask<InterceptorResult>(new ValidationInterceptorResult
+            {
+                Valid = true, // Still valid overall
+                Messages =
+                [
+                    new ValidationMessage { Message = "Info", Severity = ValidationSeverity.Info },
+                    new ValidationMessage { Message = "Warn 1", Severity = ValidationSeverity.Warn },
+                    new ValidationMessage { Message = "Warn 2", Severity = ValidationSeverity.Warn },
+                ],
+            });
+        });
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [val], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(0, result.ValidationSummary!.Errors);
+        Assert.Equal(2, result.ValidationSummary.Warnings);
+        Assert.Equal(1, result.ValidationSummary.Infos);
+    }
+
+    private static TestInterceptor CreateInterceptor(
+        string name,
+        InterceptorType type,
+        Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler,
+        int priorityHint = 0,
+        string[]? events = null,
+        InterceptorPhase phase = InterceptorPhase.Both)
+    {
+        return new TestInterceptor(
+            new Interceptor
+            {
+                Name = name,
+                Type = type,
+                Phase = phase,
+                Events = events ?? [InterceptorEvents.All],
+                PriorityHint = priorityHint,
+            },
+            handler);
+    }
+
+    private sealed class TestInterceptor : McpServerInterceptor
+    {
+        private readonly Interceptor _interceptor;
+        private readonly Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> _handler;
+
+        public TestInterceptor(
+            Interceptor interceptor,
+            Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler)
+        {
+            _interceptor = interceptor;
+            _handler = handler;
+        }
+
+        public override Interceptor ProtocolInterceptor => _interceptor;
+        public override IReadOnlyList<object> Metadata => [];
+
+        public override ValueTask<InterceptorResult> InvokeAsync(
+            InvokeInterceptorRequestParams request,
+            McpServer server,
+            IServiceProvider? services,
+            CancellationToken cancellationToken = default) =>
+            _handler(request, server, services, cancellationToken);
     }
 }

@@ -1,58 +1,29 @@
+using ModelContextProtocol.Interceptors.Protocol;
+
 namespace ModelContextProtocol.Interceptors.Server;
 
 /// <summary>
-/// Attribute used to mark a method as an MCP server interceptor.
+/// Marks a method as an MCP server interceptor. Methods with this attribute are discovered
+/// by <see cref="McpServerInterceptorBuilderExtensions.WithInterceptors{T}"/>.
 /// </summary>
-/// <remarks>
-/// <para>
-/// When applied to a method, this attribute indicates that the method should be exposed as an
-/// MCP interceptor that can validate, mutate, or observe messages.
-/// </para>
-/// <para>
-/// The method should accept parameters that can be bound from <see cref="InvokeInterceptorRequestParams"/>
-/// and return a <see cref="ValidationInterceptorResult"/> (or a type convertible to it).
-/// </para>
-/// </remarks>
-[AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
+[AttributeUsage(AttributeTargets.Method)]
 public sealed class McpServerInterceptorAttribute : Attribute
 {
-    /// <summary>
-    /// Gets or sets the name of the interceptor.
-    /// </summary>
-    /// <remarks>
-    /// If not specified, a name will be derived from the method name.
-    /// </remarks>
+    /// <summary>Gets or sets the interceptor name. Defaults to the method name.</summary>
     public string? Name { get; set; }
 
-    /// <summary>
-    /// Gets or sets the version of the interceptor.
-    /// </summary>
-    public string? Version { get; set; }
-
-    /// <summary>
-    /// Gets or sets the description of the interceptor.
-    /// </summary>
+    /// <summary>Gets or sets a description of this interceptor.</summary>
     public string? Description { get; set; }
 
-    /// <summary>
-    /// Gets or sets the events this interceptor handles.
-    /// </summary>
-    /// <remarks>
-    /// Use constants from <see cref="InterceptorEvents"/> for event names.
-    /// This is a required property when using the attribute.
-    /// </remarks>
-    public string[] Events { get; set; } = [];
+    /// <summary>Gets or sets the event types this interceptor handles.</summary>
+    public string[] Events { get; set; } = [InterceptorEvents.All];
 
-    /// <summary>
-    /// Gets or sets the execution phase for this interceptor.
-    /// </summary>
-    public InterceptorPhase Phase { get; set; } = InterceptorPhase.Request;
+    /// <summary>Gets or sets the interceptor type.</summary>
+    public InterceptorType Type { get; set; }
 
-    /// <summary>
-    /// Gets or sets the priority hint for mutation interceptor ordering.
-    /// </summary>
-    /// <remarks>
-    /// Lower values execute first. Default is 0 if not specified.
-    /// </remarks>
+    /// <summary>Gets or sets the phase(s) in which this interceptor executes.</summary>
+    public InterceptorPhase Phase { get; set; } = InterceptorPhase.Both;
+
+    /// <summary>Gets or sets the priority hint for mutation ordering. Lower values execute first.</summary>
     public int PriorityHint { get; set; }
 }

@@ -1,115 +1,122 @@
-# MCP Interceptors C# SDK
+# ModelContextProtocol.Interceptors
 
-This library provides interceptor support for the Model Context Protocol (MCP) .NET SDK. Interceptors enable validation, mutation, and observation of MCP messages without modifying the original server or client implementations.
+C# implementation of the [MCP Interceptors Extension (SEP-1763)](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763) — gateway-level interceptors for the Model Context Protocol.
 
 ## Overview
 
-MCP Interceptors (SEP-1763) allow you to:
+This package enables creating interceptor servers that sit between MCP clients and servers, providing validation, mutation, and observability capabilities without modifying either the client or server.
 
-- **Validate** incoming requests before they reach handlers
-- **Mutate** requests or responses to transform data
-- **Observe** message flow for logging, metrics, or auditing
-
-Interceptors can be deployed as:
-- Sidecars alongside MCP servers
-- Gateway services that proxy MCP traffic
-- Embedded validators within applications
-
-## Installation
-
-```bash
-dotnet add package ModelContextProtocol.Interceptors
+```
+Client  ──▶  Interceptor Server  ──▶  Server
+        ◀──  (validates/mutates)  ◀──  (tools)
 ```
 
 ## Quick Start
 
-```csharp
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using ModelContextProtocol.Interceptors;
+### Creating an Interceptor Server
 
+```csharp
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddMcpServer()
     .WithStdioServerTransport()
-    .WithInterceptors<ParameterValidator>();
+    .WithInterceptors<MyInterceptors>();
 
-await builder.Build().RunAsync();
-```
-
-## Creating an Interceptor
-
-```csharp
-using ModelContextProtocol.Interceptors;
-using ModelContextProtocol.Interceptors.Server;
-using System.Text.Json.Nodes;
+var app = builder.Build();
+await app.RunAsync();
 
 [McpServerInterceptorType]
-public class ParameterValidator
+public class MyInterceptors
 {
-    [McpServerInterceptor(
-        Name = "parameter-validator",
-        Description = "Validates tool call parameters",
-        Events = new[] { InterceptorEvents.ToolsCall },
-        Phase = InterceptorPhase.Request)]
-    public ValidationInterceptorResult ValidateToolCall(JsonNode? payload)
+    [McpServerInterceptor(Name = "pii-validator", Type = InterceptorType.Validation,
+        Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Request)]
+    public static ValidationInterceptorResult ValidatePii(JsonNode payload)
     {
-        if (payload is null)
-        {
-            return new ValidationInterceptorResult
-            {
-                Valid = false,
-                Severity = ValidationSeverity.Error,
-                Messages = [new() { Message = "Payload is required" }]
-            };
-        }
+        // Check for PII patterns
+        return ValidationInterceptorResult.Success();
+    }
 
-        return new ValidationInterceptorResult { Valid = true };
+    [McpServerInterceptor(Name = "email-redactor", Type = InterceptorType.Mutation,
+        Events = [InterceptorEvents.ToolsCall], PriorityHint = -1000)]
+    public static MutationInterceptorResult RedactEmails(JsonNode payload)
+    {
+        // Modify the payload
+        return new MutationInterceptorResult { Modified = true, Payload = modifiedPayload };
     }
 }
 ```
 
+### Consuming Interceptors from a Client
+
+```csharp
+// Connect to the interceptor server
+var interceptorClient = await McpClient.CreateAsync(interceptorTransport);
+
+// List available interceptors
+var interceptors = await interceptorClient.ListInterceptorsAsync();
+
+// Invoke a single interceptor
+var result = await interceptorClient.InvokeInterceptorAsync(new InvokeInterceptorRequestParams
+{
+    Name = "pii-validator",
+    Event = InterceptorEvents.ToolsCall,
+    Phase = InterceptorPhase.Request,
+    Payload = JsonNode.Parse("""{"name":"call-tool","arguments":{"query":"test"}}""")!,
+});
+
+// Execute a full chain
+var chainResult = await interceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
+{
+    Event = InterceptorEvents.ToolsCall,
+    Phase = InterceptorPhase.Request,
+    Payload = myPayload,
+});
+```
+
+### Gateway Pattern (Full Chain)
+
+```csharp
+// Connect to both the interceptor server and the actual MCP server
+var interceptorClient = await McpClient.CreateAsync(interceptorTransport);
+var mcpClient = await McpClient.CreateAsync(mcpTransport);
+
+// Create the gateway wrapper
+var gateway = new InterceptingMcpClient(mcpClient, new InterceptingMcpClientOptions
+{
+    InterceptorClient = interceptorClient,
+    Events = [InterceptorEvents.ToolsCall],
+});
+
+// All tool calls now flow through interceptors automatically
+var result = await gateway.CallToolAsync("my-tool", new Dictionary<string, object?> { ["query"] = "test" });
+```
+
 ## Interceptor Types
 
-### Validation Interceptors
-Validate requests/responses and return pass/fail results with optional error messages.
+| Type | Execution | Purpose |
+|------|-----------|---------|
+| **Validation** | Parallel | Validates payloads. Error severity aborts the chain. |
+| **Mutation** | Sequential (by priority) | Transforms payloads. Output chains to next mutation. |
+| **Observability** | Parallel (fire-and-forget) | Logging/metrics. Failures are swallowed. |
 
-### Mutation Interceptors
-Transform request or response payloads before they continue through the pipeline.
+## Chain Execution Order
 
-### Observability Interceptors
-Observe message flow for logging, metrics collection, or auditing without modifying data.
+**Request phase (sending):** Mutations → Validations → Observability → send
+**Response phase (receiving):** Validations → Observability → Mutations → process
 
-## Configuration Options
+## Parameter Binding
 
-### Phase
-- `InterceptorPhase.Request` - Intercept incoming requests
-- `InterceptorPhase.Response` - Intercept outgoing responses
-- `InterceptorPhase.Both` - Intercept both directions
+Interceptor methods support automatic parameter binding:
 
-### Events
-Interceptors can target specific MCP events:
-- `InterceptorEvents.ToolsCall` - Tool invocation requests
-- `InterceptorEvents.PromptGet` - Prompt retrieval
-- `InterceptorEvents.ResourceRead` - Resource access
-- And more...
+| Parameter Type | Bound From |
+|---------------|------------|
+| `JsonNode payload` | `InvokeInterceptorRequestParams.Payload` |
+| `JsonNode config` | `InvokeInterceptorRequestParams.Config` |
+| `string event` | `InvokeInterceptorRequestParams.Event` |
+| `InterceptorPhase phase` | `InvokeInterceptorRequestParams.Phase` |
+| `InvokeInterceptorContext` | `InvokeInterceptorRequestParams.Context` |
+| `CancellationToken` | Framework cancellation token |
+| `McpServer` | Current server instance |
+| `IServiceProvider` | Request-scoped DI container |
 
-### Priority
-Use `PriorityHint` to control interceptor execution order (lower values run first).
-
-## Sample Projects
-
-See the `samples/InterceptorServiceSample` directory for a complete example of a security-focused validation interceptor.
-
-## Requirements
-
-- .NET 8.0 or later (or .NET Standard 2.0 compatible runtime)
-- ModelContextProtocol SDK 0.1.0-preview.10 or later
-
-## License
-
-MIT License - see LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please see the FSIG CONTRIBUTING.md for guidelines.
+Methods can return `InterceptorResult` (or any subclass), `bool` (wrapped as `ValidationInterceptorResult`), or `Task<T>`/`ValueTask<T>` variants of these.

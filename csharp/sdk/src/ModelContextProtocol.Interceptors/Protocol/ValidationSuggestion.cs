@@ -1,22 +1,18 @@
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 
-namespace ModelContextProtocol.Interceptors;
+namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// Represents a suggested correction for a validation issue.
+/// Represents a suggested fix from a validation interceptor.
 /// </summary>
 public sealed class ValidationSuggestion
 {
-    /// <summary>
-    /// Gets or sets the JSON path to the field that should be corrected.
-    /// </summary>
+    /// <summary>Gets or sets the JSON path to the field to modify.</summary>
     [JsonPropertyName("path")]
     public required string Path { get; set; }
 
-    /// <summary>
-    /// Gets or sets the suggested value for the field.
-    /// </summary>
+    /// <summary>Gets or sets the suggested value for the field.</summary>
     [JsonPropertyName("value")]
     public JsonNode? Value { get; set; }
 }

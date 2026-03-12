@@ -1,29 +1,14 @@
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Interceptors;
+namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// Represents the interceptors capability configuration.
+/// Represents the interceptors capability advertised by a server during initialization.
+/// This is placed in <c>ServerCapabilities.Extensions["interceptors"]</c>.
 /// </summary>
-/// <remarks>
-/// This capability indicates that a server supports the interceptor framework
-/// as defined in SEP-1763.
-/// </remarks>
 public sealed class InterceptorsCapability
 {
-    /// <summary>
-    /// Gets or sets the events that this server's interceptors can handle.
-    /// </summary>
-    /// <remarks>
-    /// Use constants from <see cref="InterceptorEvents"/> for event names.
-    /// </remarks>
+    /// <summary>Gets or sets the list of event types this server's interceptors support.</summary>
     [JsonPropertyName("supportedEvents")]
-    public IList<string>? SupportedEvents { get; set; }
-
-    /// <summary>
-    /// Gets or sets a value that indicates whether this server supports notifications
-    /// for changes to the interceptor list.
-    /// </summary>
-    [JsonPropertyName("listChanged")]
-    public bool? ListChanged { get; set; }
+    public IList<string> SupportedEvents { get; set; } = [];
 }

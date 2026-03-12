@@ -1,28 +1,22 @@
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Interceptors;
+namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// Specifies the severity level for validation messages.
+/// Defines the severity level of a validation message.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ValidationSeverity>))]
 public enum ValidationSeverity
 {
-    /// <summary>
-    /// Informational message that does not block execution.
-    /// </summary>
+    /// <summary>Informational message that does not block execution.</summary>
     [JsonStringEnumMemberName("info")]
     Info,
 
-    /// <summary>
-    /// Warning message that does not block execution but indicates potential issues.
-    /// </summary>
+    /// <summary>Warning that does not block execution but should be reviewed.</summary>
     [JsonStringEnumMemberName("warn")]
     Warn,
 
-    /// <summary>
-    /// Error message that blocks execution.
-    /// </summary>
+    /// <summary>Error that blocks execution and aborts the interceptor chain.</summary>
     [JsonStringEnumMemberName("error")]
-    Error
+    Error,
 }
