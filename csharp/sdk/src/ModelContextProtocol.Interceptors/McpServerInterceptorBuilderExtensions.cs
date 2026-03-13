@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -183,10 +184,14 @@ internal sealed class InterceptorServerOptionsSetup : IConfigureOptions<McpServe
 
 #pragma warning disable MCPEXP001 // We intentionally use the experimental Extensions API for protocol extensions
         options.Capabilities.Extensions ??= new Dictionary<string, object>();
-        options.Capabilities.Extensions["interceptors"] = new InterceptorsCapability
+        // Serialize to JsonElement so the SDK's own serializer (which doesn't know about
+        // InterceptorsCapability) can write it without type-info issues.
+        var capability = new InterceptorsCapability
         {
             SupportedEvents = allEvents.ToList(),
         };
+        options.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+            capability, InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
     }
 }
