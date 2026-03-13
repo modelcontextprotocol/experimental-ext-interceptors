@@ -28,6 +28,10 @@ namespace ModelContextProtocol.Interceptors;
 [JsonSerializable(typeof(InterceptorChainStatus))]
 [JsonSerializable(typeof(ChainAbortInfo))]
 [JsonSerializable(typeof(ChainValidationSummary))]
+[JsonSerializable(typeof(LlmCompletionRequestPayload))]
+[JsonSerializable(typeof(LlmCompletionResponsePayload))]
+[JsonSerializable(typeof(LlmMessage))]
+[JsonSerializable(typeof(LlmUsage))]
 [JsonSourceGenerationOptions(
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

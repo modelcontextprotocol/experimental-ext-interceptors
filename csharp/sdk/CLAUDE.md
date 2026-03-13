@@ -52,7 +52,26 @@ Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
 - `src/ModelContextProtocol/McpServerBuilderExtensions.cs` — builder pattern
 - `src/ModelContextProtocol.Core/McpJsonUtilities.cs` — JSON context chaining pattern
 
-## Not yet implemented
-- LLM event types (`llm/completion`) — constant defined, no payload types or interception
-- Additional `InterceptingMcpClient` methods beyond `CallToolAsync`/`ListToolsAsync`
-- Samples: `InterceptorClientSample`, `GatewayChainSample`
+## `InterceptingMcpClient` wrapped methods
+- `CallToolAsync` — `tools/call`
+- `ListToolsAsync` — `tools/list`
+- `ListPromptsAsync` — `prompts/list`
+- `GetPromptAsync` — `prompts/get`
+- `ListResourcesAsync` — `resources/list`
+- `ReadResourceAsync` — `resources/read`
+- `SubscribeToResourceAsync` — `resources/subscribe`
+- `ListInterceptorsAsync` — direct passthrough to interceptor client
+
+## LLM completion payloads (`Protocol/LlmCompletionPayload.cs`)
+- `LlmCompletionRequestPayload` — model, messages, maxTokens, temperature, metadata
+- `LlmCompletionResponsePayload` — model, message, stopReason, usage, metadata
+- `LlmMessage` — role + content
+- `LlmUsage` — inputTokens + outputTokens
+- Registered in `InterceptorJsonContext` for source-gen serialization
+- Not wired into `InterceptingMcpClient` — these are for custom gateway use
+
+## Samples
+- `InterceptorServerSample` — stdio server hosting 3 interceptors
+- `GatewaySample` — single gateway: client → interceptor → everything server
+- `InterceptorClientSample` — client API: list, invoke, execute chain directly
+- `GatewayChainSample` — chained gateways: security layer → logging layer → server

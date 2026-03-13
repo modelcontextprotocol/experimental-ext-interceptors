@@ -139,6 +139,199 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Lists prompts from the MCP server, routing through interceptors for the <c>prompts/list</c> event.
+    /// </summary>
+    public async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!ShouldIntercept(InterceptorEvents.PromptsList))
+        {
+            return await _inner.ListPromptsAsync(cancellationToken: cancellationToken);
+        }
+
+        // Request phase
+        var requestPayload = JsonSerializer.SerializeToNode(
+            new ListPromptsRequestParams(), _jsonOptions)!;
+        var (_, aborted) = await RunChainPhaseAsync(
+            InterceptorEvents.PromptsList, InterceptorPhase.Request, requestPayload, cancellationToken);
+
+        if (aborted)
+        {
+            throw new McpInterceptorValidationException("Request-phase interceptor validation failed for prompts/list.");
+        }
+
+        var prompts = await _inner.ListPromptsAsync(cancellationToken: cancellationToken);
+
+        // Response phase
+        var responsePayload = JsonSerializer.SerializeToNode(
+            new ListPromptsResult { Prompts = prompts.Select(p => p.ProtocolPrompt).ToList() }, _jsonOptions)!;
+        await RunChainPhaseAsync(
+            InterceptorEvents.PromptsList, InterceptorPhase.Response, responsePayload, cancellationToken);
+
+        return prompts;
+    }
+
+    /// <summary>
+    /// Gets a prompt from the MCP server, routing through interceptors for the <c>prompts/get</c> event.
+    /// </summary>
+    public async ValueTask<GetPromptResult> GetPromptAsync(
+        string name,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        if (!ShouldIntercept(InterceptorEvents.PromptsGet))
+        {
+            return await _inner.GetPromptAsync(name, arguments, cancellationToken: cancellationToken);
+        }
+
+        // Build request payload
+        var getParams = new GetPromptRequestParams { Name = name };
+        if (arguments is not null)
+        {
+            getParams.Arguments = arguments.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value is JsonElement je ? je : JsonSerializer.SerializeToElement(kvp.Value, _jsonOptions));
+        }
+
+        var requestPayload = JsonSerializer.SerializeToNode(getParams, _jsonOptions)!;
+
+        // Request phase
+        var (processedPayload, aborted) = await RunChainPhaseAsync(
+            InterceptorEvents.PromptsGet, InterceptorPhase.Request, requestPayload, cancellationToken);
+
+        if (aborted)
+        {
+            throw new McpInterceptorValidationException("Request-phase interceptor validation failed for prompts/get.");
+        }
+
+        var mutatedParams = JsonSerializer.Deserialize<GetPromptRequestParams>(processedPayload, _jsonOptions)
+            ?? getParams;
+        var result = await _inner.GetPromptAsync(mutatedParams, cancellationToken);
+
+        // Response phase
+        var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
+        var (processedResponse, responseAborted) = await RunChainPhaseAsync(
+            InterceptorEvents.PromptsGet, InterceptorPhase.Response, responsePayload, cancellationToken);
+
+        if (responseAborted)
+        {
+            throw new McpInterceptorValidationException("Response-phase interceptor validation failed for prompts/get.");
+        }
+
+        return JsonSerializer.Deserialize<GetPromptResult>(processedResponse, _jsonOptions) ?? result;
+    }
+
+    /// <summary>
+    /// Lists resources from the MCP server, routing through interceptors for the <c>resources/list</c> event.
+    /// </summary>
+    public async ValueTask<IList<McpClientResource>> ListResourcesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!ShouldIntercept(InterceptorEvents.ResourcesList))
+        {
+            return await _inner.ListResourcesAsync(cancellationToken: cancellationToken);
+        }
+
+        // Request phase
+        var requestPayload = JsonSerializer.SerializeToNode(
+            new ListResourcesRequestParams(), _jsonOptions)!;
+        var (_, aborted) = await RunChainPhaseAsync(
+            InterceptorEvents.ResourcesList, InterceptorPhase.Request, requestPayload, cancellationToken);
+
+        if (aborted)
+        {
+            throw new McpInterceptorValidationException("Request-phase interceptor validation failed for resources/list.");
+        }
+
+        var resources = await _inner.ListResourcesAsync(cancellationToken: cancellationToken);
+
+        // Response phase
+        var responsePayload = JsonSerializer.SerializeToNode(
+            new ListResourcesResult { Resources = resources.Select(r => r.ProtocolResource).ToList() }, _jsonOptions)!;
+        await RunChainPhaseAsync(
+            InterceptorEvents.ResourcesList, InterceptorPhase.Response, responsePayload, cancellationToken);
+
+        return resources;
+    }
+
+    /// <summary>
+    /// Reads a resource from the MCP server, routing through interceptors for the <c>resources/read</c> event.
+    /// </summary>
+    public async ValueTask<ReadResourceResult> ReadResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+
+        if (!ShouldIntercept(InterceptorEvents.ResourcesRead))
+        {
+            return await _inner.ReadResourceAsync(uri, cancellationToken: cancellationToken);
+        }
+
+        // Build request payload
+        var readParams = new ReadResourceRequestParams { Uri = uri };
+        var requestPayload = JsonSerializer.SerializeToNode(readParams, _jsonOptions)!;
+
+        // Request phase
+        var (processedPayload, aborted) = await RunChainPhaseAsync(
+            InterceptorEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, cancellationToken);
+
+        if (aborted)
+        {
+            throw new McpInterceptorValidationException("Request-phase interceptor validation failed for resources/read.");
+        }
+
+        var mutatedParams = JsonSerializer.Deserialize<ReadResourceRequestParams>(processedPayload, _jsonOptions)
+            ?? readParams;
+        var result = await _inner.ReadResourceAsync(mutatedParams, cancellationToken);
+
+        // Response phase
+        var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
+        var (processedResponse, responseAborted) = await RunChainPhaseAsync(
+            InterceptorEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, cancellationToken);
+
+        if (responseAborted)
+        {
+            throw new McpInterceptorValidationException("Response-phase interceptor validation failed for resources/read.");
+        }
+
+        return JsonSerializer.Deserialize<ReadResourceResult>(processedResponse, _jsonOptions) ?? result;
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on the MCP server, routing through interceptors for the <c>resources/subscribe</c> event.
+    /// </summary>
+    public async Task SubscribeToResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+
+        if (!ShouldIntercept(InterceptorEvents.ResourcesSubscribe))
+        {
+            await _inner.SubscribeToResourceAsync(uri, cancellationToken: cancellationToken);
+            return;
+        }
+
+        // Build request payload
+        var subscribeParams = new SubscribeRequestParams { Uri = uri };
+        var requestPayload = JsonSerializer.SerializeToNode(subscribeParams, _jsonOptions)!;
+
+        // Request phase
+        var (_, aborted) = await RunChainPhaseAsync(
+            InterceptorEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, cancellationToken);
+
+        if (aborted)
+        {
+            throw new McpInterceptorValidationException("Request-phase interceptor validation failed for resources/subscribe.");
+        }
+
+        await _inner.SubscribeToResourceAsync(uri, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
     /// Lists interceptors available on the interceptor server.
     /// </summary>
     public ValueTask<ListInterceptorsResult> ListInterceptorsAsync(
