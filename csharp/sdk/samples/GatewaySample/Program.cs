@@ -113,7 +113,7 @@ Console.WriteLine();
 Console.WriteLine("── Demo 4: Add 17 + 25 (should pass through) ──");
 try
 {
-    var result = await gateway.CallToolAsync("add", new Dictionary<string, object?>
+    var result = await gateway.CallToolAsync("get-sum", new Dictionary<string, object?>
     {
         ["a"] = 17,
         ["b"] = 25,
