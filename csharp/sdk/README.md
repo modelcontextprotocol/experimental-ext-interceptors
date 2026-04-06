@@ -73,7 +73,9 @@ var chainResult = await interceptorClient.ExecuteChainAsync(new ExecuteChainRequ
 });
 ```
 
-### Gateway Pattern (Full Chain)
+### Gateway Pattern (Client-Side)
+
+Use `InterceptingMcpClient` when your code is the caller and you want to route operations through interceptors before they reach the server:
 
 ```csharp
 // Connect to both the interceptor server and the actual MCP server
@@ -89,6 +91,66 @@ var gateway = new InterceptingMcpClient(mcpClient, new InterceptingMcpClientOpti
 
 // All tool calls now flow through interceptors automatically
 var result = await gateway.CallToolAsync("my-tool", new Dictionary<string, object?> { ["query"] = "test" });
+```
+
+### Transparent Proxy (Server-Side)
+
+Use `McpInterceptorGateway` to create an MCP server that transparently proxies requests through interceptors to a backend server. Connecting clients see the proxy as the backend itself — no client-side changes needed.
+
+```
+Client  ──▶  Proxy Server  ──▶  Interceptor Server  ──▶  Backend Server
+        ◀──  (transparent)  ◀──  (validates/mutates)  ◀──  (tools, etc.)
+```
+
+```csharp
+// Connect to the backend and interceptor servers
+await using var backend = await McpClient.CreateAsync(backendTransport);
+await using var interceptors = await McpClient.CreateAsync(interceptorTransport);
+
+// Create the gateway
+await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOptions
+{
+    BackendClient = backend,
+    InterceptorClients = [interceptors],
+    Events = [InterceptorEvents.ToolsCall], // null = intercept all events
+});
+
+// Configure and start the proxy server on stdio
+var serverOptions = new McpServerOptions();
+gateway.ConfigureServerOptions(serverOptions);
+
+await using var server = McpServer.Create(
+    new StdioServerTransport("my-proxy"), serverOptions);
+gateway.RegisterNotificationForwarding(server);
+await server.RunAsync();
+```
+
+The proxy automatically mirrors the backend's capabilities (tools, prompts, resources, completions, logging) and forwards `*_list_changed` notifications. Multiple interceptor clients can be chained — they execute in order, each receiving the previous client's mutated payload.
+
+**With DI / builder pattern:**
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithInterceptorGateway(new McpInterceptorGatewayOptions
+    {
+        BackendClient = backend,
+        InterceptorClients = [interceptors],
+    });
+```
+
+The builder extension handles notification forwarding automatically, registering once per session for multi-connection transports (HTTP) and once for single-connection transports (stdio).
+
+**Claude Desktop integration** — point it at a proxy binary:
+
+```json
+{
+  "mcpServers": {
+    "my-server-with-interceptors": {
+      "command": "dotnet",
+      "args": ["run", "--project", "path/to/TransparentProxySample"]
+    }
+  }
+}
 ```
 
 ## Interceptor Types

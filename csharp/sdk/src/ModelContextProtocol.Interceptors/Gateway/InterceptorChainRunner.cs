@@ -76,4 +76,18 @@ internal sealed class InterceptorChainRunner
 
         return (currentPayload, InterceptorChainStatus.Success);
     }
+
+    /// <summary>
+    /// Throws an appropriate exception for a non-success chain status.
+    /// </summary>
+    internal static void ThrowChainFailure(string operation, InterceptorPhase phase, InterceptorChainStatus status)
+    {
+        var phaseText = phase == InterceptorPhase.Request ? "Request" : "Response";
+        if (status == InterceptorChainStatus.ValidationFailed)
+        {
+            throw new McpInterceptorValidationException($"{phaseText}-phase interceptor validation failed for {operation}.");
+        }
+
+        throw new InvalidOperationException($"{phaseText}-phase interceptor chain failed for {operation} with status '{status}'.");
+    }
 }

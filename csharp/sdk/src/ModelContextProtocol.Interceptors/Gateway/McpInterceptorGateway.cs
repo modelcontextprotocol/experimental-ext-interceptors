@@ -105,7 +105,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ToolsList, InterceptorPhase.Request, requestPayload, ct);
                     if (requestStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("tools/list", InterceptorPhase.Request, requestStatus);
+                        InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -119,7 +119,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ToolsList, InterceptorPhase.Response, responsePayload, ct);
                     if (responseStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("tools/list", InterceptorPhase.Response, responseStatus);
+                        InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<ListToolsResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -135,7 +135,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ToolsCall, InterceptorPhase.Request, requestPayload, ct);
                     if (requestStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("tools/call", InterceptorPhase.Request, requestStatus);
+                        InterceptorChainRunner.ThrowChainFailure("tools/call", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -149,7 +149,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ToolsCall, InterceptorPhase.Response, responsePayload, ct);
                     if (responseStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("tools/call", InterceptorPhase.Response, responseStatus);
+                        InterceptorChainRunner.ThrowChainFailure("tools/call", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<CallToolResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -174,7 +174,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.PromptsList, InterceptorPhase.Request, requestPayload, ct);
                     if (requestStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("prompts/list", InterceptorPhase.Request, requestStatus);
+                        InterceptorChainRunner.ThrowChainFailure("prompts/list", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -188,7 +188,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.PromptsList, InterceptorPhase.Response, responsePayload, ct);
                     if (responseStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("prompts/list", InterceptorPhase.Response, responseStatus);
+                        InterceptorChainRunner.ThrowChainFailure("prompts/list", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<ListPromptsResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -204,7 +204,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.PromptsGet, InterceptorPhase.Request, requestPayload, ct);
                     if (requestStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("prompts/get", InterceptorPhase.Request, requestStatus);
+                        InterceptorChainRunner.ThrowChainFailure("prompts/get", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -218,7 +218,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.PromptsGet, InterceptorPhase.Response, responsePayload, ct);
                     if (responseStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("prompts/get", InterceptorPhase.Response, responseStatus);
+                        InterceptorChainRunner.ThrowChainFailure("prompts/get", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<GetPromptResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -244,7 +244,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ResourcesList, InterceptorPhase.Request, requestPayload, ct);
                     if (requestStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("resources/list", InterceptorPhase.Request, requestStatus);
+                        InterceptorChainRunner.ThrowChainFailure("resources/list", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -258,7 +258,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ResourcesList, InterceptorPhase.Response, responsePayload, ct);
                     if (responseStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("resources/list", InterceptorPhase.Response, responseStatus);
+                        InterceptorChainRunner.ThrowChainFailure("resources/list", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<ListResourcesResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -274,7 +274,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, ct);
                     if (requestStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("resources/read", InterceptorPhase.Request, requestStatus);
+                        InterceptorChainRunner.ThrowChainFailure("resources/read", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -288,7 +288,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, ct);
                     if (responseStatus != InterceptorChainStatus.Success)
-                        ThrowChainFailure("resources/read", InterceptorPhase.Response, responseStatus);
+                        InterceptorChainRunner.ThrowChainFailure("resources/read", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<ReadResourceResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -311,7 +311,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                         var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                             InterceptorEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, ct);
                         if (requestStatus != InterceptorChainStatus.Success)
-                            ThrowChainFailure("resources/subscribe", InterceptorPhase.Request, requestStatus);
+                            InterceptorChainRunner.ThrowChainFailure("resources/subscribe", InterceptorPhase.Request, requestStatus);
                         requestPayload = processed;
                     }
 
@@ -682,14 +682,4 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         }
     }
 
-    private static void ThrowChainFailure(string operation, InterceptorPhase phase, InterceptorChainStatus status)
-    {
-        var phaseText = phase == InterceptorPhase.Request ? "Request" : "Response";
-        if (status == InterceptorChainStatus.ValidationFailed)
-        {
-            throw new McpInterceptorValidationException($"{phaseText}-phase interceptor validation failed for {operation}.");
-        }
-
-        throw new InvalidOperationException($"{phaseText}-phase interceptor chain failed for {operation} with status '{status}'.");
-    }
 }

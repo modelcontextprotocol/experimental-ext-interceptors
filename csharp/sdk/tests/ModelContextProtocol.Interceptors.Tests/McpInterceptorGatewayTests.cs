@@ -526,6 +526,182 @@ public class McpInterceptorGatewayTests
         Assert.Equal(1, forwardingRegistrations);
     }
 
+    [Fact]
+    public async Task ListPromptsAsync_ProxiesToBackend()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Prompts ??= new();
+                options.Handlers.ListPromptsHandler = (request, ct) =>
+                    new ValueTask<ListPromptsResult>(new ListPromptsResult
+                    {
+                        Prompts = [new Prompt { Name = "test-prompt", Description = "A test prompt" }],
+                    });
+                options.Handlers.GetPromptHandler = (request, ct) =>
+                    new ValueTask<GetPromptResult>(new GetPromptResult
+                    {
+                        Messages = [new PromptMessage
+                        {
+                            Role = Role.User,
+                            Content = new TextContentBlock { Text = $"Prompt: {request.Params!.Name}" },
+                        }],
+                    });
+            });
+
+        var prompts = await fixture.ProxyClient.ListPromptsAsync();
+        Assert.Single(prompts);
+        Assert.Equal("test-prompt", prompts[0].Name);
+    }
+
+    [Fact]
+    public async Task GetPromptAsync_ProxiesToBackendWithInterception()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Prompts ??= new();
+                options.Handlers.ListPromptsHandler = (request, ct) =>
+                    new ValueTask<ListPromptsResult>(new ListPromptsResult { Prompts = [] });
+                options.Handlers.GetPromptHandler = (request, ct) =>
+                    new ValueTask<GetPromptResult>(new GetPromptResult
+                    {
+                        Messages = [new PromptMessage
+                        {
+                            Role = Role.User,
+                            Content = new TextContentBlock { Text = $"Hello from {request.Params!.Name}" },
+                        }],
+                    });
+            },
+            interceptors: [CreateMutationInterceptor("prompt-mutator", (req, _, _, _) =>
+            {
+                // Pass through — just verify the interceptor is invoked
+                return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                {
+                    Modified = false,
+                    Payload = req.Payload,
+                });
+            }, events: [InterceptorEvents.PromptsGet])]);
+
+        var result = await fixture.ProxyClient.GetPromptAsync("my-prompt");
+        Assert.Single(result.Messages);
+        Assert.Contains("Hello from my-prompt", result.Messages[0].Content.ToString());
+    }
+
+    [Fact]
+    public async Task ListResourcesAsync_ProxiesToBackend()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Resources ??= new();
+                options.Handlers.ListResourcesHandler = (request, ct) =>
+                    new ValueTask<ListResourcesResult>(new ListResourcesResult
+                    {
+                        Resources = [new Resource { Name = "test-resource", Uri = "resource://test" }],
+                    });
+                options.Handlers.ReadResourceHandler = (request, ct) =>
+                    new ValueTask<ReadResourceResult>(new ReadResourceResult
+                    {
+                        Contents = [new TextResourceContents { Text = "content", Uri = request.Params!.Uri, MimeType = "text/plain" }],
+                    });
+                options.Handlers.ListResourceTemplatesHandler = (request, ct) =>
+                    new ValueTask<ListResourceTemplatesResult>(new ListResourceTemplatesResult { ResourceTemplates = [] });
+            });
+
+        var resources = await fixture.ProxyClient.ListResourcesAsync();
+        Assert.Single(resources);
+        Assert.Equal("test-resource", resources[0].Name);
+    }
+
+    [Fact]
+    public async Task ReadResourceAsync_ProxiesToBackendWithInterception()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Resources ??= new();
+                options.Handlers.ListResourcesHandler = (request, ct) =>
+                    new ValueTask<ListResourcesResult>(new ListResourcesResult { Resources = [] });
+                options.Handlers.ReadResourceHandler = (request, ct) =>
+                    new ValueTask<ReadResourceResult>(new ReadResourceResult
+                    {
+                        Contents = [new TextResourceContents { Text = $"Content of {request.Params!.Uri}", Uri = request.Params.Uri, MimeType = "text/plain" }],
+                    });
+                options.Handlers.ListResourceTemplatesHandler = (request, ct) =>
+                    new ValueTask<ListResourceTemplatesResult>(new ListResourceTemplatesResult { ResourceTemplates = [] });
+            },
+            interceptors: [CreateMutationInterceptor("uri-rewriter", (req, _, _, _) =>
+            {
+                var payloadStr = req.Payload!.ToJsonString();
+                payloadStr = payloadStr.Replace("resource://original", "resource://rewritten");
+                return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                {
+                    Modified = true,
+                    Payload = JsonNode.Parse(payloadStr),
+                });
+            }, events: [InterceptorEvents.ResourcesRead])]);
+
+        var result = await fixture.ProxyClient.ReadResourceAsync("resource://original");
+        Assert.Single(result.Contents);
+        Assert.Contains("Content of resource://rewritten", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_ProxiesToBackend()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Completions ??= new();
+                options.Handlers.CompleteHandler = (request, ct) =>
+                    new ValueTask<CompleteResult>(new CompleteResult
+                    {
+                        Completion = new Completion { Values = ["alpha", "beta"], HasMore = false },
+                    });
+            });
+
+        var caps = fixture.ProxyClient.ServerCapabilities;
+        Assert.NotNull(caps?.Completions);
+
+        var result = await fixture.ProxyClient.CompleteAsync(new CompleteRequestParams
+        {
+            Ref = new PromptReference { Name = "test" },
+            Argument = new Argument { Name = "arg", Value = "a" },
+        });
+        Assert.Equal(2, result.Completion.Values.Count);
+        Assert.Contains("alpha", result.Completion.Values);
+    }
+
+    [Fact]
+    public async Task SetLoggingLevelAsync_ProxiesToBackend()
+    {
+        LoggingLevel? receivedLevel = null;
+
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Logging ??= new();
+                options.Handlers.SetLoggingLevelHandler = (request, ct) =>
+                {
+                    receivedLevel = request.Params!.Level;
+                    return new ValueTask<EmptyResult>(new EmptyResult());
+                };
+            });
+
+        var caps = fixture.ProxyClient.ServerCapabilities;
+        Assert.NotNull(caps?.Logging);
+
+        await fixture.ProxyClient.SetLoggingLevelAsync(LoggingLevel.Warning);
+        Assert.Equal(LoggingLevel.Warning, receivedLevel);
+    }
+
     // ── Test helpers ──────────────────────────────────────────────────
 
     private static McpServerInterceptor CreateMutationInterceptor(
