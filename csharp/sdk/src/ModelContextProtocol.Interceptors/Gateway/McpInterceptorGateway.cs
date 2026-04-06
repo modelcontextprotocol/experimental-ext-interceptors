@@ -101,10 +101,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.ToolsList))
                 {
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ToolsList, InterceptorPhase.Request, requestPayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Request-phase interceptor validation failed for tools/list.");
+                    if (requestStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("tools/list", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -115,10 +115,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.ToolsList))
                 {
                     var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ToolsList, InterceptorPhase.Response, responsePayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Response-phase interceptor validation failed for tools/list.");
+                    if (responseStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("tools/list", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<ListToolsResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -131,10 +131,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.ToolsCall))
                 {
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ToolsCall, InterceptorPhase.Request, requestPayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Request-phase interceptor validation failed for tools/call.");
+                    if (requestStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("tools/call", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -145,10 +145,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.ToolsCall))
                 {
                     var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ToolsCall, InterceptorPhase.Response, responsePayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Response-phase interceptor validation failed for tools/call.");
+                    if (responseStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("tools/call", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<CallToolResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -170,10 +170,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.PromptsList))
                 {
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.PromptsList, InterceptorPhase.Request, requestPayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Request-phase interceptor validation failed for prompts/list.");
+                    if (requestStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("prompts/list", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -184,10 +184,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.PromptsList))
                 {
                     var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.PromptsList, InterceptorPhase.Response, responsePayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Response-phase interceptor validation failed for prompts/list.");
+                    if (responseStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("prompts/list", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<ListPromptsResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -200,10 +200,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.PromptsGet))
                 {
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.PromptsGet, InterceptorPhase.Request, requestPayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Request-phase interceptor validation failed for prompts/get.");
+                    if (requestStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("prompts/get", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -214,10 +214,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.PromptsGet))
                 {
                     var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.PromptsGet, InterceptorPhase.Response, responsePayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Response-phase interceptor validation failed for prompts/get.");
+                    if (responseStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("prompts/get", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<GetPromptResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -240,10 +240,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesList))
                 {
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ResourcesList, InterceptorPhase.Request, requestPayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Request-phase interceptor validation failed for resources/list.");
+                    if (requestStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("resources/list", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -254,10 +254,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesList))
                 {
                     var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ResourcesList, InterceptorPhase.Response, responsePayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Response-phase interceptor validation failed for resources/list.");
+                    if (responseStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("resources/list", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<ListResourcesResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -270,10 +270,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesRead))
                 {
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Request-phase interceptor validation failed for resources/read.");
+                    if (requestStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("resources/read", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -284,10 +284,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 if (_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesRead))
                 {
                     var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                    var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                    var (processed, responseStatus) = await _chainRunner.RunChainPhaseAsync(
                         InterceptorEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, ct);
-                    if (aborted)
-                        throw new McpInterceptorValidationException("Response-phase interceptor validation failed for resources/read.");
+                    if (responseStatus != InterceptorChainStatus.Success)
+                        ThrowChainFailure("resources/read", InterceptorPhase.Response, responseStatus);
                     result = JsonSerializer.Deserialize<ReadResourceResult>(processed, _jsonOptions) ?? result;
                 }
 
@@ -307,10 +307,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
                     if (_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesSubscribe))
                     {
-                        var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
+                        var (processed, requestStatus) = await _chainRunner.RunChainPhaseAsync(
                             InterceptorEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, ct);
-                        if (aborted)
-                            throw new McpInterceptorValidationException("Request-phase interceptor validation failed for resources/subscribe.");
+                        if (requestStatus != InterceptorChainStatus.Success)
+                            ThrowChainFailure("resources/subscribe", InterceptorPhase.Request, requestStatus);
                         requestPayload = processed;
                     }
 
@@ -705,5 +705,16 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 Error = new JsonRpcErrorDetail { Code = code, Message = message },
             },
             ct);
+    }
+
+    private static void ThrowChainFailure(string operation, InterceptorPhase phase, InterceptorChainStatus status)
+    {
+        var phaseText = phase == InterceptorPhase.Request ? "Request" : "Response";
+        if (status == InterceptorChainStatus.ValidationFailed)
+        {
+            throw new McpInterceptorValidationException($"{phaseText}-phase interceptor validation failed for {operation}.");
+        }
+
+        throw new InvalidOperationException($"{phaseText}-phase interceptor chain failed for {operation} with status '{status}'.");
     }
 }

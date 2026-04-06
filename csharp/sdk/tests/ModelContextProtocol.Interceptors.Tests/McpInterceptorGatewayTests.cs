@@ -411,6 +411,86 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
+    public async Task CallToolAsync_MutationFailureBlocksRequest()
+    {
+        var backendCalled = false;
+
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    backendCalled = true;
+                    return new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = "backend-called" }],
+                    });
+                };
+            },
+            interceptors:
+            [
+                CreateMutationInterceptor("failing-mutator", (_, _, _, _) =>
+                {
+                    throw new InvalidOperationException("PII redaction failed");
+                }),
+            ]);
+
+        var result = await fixture.ProxyClient.CallToolAsync("echo");
+
+        Assert.False(backendCalled);
+        Assert.True(result.IsError);
+        Assert.Contains("An error occurred invoking 'echo'.", result.Content[0].ToString());
+    }
+
+    [Fact]
+    public async Task CallToolAsync_MutationTimeoutBlocksRequest()
+    {
+        var backendCalled = false;
+
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    backendCalled = true;
+                    return new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = "backend-called" }],
+                    });
+                };
+            },
+            interceptors:
+            [
+                CreateMutationInterceptor("slow-mutator", async (_, _, _, ct) =>
+                {
+                    await Task.Delay(200, ct);
+                    return new MutationInterceptorResult { Modified = false };
+                }),
+            ],
+            timeoutMs: 25);
+
+        var result = await fixture.ProxyClient.CallToolAsync("echo");
+
+        Assert.False(backendCalled);
+        Assert.True(result.IsError);
+        Assert.Contains("An error occurred invoking 'echo'.", result.Content[0].ToString());
+    }
+
+    [Fact]
     public async Task WithInterceptorGateway_RegistersNotificationForwardingOncePerSession()
     {
         var forwardingRegistrations = 0;
@@ -521,7 +601,8 @@ public class McpInterceptorGatewayTests
 
         public static async Task<GatewayTestFixture> CreateAsync(
             Action<McpServerOptions> backendConfigure,
-            McpServerInterceptor[]? interceptors = null)
+            McpServerInterceptor[]? interceptors = null,
+            int? timeoutMs = null)
         {
             var disposables = new List<IAsyncDisposable>();
 
@@ -570,6 +651,7 @@ public class McpInterceptorGatewayTests
                 {
                     BackendClient = backendClient,
                     InterceptorClients = [interceptorClient],
+                    TimeoutMs = timeoutMs,
                 });
                 disposables.Add(gateway);
 

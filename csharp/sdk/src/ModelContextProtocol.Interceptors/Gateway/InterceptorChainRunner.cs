@@ -44,12 +44,11 @@ internal sealed class InterceptorChainRunner
 
     /// <summary>
     /// Runs the interceptor chain across all configured interceptor clients sequentially.
-    /// Each client's <c>interceptor/executeChain</c> receives the (potentially mutated) payload
-    /// from the previous one. If any client's chain returns <see cref="InterceptorChainStatus.ValidationFailed"/>,
-    /// the chain is aborted immediately.
+    /// Each client's <c>interceptor/executeChain</c> receives the original or last successful payload
+    /// from the previous one. Any non-success result stops the chain immediately.
     /// </summary>
-    /// <returns>The (potentially mutated) payload and whether the chain was aborted.</returns>
-    internal async ValueTask<(JsonNode payload, bool aborted)> RunChainPhaseAsync(
+    /// <returns>The payload after the last successful client and the final chain status.</returns>
+    internal async ValueTask<(JsonNode payload, InterceptorChainStatus status)> RunChainPhaseAsync(
         string eventName, InterceptorPhase phase, JsonNode payload, CancellationToken ct)
     {
         var currentPayload = payload;
@@ -67,14 +66,14 @@ internal sealed class InterceptorChainRunner
                 },
                 ct);
 
-            if (chainResult.Status == InterceptorChainStatus.ValidationFailed)
+            if (chainResult.Status != InterceptorChainStatus.Success)
             {
-                return (currentPayload, true);
+                return (currentPayload, chainResult.Status);
             }
 
             currentPayload = chainResult.FinalPayload ?? currentPayload;
         }
 
-        return (currentPayload, false);
+        return (currentPayload, InterceptorChainStatus.Success);
     }
 }
