@@ -56,16 +56,19 @@ public static class McpInterceptorGatewayBuilderExtensions
             _gateway.ConfigureServerOptions(options);
 
             // Wire notification forwarding lazily via an incoming message filter.
-            // The filter captures the McpServer reference from the first message context
-            // and registers notification handlers, then removes itself.
-            var notificationsRegistered = 0;
+            // In multi-session transports (HTTP), each session has its own McpServer,
+            // so we track which servers we've already registered for.
+            var registeredServers = new HashSet<McpServer>();
             options.Filters.Message.IncomingFilters.Add(next =>
             {
                 return async (context, ct) =>
                 {
-                    if (Interlocked.CompareExchange(ref notificationsRegistered, 1, 0) == 0)
+                    lock (registeredServers)
                     {
-                        _gateway.RegisterNotificationForwarding(context.Server);
+                        if (registeredServers.Add(context.Server))
+                        {
+                            _gateway.RegisterNotificationForwarding(context.Server);
+                        }
                     }
 
                     await next(context, ct);

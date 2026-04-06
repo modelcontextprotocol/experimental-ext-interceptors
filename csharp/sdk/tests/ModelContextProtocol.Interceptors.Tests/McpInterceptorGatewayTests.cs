@@ -247,7 +247,7 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task ExecuteChainPassthrough_ChainsAllInterceptorClients()
+    public async Task CallToolAsync_ChainsAllInterceptorClients()
     {
         // Set up two interceptor servers, each with one mutation interceptor
         // The first prepends "A:", the second prepends "B:"
@@ -350,6 +350,62 @@ public class McpInterceptorGatewayTests
 
         // The mutation interceptor should have rewritten the URI before it reached the backend
         Assert.Equal("resource://rewritten", subscribedUri);
+    }
+
+    [Fact]
+    public async Task ExecuteChainPassthrough_AggregatesResultsFromAllClients()
+    {
+        // Two interceptor servers, each with one mutation interceptor
+        await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            },
+            interceptorConfigs:
+            [
+                [CreateMutationInterceptor("mutator-a", (req, _, _, _) =>
+                {
+                    var obj = JsonNode.Parse(req.Payload!.ToJsonString())!.AsObject();
+                    obj["a"] = true;
+                    return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                    {
+                        Modified = true,
+                        Payload = obj,
+                    });
+                })],
+                [CreateMutationInterceptor("mutator-b", (req, _, _, _) =>
+                {
+                    var obj = JsonNode.Parse(req.Payload!.ToJsonString())!.AsObject();
+                    obj["b"] = true;
+                    return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                    {
+                        Modified = true,
+                        Payload = obj,
+                    });
+                })],
+            ]);
+
+        // Execute chain directly through the proxy (interceptor protocol passthrough)
+        var chainResult = await fixture.ProxyClient.ExecuteChainAsync(
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptorEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{"original":true}""")!,
+            });
+
+        Assert.Equal(InterceptorChainStatus.Success, chainResult.Status);
+        // Results from both interceptor servers should be aggregated
+        Assert.Equal(2, chainResult.Results.Count);
+        // Final payload should have mutations from both servers
+        Assert.True(chainResult.FinalPayload!["a"]!.GetValue<bool>());
+        Assert.True(chainResult.FinalPayload!["b"]!.GetValue<bool>());
+        Assert.True(chainResult.FinalPayload!["original"]!.GetValue<bool>());
     }
 
     // ── Test helpers ──────────────────────────────────────────────────

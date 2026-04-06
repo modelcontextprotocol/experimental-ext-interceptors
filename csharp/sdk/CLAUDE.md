@@ -6,7 +6,7 @@ C# implementation of gateway-level interceptors from [SEP-1763](https://github.c
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 42 tests across 4 files
+dotnet test    # 43 tests across 4 files
 ```
 
 ## Key architectural constraints

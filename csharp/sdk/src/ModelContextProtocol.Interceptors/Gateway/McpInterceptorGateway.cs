@@ -414,14 +414,18 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     /// </summary>
     private void ConfigureInterceptorPassthrough(McpServerOptions serverOptions)
     {
-        // Aggregate supported events from each interceptor server's advertised capabilities
+        // Aggregate supported events from each interceptor server's advertised capabilities.
+        // Track whether any interceptor server actually advertises the interceptors extension,
+        // even if it has no events (an empty-event server is still a valid interceptor server).
         var allEvents = new HashSet<string>();
+        bool anyInterceptorCapabilityFound = false;
         foreach (var client in _options.InterceptorClients)
         {
 #pragma warning disable MCPEXP001
             if (client.ServerCapabilities?.Extensions is { } extensions &&
                 extensions.TryGetValue("interceptors", out var capObj))
             {
+                anyInterceptorCapabilityFound = true;
                 try
                 {
                     InterceptorsCapability? cap = capObj switch
@@ -446,15 +450,19 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 #pragma warning restore MCPEXP001
         }
 
-        // If no events could be discovered, fall back to what's available via interceptors/list
+        // If capability discovery didn't find events, try querying interceptors/list
         if (allEvents.Count == 0)
         {
-            // Query each interceptor client for their interceptors to discover events
             foreach (var client in _options.InterceptorClients)
             {
                 try
                 {
                     var listResult = client.ListInterceptorsAsync().AsTask().GetAwaiter().GetResult();
+                    if (listResult.Interceptors.Count > 0)
+                    {
+                        anyInterceptorCapabilityFound = true;
+                    }
+
                     foreach (var interceptor in listResult.Interceptors)
                     {
                         foreach (var ev in interceptor.Events)
@@ -470,15 +478,20 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
             }
         }
 
-#pragma warning disable MCPEXP001
-        serverOptions.Capabilities!.Extensions ??= new Dictionary<string, object>();
-        var capability = new InterceptorsCapability
+        // Advertise interceptors capability if any interceptor server was found.
+        // Use discovered events, or empty list if none were discovered (avoids over-advertising).
+        if (anyInterceptorCapabilityFound)
         {
-            SupportedEvents = allEvents.Count > 0 ? allEvents.ToList() : ["*"],
-        };
-        serverOptions.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
-            capability, InterceptorJsonUtilities.DefaultOptions);
+#pragma warning disable MCPEXP001
+            serverOptions.Capabilities!.Extensions ??= new Dictionary<string, object>();
+            var capability = new InterceptorsCapability
+            {
+                SupportedEvents = allEvents.ToList(),
+            };
+            serverOptions.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+                capability, InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
+        }
 
         // Add a message filter that forwards interceptor protocol requests
         serverOptions.Filters.Message.IncomingFilters.Add(next =>
@@ -534,8 +547,8 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
     /// <summary>
     /// Handles <c>interceptor/invoke</c> by finding the named interceptor across all clients.
-    /// Only continues to the next client when the interceptor is not found (error code -32602);
-    /// real execution failures are propagated immediately.
+    /// Only continues to the next client when the interceptor is not found;
+    /// real execution failures are propagated immediately with their original error codes.
     /// </summary>
     private async Task HandleInvokePassthrough(MessageContext context, JsonRpcRequest request, CancellationToken ct)
     {
@@ -547,7 +560,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
             foreach (var client in _options.InterceptorClients)
             {
-                // First check if this client has the interceptor via a lightweight list query
+                // Check if this client has the interceptor via a lightweight list query
                 var listResult = await client.ListInterceptorsAsync(
                     new ListInterceptorsRequestParams(), ct);
                 var found = false;
@@ -584,7 +597,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            await SendError(context, request.Id, -32603, ex.Message, ct);
+            await SendErrorFromException(context, request.Id, ex, ct);
         }
     }
 
@@ -592,6 +605,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     /// Handles <c>interceptor/executeChain</c> by chaining through all interceptor clients
     /// sequentially, matching the behavior of <see cref="InterceptorChainRunner"/>.
     /// Each client's chain receives the (potentially mutated) payload from the previous one.
+    /// Results from all clients are aggregated into a single <see cref="InterceptorChainResult"/>.
     /// </summary>
     private async Task HandleExecuteChainPassthrough(MessageContext context, JsonRpcRequest request, CancellationToken ct)
     {
@@ -599,12 +613,15 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         {
             var chainParams = JsonSerializer.Deserialize<ExecuteChainRequestParams>(request.Params!, _jsonOptions)!;
 
-            InterceptorChainResult? lastResult = null;
+            var allResults = new List<InterceptorResult>();
+            long totalDurationMs = 0;
+            int validationErrors = 0, validationWarnings = 0, validationInfos = 0;
+            InterceptorChainStatus aggregateStatus = InterceptorChainStatus.Success;
+            ChainAbortInfo? abortedAt = null;
             var currentPayload = chainParams.Payload;
 
             foreach (var client in _options.InterceptorClients)
             {
-                // Update the payload for this client's chain execution
                 var clientParams = new ExecuteChainRequestParams
                 {
                     Event = chainParams.Event,
@@ -616,27 +633,67 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                     Context = chainParams.Context,
                 };
 
-                lastResult = await client.ExecuteChainAsync(clientParams, ct);
+                var clientResult = await client.ExecuteChainAsync(clientParams, ct);
 
-                // If this client's chain failed validation, abort immediately
-                if (lastResult.Status == InterceptorChainStatus.ValidationFailed)
+                // Aggregate results
+                allResults.AddRange(clientResult.Results);
+                totalDurationMs += clientResult.TotalDurationMs;
+
+                if (clientResult.ValidationSummary is { } vs)
                 {
+                    validationErrors += vs.Errors;
+                    validationWarnings += vs.Warnings;
+                    validationInfos += vs.Infos;
+                }
+
+                // If this client's chain failed, capture the abort and stop
+                if (clientResult.Status != InterceptorChainStatus.Success)
+                {
+                    aggregateStatus = clientResult.Status;
+                    abortedAt = clientResult.AbortedAt;
+                    currentPayload = clientResult.FinalPayload ?? currentPayload;
                     break;
                 }
 
-                // Pass mutated payload to the next client
-                currentPayload = lastResult.FinalPayload ?? currentPayload;
+                currentPayload = clientResult.FinalPayload ?? currentPayload;
             }
 
-            var resultNode = JsonSerializer.SerializeToNode(lastResult, _jsonOptions);
+            var aggregatedResult = new InterceptorChainResult
+            {
+                Status = aggregateStatus,
+                Event = chainParams.Event,
+                Phase = chainParams.Phase,
+                Results = allResults,
+                FinalPayload = currentPayload,
+                TotalDurationMs = totalDurationMs,
+                AbortedAt = abortedAt,
+                ValidationSummary = new ChainValidationSummary
+                {
+                    Errors = validationErrors,
+                    Warnings = validationWarnings,
+                    Infos = validationInfos,
+                },
+            };
+
+            var resultNode = JsonSerializer.SerializeToNode(aggregatedResult, _jsonOptions);
             await context.Server.SendMessageAsync(
                 new JsonRpcResponse { Id = request.Id, Result = resultNode },
                 ct);
         }
         catch (Exception ex)
         {
-            await SendError(context, request.Id, -32603, ex.Message, ct);
+            await SendErrorFromException(context, request.Id, ex, ct);
         }
+    }
+
+    /// <summary>
+    /// Sends a JSON-RPC error, preserving the original error code from <see cref="McpProtocolException"/>
+    /// when available.
+    /// </summary>
+    private static async Task SendErrorFromException(MessageContext context, RequestId requestId, Exception ex, CancellationToken ct)
+    {
+        int code = ex is McpProtocolException mpe ? (int)mpe.ErrorCode : -32603;
+        await SendError(context, requestId, code, ex.Message, ct);
     }
 
     private static async Task SendError(MessageContext context, RequestId requestId, int code, string message, CancellationToken ct)
