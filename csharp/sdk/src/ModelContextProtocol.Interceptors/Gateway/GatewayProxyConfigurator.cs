@@ -40,6 +40,11 @@ internal sealed class GatewayProxyConfigurator
             ? CloneCapabilities(backendCaps)
             : serverOptions.Capabilities ?? new ServerCapabilities();
 
+        // Task passthrough is not implemented yet, so do not advertise backend task support.
+#pragma warning disable MCPEXP001
+        serverOptions.Capabilities.Tasks = null;
+#pragma warning restore MCPEXP001
+
         ConfigureTools(serverOptions, backendCaps);
         ConfigurePrompts(serverOptions, backendCaps);
         ConfigureResources(serverOptions, backendCaps);

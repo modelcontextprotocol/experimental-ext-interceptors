@@ -219,6 +219,8 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         {
             await ownedClient.DisposeAsync();
         }
+
+        _ownedClients.Clear();
     }
 
     private void AddNotificationRegistration(IAsyncDisposable registration)

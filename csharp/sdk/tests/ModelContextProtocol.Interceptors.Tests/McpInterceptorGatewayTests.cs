@@ -224,6 +224,33 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
+    public async Task ConfigureServerOptions_DoesNotAdvertiseBackendTasksCapability()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+#pragma warning disable MCPEXP001
+                options.Capabilities.Tasks = new McpTasksCapability
+                {
+                    List = new ListMcpTasksCapability(),
+                    Cancel = new CancelMcpTasksCapability(),
+                };
+#pragma warning restore MCPEXP001
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            });
+
+        var caps = fixture.ProxyClient.ServerCapabilities;
+#pragma warning disable MCPEXP001
+        Assert.Null(caps.Tasks);
+#pragma warning restore MCPEXP001
+    }
+
+    [Fact]
     public async Task ConfigureServerOptions_MirrorsBackendExtensionsInTransparentMode()
     {
         await using var fixture = await GatewayTestFixture.CreateAsync(
