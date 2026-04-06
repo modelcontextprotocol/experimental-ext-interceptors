@@ -35,6 +35,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     private readonly InterceptorChainRunner _chainRunner;
     private readonly JsonSerializerOptions _jsonOptions = InterceptorJsonUtilities.DefaultOptions;
     private readonly List<IAsyncDisposable> _notificationRegistrations = new();
+    private readonly Lock _notificationRegistrationsLock = new();
 
     /// <summary>Creates a new <see cref="McpInterceptorGateway"/>.</summary>
     /// <param name="options">Configuration for the gateway.</param>
@@ -370,7 +371,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
         if (backendCaps?.Tools?.ListChanged == true)
         {
-            _notificationRegistrations.Add(
+            AddNotificationRegistration(
                 backend.RegisterNotificationHandler(
                     NotificationMethods.ToolListChangedNotification,
                     (_, ct) => new ValueTask(proxyServer.SendNotificationAsync(
@@ -379,7 +380,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
         if (backendCaps?.Prompts?.ListChanged == true)
         {
-            _notificationRegistrations.Add(
+            AddNotificationRegistration(
                 backend.RegisterNotificationHandler(
                     NotificationMethods.PromptListChangedNotification,
                     (_, ct) => new ValueTask(proxyServer.SendNotificationAsync(
@@ -388,7 +389,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
         if (backendCaps?.Resources?.ListChanged == true)
         {
-            _notificationRegistrations.Add(
+            AddNotificationRegistration(
                 backend.RegisterNotificationHandler(
                     NotificationMethods.ResourceListChangedNotification,
                     (_, ct) => new ValueTask(proxyServer.SendNotificationAsync(
@@ -399,12 +400,17 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        foreach (var registration in _notificationRegistrations)
+        List<IAsyncDisposable> registrations;
+        lock (_notificationRegistrationsLock)
+        {
+            registrations = [.. _notificationRegistrations];
+            _notificationRegistrations.Clear();
+        }
+
+        foreach (var registration in registrations)
         {
             await registration.DisposeAsync();
         }
-
-        _notificationRegistrations.Clear();
     }
 
     /// <summary>
@@ -450,36 +456,8 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 #pragma warning restore MCPEXP001
         }
 
-        // If capability discovery didn't find events, try querying interceptors/list
-        if (allEvents.Count == 0)
-        {
-            foreach (var client in _options.InterceptorClients)
-            {
-                try
-                {
-                    var listResult = client.ListInterceptorsAsync().AsTask().GetAwaiter().GetResult();
-                    if (listResult.Interceptors.Count > 0)
-                    {
-                        anyInterceptorCapabilityFound = true;
-                    }
-
-                    foreach (var interceptor in listResult.Interceptors)
-                    {
-                        foreach (var ev in interceptor.Events)
-                        {
-                            allEvents.Add(ev);
-                        }
-                    }
-                }
-                catch
-                {
-                    // If listing fails, skip this client
-                }
-            }
-        }
-
         // Advertise interceptors capability if any interceptor server was found.
-        // Use discovered events, or empty list if none were discovered (avoids over-advertising).
+        // Use discovered events, or empty list if none were advertised (avoids over-advertising).
         if (anyInterceptorCapabilityFound)
         {
 #pragma warning disable MCPEXP001
@@ -560,27 +538,16 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
             foreach (var client in _options.InterceptorClients)
             {
-                // Check if this client has the interceptor via a lightweight list query
-                var listResult = await client.ListInterceptorsAsync(
-                    new ListInterceptorsRequestParams(), ct);
-                var found = false;
-                foreach (var interceptor in listResult.Interceptors)
+                try
                 {
-                    if (interceptor.Name == invokeParams.Name)
-                    {
-                        found = true;
-                        break;
-                    }
+                    invokeResult = await client.InvokeInterceptorAsync(invokeParams, ct);
+                    break;
                 }
-
-                if (!found)
+                catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.InvalidParams)
                 {
+                    // Unknown interceptor on this client, try the next one.
                     continue;
                 }
-
-                // Interceptor exists on this client — invoke it; failures propagate
-                invokeResult = await client.InvokeInterceptorAsync(invokeParams, ct);
-                break;
             }
 
             if (invokeResult is null)
@@ -705,6 +672,14 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 Error = new JsonRpcErrorDetail { Code = code, Message = message },
             },
             ct);
+    }
+
+    private void AddNotificationRegistration(IAsyncDisposable registration)
+    {
+        lock (_notificationRegistrationsLock)
+        {
+            _notificationRegistrations.Add(registration);
+        }
     }
 
     private static void ThrowChainFailure(string operation, InterceptorPhase phase, InterceptorChainStatus status)

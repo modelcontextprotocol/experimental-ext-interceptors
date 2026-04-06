@@ -320,7 +320,8 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Subscribes to a resource on the MCP server, routing through interceptors for the <c>resources/subscribe</c> event.
+    /// Subscribes to a resource on the MCP server, routing through request-phase interceptors
+    /// for the <c>resources/subscribe</c> event.
     /// </summary>
     public async Task SubscribeToResourceAsync(
         string uri,
@@ -339,7 +340,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         var requestPayload = JsonSerializer.SerializeToNode(subscribeParams, _jsonOptions)!;
 
         // Request phase
-        var (_, requestStatus) = await _chainRunner.RunChainPhaseAsync(
+        var (processedPayload, requestStatus) = await _chainRunner.RunChainPhaseAsync(
             InterceptorEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, cancellationToken);
 
         if (requestStatus != InterceptorChainStatus.Success)
@@ -347,7 +348,9 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
             ThrowChainFailure("resources/subscribe", InterceptorPhase.Request, requestStatus);
         }
 
-        await _inner.SubscribeToResourceAsync(uri, cancellationToken: cancellationToken);
+        var mutatedParams = JsonSerializer.Deserialize<SubscribeRequestParams>(processedPayload, _jsonOptions)
+            ?? subscribeParams;
+        await _inner.SubscribeToResourceAsync(mutatedParams, cancellationToken);
     }
 
     /// <summary>
