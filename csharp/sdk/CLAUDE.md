@@ -6,7 +6,7 @@ C# implementation of gateway-level interceptors from [SEP-1763](https://github.c
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 33 tests across 3 files
+dotnet test    # 40 tests across 4 files
 ```
 
 ## Key architectural constraints
@@ -52,6 +52,22 @@ Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
 - `src/ModelContextProtocol/McpServerBuilderExtensions.cs` — builder pattern
 - `src/ModelContextProtocol.Core/McpJsonUtilities.cs` — JSON context chaining pattern
 
+## Transparent gateway/proxy (`Gateway/`)
+
+**`McpInterceptorGateway`**: Configures an `McpServer` as a transparent proxy. Reads backend `ServerCapabilities`, registers handler delegates (`CallToolHandler`, `ListToolsHandler`, etc.) that route through `InterceptorChainRunner` before forwarding to the backend. To connecting clients, the proxy appears to be the backend server.
+
+**`InterceptorChainRunner`** (internal): Shared interception logic used by both `InterceptingMcpClient` and `McpInterceptorGateway`. Supports multiple interceptor clients executed sequentially — each client's `ExecuteChainAsync` receives the mutated payload from the previous one.
+
+**`McpInterceptorGatewayOptions`**: Configuration — `BackendClient`, `InterceptorClients` (ordered), `Events` filter, `TimeoutMs`, `DefaultContext`, optional `ServerInfo` override.
+
+**Builder extension**: `IMcpServerBuilder.WithInterceptorGateway(options)` for DI/builder scenarios.
+
+**Notification forwarding**: `gateway.RegisterNotificationForwarding(proxyServer)` subscribes to backend `tools/list_changed`, `prompts/list_changed`, `resources/list_changed` and re-sends through the proxy.
+
+**Why handler delegates (not message filters) for the proxy**: The SDK's `With*Handler` methods automatically set `ServerCapabilities`, are type-safe, and are the intended extension point. Message filters are still used for interceptor protocol passthrough (`interceptors/list`, `interceptor/invoke`, `interceptor/executeChain`).
+
+**Tool call error handling note**: When an interceptor validation aborts a `tools/call`, the gateway throws `McpInterceptorValidationException`. The SDK catches this and returns `CallToolResult { IsError = true }` (not a JSON-RPC error), since tool execution errors are returned as results by design.
+
 ## `InterceptingMcpClient` wrapped methods
 - `CallToolAsync` — `tools/call`
 - `ListToolsAsync` — `tools/list`
@@ -75,3 +91,4 @@ Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
 - `GatewaySample` — single gateway: client → interceptor → everything server
 - `InterceptorClientSample` — client API: list, invoke, execute chain directly
 - `GatewayChainSample` — chained gateways: security layer → logging layer → server
+- `TransparentProxySample` — stdio proxy server: clients connect to it as if it were the backend, all requests routed through interceptors

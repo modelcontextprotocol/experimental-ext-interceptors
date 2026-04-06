@@ -1,0 +1,446 @@
+using System.IO.Pipes;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Interceptors.Client;
+using ModelContextProtocol.Interceptors.Gateway;
+using ModelContextProtocol.Interceptors.Protocol;
+using ModelContextProtocol.Interceptors.Server;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using Xunit;
+
+namespace ModelContextProtocol.Interceptors.Tests;
+
+public class McpInterceptorGatewayTests
+{
+    [Fact]
+    public async Task ConfigureServerOptions_MirrorsToolsCapability()
+    {
+        // Create an in-memory backend with tools capability
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new() { ListChanged = true };
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                {
+                    return new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "test-tool", Description = "A test tool" }],
+                    });
+                };
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    return new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = $"Called: {request.Params!.Name}" }],
+                    });
+                };
+            });
+
+        // Verify the proxy client can list tools from the backend
+        var tools = await fixture.ProxyClient.ListToolsAsync();
+        Assert.Single(tools);
+        Assert.Equal("test-tool", tools[0].Name);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_PassesThroughInterceptors()
+    {
+        var interceptorInvoked = false;
+
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                {
+                    return new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                };
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    return new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = $"echo: {request.Params!.Arguments?["message"]}" }],
+                    });
+                };
+            },
+            interceptors: [CreateMutationInterceptor("test-mutator", (req, _, _, _) =>
+            {
+                interceptorInvoked = true;
+                // Pass through without mutation
+                return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                {
+                    Modified = false,
+                    Payload = req.Payload,
+                });
+            })]);
+
+        var result = await fixture.ProxyClient.CallToolAsync("echo",
+            new Dictionary<string, object?> { ["message"] = "hello" });
+
+        Assert.True(interceptorInvoked);
+        Assert.Contains("echo: hello", result.Content[0].ToString());
+    }
+
+    [Fact]
+    public async Task CallToolAsync_ValidationAbortBlocksRequest()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                {
+                    return new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                };
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    Assert.Fail("Backend should not be called when validation aborts.");
+                    return new ValueTask<CallToolResult>(new CallToolResult());
+                };
+            },
+            interceptors: [CreateValidationInterceptor("blocker", (req, _, _, _) =>
+            {
+                return new ValueTask<InterceptorResult>(
+                    ValidationInterceptorResult.Failure(new ValidationMessage
+                    {
+                        Message = "Blocked!",
+                        Severity = ValidationSeverity.Error,
+                    }));
+            })]);
+
+        // The SDK wraps handler exceptions as CallToolResult { IsError = true }
+        // The backend handler's Assert.Fail proves it was never called.
+        var result = await fixture.ProxyClient.CallToolAsync("echo",
+            new Dictionary<string, object?> { ["message"] = "should be blocked" });
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_MutationModifiesPayload()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                {
+                    return new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                };
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    // Verify the mutation was applied before reaching the backend
+                    var msg = request.Params!.Arguments?["message"];
+                    return new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = $"echo: {msg}" }],
+                    });
+                };
+            },
+            interceptors: [CreateMutationInterceptor("email-redactor", (req, _, _, _) =>
+            {
+                // Simulate redacting emails from the payload
+                var payloadStr = req.Payload!.ToJsonString();
+                payloadStr = payloadStr.Replace("user@example.com", "[REDACTED]");
+                return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                {
+                    Modified = true,
+                    Payload = JsonNode.Parse(payloadStr),
+                });
+            })]);
+
+        var result = await fixture.ProxyClient.CallToolAsync("echo",
+            new Dictionary<string, object?> { ["message"] = "Contact user@example.com" });
+
+        Assert.Contains("[REDACTED]", result.Content[0].ToString());
+        Assert.DoesNotContain("user@example.com", result.Content[0].ToString());
+    }
+
+    [Fact]
+    public async Task ConfigureServerOptions_OnlyRegistersAdvertisedCapabilities()
+    {
+        // Backend only has tools, no prompts/resources
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                {
+                    return new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                };
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    return new ValueTask<CallToolResult>(new CallToolResult());
+                };
+            });
+
+        // Proxy should advertise tools but not prompts/resources
+        var caps = fixture.ProxyClient.ServerCapabilities;
+        Assert.NotNull(caps?.Tools);
+        Assert.Null(caps?.Prompts);
+        Assert.Null(caps?.Resources);
+    }
+
+    [Fact]
+    public async Task ConfigureServerOptions_InterceptorsCapabilityAdvertised()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            });
+
+#pragma warning disable MCPEXP001
+        var caps = fixture.ProxyClient.ServerCapabilities;
+        Assert.NotNull(caps?.Extensions);
+        Assert.True(caps!.Extensions!.ContainsKey("interceptors"));
+#pragma warning restore MCPEXP001
+    }
+
+    [Fact]
+    public async Task ListInterceptorsAsync_AggregatesFromInterceptorServers()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            },
+            interceptors:
+            [
+                CreateValidationInterceptor("validator-1", (_, _, _, _) =>
+                    new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success())),
+                CreateMutationInterceptor("mutator-1", (req, _, _, _) =>
+                    new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false, Payload = req.Payload })),
+            ]);
+
+        // List interceptors through the proxy
+        var result = await fixture.ProxyClient.ListInterceptorsAsync();
+        Assert.Equal(2, result.Interceptors.Count);
+        Assert.Contains(result.Interceptors, i => i.Name == "validator-1");
+        Assert.Contains(result.Interceptors, i => i.Name == "mutator-1");
+    }
+
+    // ── Test helpers ──────────────────────────────────────────────────
+
+    private static McpServerInterceptor CreateMutationInterceptor(
+        string name,
+        Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler)
+    {
+        return new TestInterceptor(
+            new Interceptor
+            {
+                Name = name,
+                Type = InterceptorType.Mutation,
+                Phase = InterceptorPhase.Both,
+                Events = [InterceptorEvents.All],
+            },
+            handler);
+    }
+
+    private static McpServerInterceptor CreateValidationInterceptor(
+        string name,
+        Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler)
+    {
+        return new TestInterceptor(
+            new Interceptor
+            {
+                Name = name,
+                Type = InterceptorType.Validation,
+                Phase = InterceptorPhase.Both,
+                Events = [InterceptorEvents.All],
+            },
+            handler);
+    }
+
+    private sealed class TestInterceptor : McpServerInterceptor
+    {
+        private readonly Interceptor _interceptor;
+        private readonly Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> _handler;
+
+        public TestInterceptor(
+            Interceptor interceptor,
+            Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler)
+        {
+            _interceptor = interceptor;
+            _handler = handler;
+        }
+
+        public override Interceptor ProtocolInterceptor => _interceptor;
+        public override IReadOnlyList<object> Metadata => [];
+
+        public override ValueTask<InterceptorResult> InvokeAsync(
+            InvokeInterceptorRequestParams request,
+            McpServer server,
+            IServiceProvider? services,
+            CancellationToken cancellationToken = default) =>
+            _handler(request, server, services, cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates an in-memory test fixture with a backend server, interceptor server, and proxy server,
+    /// all connected via anonymous pipes.
+    /// </summary>
+    private sealed class GatewayTestFixture : IAsyncDisposable
+    {
+        private readonly List<IAsyncDisposable> _disposables;
+
+        public McpClient ProxyClient { get; }
+
+        private GatewayTestFixture(McpClient proxyClient, List<IAsyncDisposable> disposables)
+        {
+            ProxyClient = proxyClient;
+            _disposables = disposables;
+        }
+
+        public static async Task<GatewayTestFixture> CreateAsync(
+            Action<McpServerOptions> backendConfigure,
+            McpServerInterceptor[]? interceptors = null)
+        {
+            var disposables = new List<IAsyncDisposable>();
+
+            try
+            {
+                // 1. Create backend server + client via pipes
+                var (backendServer, backendClient) = await CreateServerClientPair(
+                    "test-backend",
+                    backendConfigure);
+                disposables.Add(backendServer);
+                disposables.Add(backendClient);
+
+                // 2. Create interceptor server + client via pipes
+                var (interceptorServer, interceptorClient) = await CreateServerClientPair(
+                    "test-interceptors",
+                    options =>
+                    {
+                        var collection = new McpServerPrimitiveCollection<McpServerInterceptor>();
+                        var allEvents = new HashSet<string>();
+
+                        foreach (var interceptor in interceptors ?? [])
+                        {
+                            collection.Add(interceptor);
+                            foreach (var ev in interceptor.ProtocolInterceptor.Events)
+                            {
+                                allEvents.Add(ev);
+                            }
+                        }
+
+                        var filter = new InterceptorMessageFilter(collection);
+                        options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
+
+                        options.Capabilities ??= new();
+#pragma warning disable MCPEXP001
+                        options.Capabilities.Extensions ??= new Dictionary<string, object>();
+                        options.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+                            new InterceptorsCapability { SupportedEvents = allEvents.ToList() },
+                            InterceptorJsonUtilities.DefaultOptions);
+#pragma warning restore MCPEXP001
+                    });
+                disposables.Add(interceptorServer);
+                disposables.Add(interceptorClient);
+
+                // 3. Create the gateway
+                var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOptions
+                {
+                    BackendClient = backendClient,
+                    InterceptorClients = [interceptorClient],
+                });
+                disposables.Add(gateway);
+
+                // 4. Create proxy server + client via pipes
+                var (proxyServer, proxyClient) = await CreateServerClientPair(
+                    "test-proxy",
+                    options =>
+                    {
+                        gateway.ConfigureServerOptions(options);
+                    });
+                disposables.Add(proxyServer);
+                disposables.Add(proxyClient);
+
+                gateway.RegisterNotificationForwarding(proxyServer);
+
+                return new GatewayTestFixture(proxyClient, disposables);
+            }
+            catch
+            {
+                foreach (var d in disposables)
+                {
+                    await d.DisposeAsync();
+                }
+
+                throw;
+            }
+        }
+
+        private static async Task<(McpServer server, McpClient client)> CreateServerClientPair(
+            string name,
+            Action<McpServerOptions> configure)
+        {
+            // Create anonymous pipes for communication
+            var clientToServer = new AnonymousPipeServerStream(PipeDirection.Out);
+            var serverFromClient = new AnonymousPipeClientStream(PipeDirection.In,
+                clientToServer.GetClientHandleAsString());
+
+            var serverToClient = new AnonymousPipeServerStream(PipeDirection.Out);
+            var clientFromServer = new AnonymousPipeClientStream(PipeDirection.In,
+                serverToClient.GetClientHandleAsString());
+
+            var serverOptions = new McpServerOptions
+            {
+                ServerInfo = new() { Name = name, Version = "1.0.0" },
+            };
+            configure(serverOptions);
+
+            // Server reads from serverFromClient, writes to serverToClient
+            var serverTransport = new StreamServerTransport(serverFromClient, serverToClient);
+            var server = McpServer.Create(serverTransport, serverOptions);
+            _ = server.RunAsync(); // Run in background
+
+            // Client writes to clientToServer, reads from clientFromServer
+            var clientTransport = new StreamClientTransport(clientToServer, clientFromServer);
+            var client = await McpClient.CreateAsync(clientTransport);
+
+            return (server, client);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            for (int i = _disposables.Count - 1; i >= 0; i--)
+            {
+                try
+                {
+                    await _disposables[i].DisposeAsync();
+                }
+                catch
+                {
+                    // Swallow disposal errors in tests
+                }
+            }
+        }
+    }
+}
