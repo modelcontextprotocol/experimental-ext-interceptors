@@ -17,6 +17,15 @@ public static class McpInterceptorGatewayBuilderExtensions
     /// <param name="builder">The server builder.</param>
     /// <param name="options">Configuration for the gateway including backend and interceptor clients.</param>
     /// <returns>The builder for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method configures request proxying and interceptor passthrough. It also registers
+    /// notification forwarding automatically via an incoming message filter that captures the
+    /// <see cref="McpServer"/> reference on first request. If you need earlier control over
+    /// notification forwarding, use <see cref="McpInterceptorGateway.ConfigureServerOptions"/>
+    /// and <see cref="McpInterceptorGateway.RegisterNotificationForwarding"/> manually.
+    /// </para>
+    /// </remarks>
     public static IMcpServerBuilder WithInterceptorGateway(
         this IMcpServerBuilder builder,
         McpInterceptorGatewayOptions options)
@@ -45,6 +54,23 @@ public static class McpInterceptorGatewayBuilderExtensions
         public void Configure(McpServerOptions options)
         {
             _gateway.ConfigureServerOptions(options);
+
+            // Wire notification forwarding lazily via an incoming message filter.
+            // The filter captures the McpServer reference from the first message context
+            // and registers notification handlers, then removes itself.
+            var notificationsRegistered = 0;
+            options.Filters.Message.IncomingFilters.Add(next =>
+            {
+                return async (context, ct) =>
+                {
+                    if (Interlocked.CompareExchange(ref notificationsRegistered, 1, 0) == 0)
+                    {
+                        _gateway.RegisterNotificationForwarding(context.Server);
+                    }
+
+                    await next(context, ct);
+                };
+            });
         }
     }
 }

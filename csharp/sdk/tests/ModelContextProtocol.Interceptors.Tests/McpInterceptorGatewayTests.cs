@@ -246,11 +246,118 @@ public class McpInterceptorGatewayTests
         Assert.Contains(result.Interceptors, i => i.Name == "mutator-1");
     }
 
+    [Fact]
+    public async Task ExecuteChainPassthrough_ChainsAllInterceptorClients()
+    {
+        // Set up two interceptor servers, each with one mutation interceptor
+        // The first prepends "A:", the second prepends "B:"
+        await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    var msg = request.Params!.Arguments?["message"];
+                    return new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = $"echo: {msg}" }],
+                    });
+                };
+            },
+            interceptorConfigs:
+            [
+                [CreateMutationInterceptor("prepend-a", (req, _, _, _) =>
+                {
+                    // Prepend "A:" to the message argument
+                    var obj = JsonNode.Parse(req.Payload!.ToJsonString())!.AsObject();
+                    if (obj["arguments"]?["message"] is JsonNode msgNode)
+                    {
+                        obj["arguments"]!["message"] = "A:" + msgNode.GetValue<string>();
+                    }
+                    return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                    {
+                        Modified = true,
+                        Payload = obj,
+                    });
+                })],
+                [CreateMutationInterceptor("prepend-b", (req, _, _, _) =>
+                {
+                    var obj = JsonNode.Parse(req.Payload!.ToJsonString())!.AsObject();
+                    if (obj["arguments"]?["message"] is JsonNode msgNode)
+                    {
+                        obj["arguments"]!["message"] = "B:" + msgNode.GetValue<string>();
+                    }
+                    return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                    {
+                        Modified = true,
+                        Payload = obj,
+                    });
+                })],
+            ]);
+
+        // Call tool — both interceptors should run (A first, then B)
+        var result = await fixture.ProxyClient.CallToolAsync("echo",
+            new Dictionary<string, object?> { ["message"] = "hello" });
+
+        // Both interceptor chains ran in order: A prepended first, then B
+        var text = result.Content[0].ToString()!;
+        Assert.Contains("B:A:hello", text);
+    }
+
+    [Fact]
+    public async Task SubscribeMutation_UsesModifiedPayload()
+    {
+        var subscribedUri = "";
+
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Resources ??= new() { Subscribe = true };
+                options.Handlers.ListResourcesHandler = (request, ct) =>
+                    new ValueTask<ListResourcesResult>(new ListResourcesResult { Resources = [] });
+                options.Handlers.ReadResourceHandler = (request, ct) =>
+                    new ValueTask<ReadResourceResult>(new ReadResourceResult { Contents = [] });
+                options.Handlers.ListResourceTemplatesHandler = (request, ct) =>
+                    new ValueTask<ListResourceTemplatesResult>(new ListResourceTemplatesResult { ResourceTemplates = [] });
+                options.Handlers.SubscribeToResourcesHandler = (request, ct) =>
+                {
+                    subscribedUri = request.Params!.Uri;
+                    return new ValueTask<EmptyResult>(new EmptyResult());
+                };
+                options.Handlers.UnsubscribeFromResourcesHandler = (request, ct) =>
+                    new ValueTask<EmptyResult>(new EmptyResult());
+            },
+            interceptors: [CreateMutationInterceptor("uri-rewriter", (req, _, _, _) =>
+            {
+                // Mutate the subscribe payload to rewrite the URI
+                var payloadStr = req.Payload!.ToJsonString();
+                payloadStr = payloadStr.Replace("resource://original", "resource://rewritten");
+                return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                {
+                    Modified = true,
+                    Payload = JsonNode.Parse(payloadStr),
+                });
+            }, events: [InterceptorEvents.ResourcesSubscribe])]);
+
+        await fixture.ProxyClient.SubscribeToResourceAsync("resource://original");
+
+        // The mutation interceptor should have rewritten the URI before it reached the backend
+        Assert.Equal("resource://rewritten", subscribedUri);
+    }
+
     // ── Test helpers ──────────────────────────────────────────────────
 
     private static McpServerInterceptor CreateMutationInterceptor(
         string name,
-        Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler)
+        Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler,
+        string[]? events = null)
     {
         return new TestInterceptor(
             new Interceptor
@@ -258,7 +365,7 @@ public class McpInterceptorGatewayTests
                 Name = name,
                 Type = InterceptorType.Mutation,
                 Phase = InterceptorPhase.Both,
-                Events = [InterceptorEvents.All],
+                Events = events ?? [InterceptorEvents.All],
             },
             handler);
     }
@@ -393,6 +500,76 @@ public class McpInterceptorGatewayTests
                     await d.DisposeAsync();
                 }
 
+                throw;
+            }
+        }
+
+        public static async Task<GatewayTestFixture> CreateWithMultipleInterceptorServersAsync(
+            Action<McpServerOptions> backendConfigure,
+            McpServerInterceptor[][] interceptorConfigs)
+        {
+            var disposables = new List<IAsyncDisposable>();
+
+            try
+            {
+                var (backendServer, backendClient) = await CreateServerClientPair(
+                    "test-backend", backendConfigure);
+                disposables.Add(backendServer);
+                disposables.Add(backendClient);
+
+                var interceptorClients = new List<McpClient>();
+                for (int i = 0; i < interceptorConfigs.Length; i++)
+                {
+                    var interceptors = interceptorConfigs[i];
+                    var (server, client) = await CreateServerClientPair(
+                        $"test-interceptors-{i}",
+                        options =>
+                        {
+                            var collection = new McpServerPrimitiveCollection<McpServerInterceptor>();
+                            var allEvents = new HashSet<string>();
+                            foreach (var interceptor in interceptors)
+                            {
+                                collection.Add(interceptor);
+                                foreach (var ev in interceptor.ProtocolInterceptor.Events)
+                                    allEvents.Add(ev);
+                            }
+
+                            var filter = new InterceptorMessageFilter(collection);
+                            options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
+                            options.Capabilities ??= new();
+#pragma warning disable MCPEXP001
+                            options.Capabilities.Extensions ??= new Dictionary<string, object>();
+                            options.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+                                new InterceptorsCapability { SupportedEvents = allEvents.ToList() },
+                                InterceptorJsonUtilities.DefaultOptions);
+#pragma warning restore MCPEXP001
+                        });
+                    disposables.Add(server);
+                    disposables.Add(client);
+                    interceptorClients.Add(client);
+                }
+
+                var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOptions
+                {
+                    BackendClient = backendClient,
+                    InterceptorClients = interceptorClients,
+                });
+                disposables.Add(gateway);
+
+                var (proxyServer, proxyClient) = await CreateServerClientPair(
+                    "test-proxy",
+                    options => gateway.ConfigureServerOptions(options));
+                disposables.Add(proxyServer);
+                disposables.Add(proxyClient);
+
+                gateway.RegisterNotificationForwarding(proxyServer);
+
+                return new GatewayTestFixture(proxyClient, disposables);
+            }
+            catch
+            {
+                foreach (var d in disposables)
+                    await d.DisposeAsync();
                 throw;
             }
         }

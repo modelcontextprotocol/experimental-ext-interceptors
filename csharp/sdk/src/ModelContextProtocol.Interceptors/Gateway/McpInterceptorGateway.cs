@@ -307,13 +307,16 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
                     if (_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesSubscribe))
                     {
-                        var (_, aborted) = await _chainRunner.RunChainPhaseAsync(
+                        var (processed, aborted) = await _chainRunner.RunChainPhaseAsync(
                             InterceptorEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, ct);
                         if (aborted)
                             throw new McpInterceptorValidationException("Request-phase interceptor validation failed for resources/subscribe.");
+                        requestPayload = processed;
                     }
 
-                    await backend.SubscribeToResourceAsync(request.Params!, ct);
+                    var mutatedParams = JsonSerializer.Deserialize<SubscribeRequestParams>(requestPayload, _jsonOptions)
+                        ?? request.Params!;
+                    await backend.SubscribeToResourceAsync(mutatedParams, ct);
                     return new EmptyResult();
                 };
 
@@ -411,25 +414,73 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     /// </summary>
     private void ConfigureInterceptorPassthrough(McpServerOptions serverOptions)
     {
-        // Collect supported events from all interceptor clients' capabilities
+        // Aggregate supported events from each interceptor server's advertised capabilities
         var allEvents = new HashSet<string>();
         foreach (var client in _options.InterceptorClients)
         {
-            // The interceptor servers advertise their events in capabilities.extensions.interceptors
-            // We can't easily read those here, so we advertise a general capability
+#pragma warning disable MCPEXP001
+            if (client.ServerCapabilities?.Extensions is { } extensions &&
+                extensions.TryGetValue("interceptors", out var capObj))
+            {
+                try
+                {
+                    InterceptorsCapability? cap = capObj switch
+                    {
+                        JsonElement je => JsonSerializer.Deserialize<InterceptorsCapability>(je, _jsonOptions),
+                        _ => null,
+                    };
+
+                    if (cap?.SupportedEvents is { } events)
+                    {
+                        foreach (var ev in events)
+                        {
+                            allEvents.Add(ev);
+                        }
+                    }
+                }
+                catch
+                {
+                    // If deserialization fails, skip this client's capability
+                }
+            }
+#pragma warning restore MCPEXP001
+        }
+
+        // If no events could be discovered, fall back to what's available via interceptors/list
+        if (allEvents.Count == 0)
+        {
+            // Query each interceptor client for their interceptors to discover events
+            foreach (var client in _options.InterceptorClients)
+            {
+                try
+                {
+                    var listResult = client.ListInterceptorsAsync().AsTask().GetAwaiter().GetResult();
+                    foreach (var interceptor in listResult.Interceptors)
+                    {
+                        foreach (var ev in interceptor.Events)
+                        {
+                            allEvents.Add(ev);
+                        }
+                    }
+                }
+                catch
+                {
+                    // If listing fails, skip this client
+                }
+            }
         }
 
 #pragma warning disable MCPEXP001
         serverOptions.Capabilities!.Extensions ??= new Dictionary<string, object>();
         var capability = new InterceptorsCapability
         {
-            SupportedEvents = ["*"],
+            SupportedEvents = allEvents.Count > 0 ? allEvents.ToList() : ["*"],
         };
         serverOptions.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
             capability, InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
 
-        // Add a message filter that forwards interceptor protocol requests to the first interceptor client
+        // Add a message filter that forwards interceptor protocol requests
         serverOptions.Filters.Message.IncomingFilters.Add(next =>
         {
             return async (context, ct) =>
@@ -442,10 +493,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                             await HandleInterceptorsListPassthrough(context, request, ct);
                             return;
                         case InterceptorRequestMethods.InterceptorInvoke:
-                            await HandleInterceptorPassthrough(context, request, ct);
+                            await HandleInvokePassthrough(context, request, ct);
                             return;
                         case InterceptorRequestMethods.InterceptorExecuteChain:
-                            await HandleInterceptorPassthrough(context, request, ct);
+                            await HandleExecuteChainPassthrough(context, request, ct);
                             return;
                     }
                 }
@@ -482,76 +533,120 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     }
 
     /// <summary>
-    /// Handles <c>interceptor/invoke</c> and <c>interceptor/executeChain</c> by forwarding
-    /// to the first interceptor client that has the requested interceptor.
+    /// Handles <c>interceptor/invoke</c> by finding the named interceptor across all clients.
+    /// Only continues to the next client when the interceptor is not found (error code -32602);
+    /// real execution failures are propagated immediately.
     /// </summary>
-    private async Task HandleInterceptorPassthrough(MessageContext context, JsonRpcRequest request, CancellationToken ct)
+    private async Task HandleInvokePassthrough(MessageContext context, JsonRpcRequest request, CancellationToken ct)
     {
-        // Forward to the first interceptor client — for invoke, the client will find
-        // the interceptor by name; for executeChain, it runs its full chain.
-        // For multi-client setups, we forward to the first client.
-        // A more sophisticated approach could route by interceptor name.
-        var client = _options.InterceptorClients[0];
-
         try
         {
-            JsonNode? resultNode;
+            var invokeParams = JsonSerializer.Deserialize<InvokeInterceptorRequestParams>(request.Params!, _jsonOptions)!;
 
-            if (request.Method == InterceptorRequestMethods.InterceptorInvoke)
+            InterceptorResult? invokeResult = null;
+
+            foreach (var client in _options.InterceptorClients)
             {
-                var invokeParams = JsonSerializer.Deserialize<InvokeInterceptorRequestParams>(request.Params!, _jsonOptions)!;
-
-                // Try each interceptor client to find the named interceptor
-                InterceptorResult? invokeResult = null;
-                foreach (var ic in _options.InterceptorClients)
+                // First check if this client has the interceptor via a lightweight list query
+                var listResult = await client.ListInterceptorsAsync(
+                    new ListInterceptorsRequestParams(), ct);
+                var found = false;
+                foreach (var interceptor in listResult.Interceptors)
                 {
-                    try
+                    if (interceptor.Name == invokeParams.Name)
                     {
-                        invokeResult = await ic.InvokeInterceptorAsync(invokeParams, ct);
+                        found = true;
                         break;
                     }
-                    catch (McpException)
-                    {
-                        // Interceptor not found on this client, try next
-                        continue;
-                    }
                 }
 
-                if (invokeResult is null)
+                if (!found)
                 {
-                    await context.Server.SendMessageAsync(
-                        new JsonRpcError
-                        {
-                            Id = request.Id,
-                            Error = new JsonRpcErrorDetail { Code = -32602, Message = $"Interceptor '{invokeParams.Name}' not found on any interceptor server" },
-                        },
-                        ct);
-                    return;
+                    continue;
                 }
 
-                resultNode = JsonSerializer.SerializeToNode<InterceptorResult>(invokeResult, _jsonOptions);
-            }
-            else
-            {
-                // executeChain — forward to first client
-                var chainParams = JsonSerializer.Deserialize<ExecuteChainRequestParams>(request.Params!, _jsonOptions)!;
-                var chainResult = await client.ExecuteChainAsync(chainParams, ct);
-                resultNode = JsonSerializer.SerializeToNode(chainResult, _jsonOptions);
+                // Interceptor exists on this client — invoke it; failures propagate
+                invokeResult = await client.InvokeInterceptorAsync(invokeParams, ct);
+                break;
             }
 
+            if (invokeResult is null)
+            {
+                await SendError(context, request.Id, -32602,
+                    $"Interceptor '{invokeParams.Name}' not found on any interceptor server", ct);
+                return;
+            }
+
+            var resultNode = JsonSerializer.SerializeToNode<InterceptorResult>(invokeResult, _jsonOptions);
             await context.Server.SendMessageAsync(
                 new JsonRpcResponse { Id = request.Id, Result = resultNode },
                 ct);
         }
         catch (Exception ex)
         {
-            await context.Server.SendMessageAsync(
-                new JsonRpcError
+            await SendError(context, request.Id, -32603, ex.Message, ct);
+        }
+    }
+
+    /// <summary>
+    /// Handles <c>interceptor/executeChain</c> by chaining through all interceptor clients
+    /// sequentially, matching the behavior of <see cref="InterceptorChainRunner"/>.
+    /// Each client's chain receives the (potentially mutated) payload from the previous one.
+    /// </summary>
+    private async Task HandleExecuteChainPassthrough(MessageContext context, JsonRpcRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var chainParams = JsonSerializer.Deserialize<ExecuteChainRequestParams>(request.Params!, _jsonOptions)!;
+
+            InterceptorChainResult? lastResult = null;
+            var currentPayload = chainParams.Payload;
+
+            foreach (var client in _options.InterceptorClients)
+            {
+                // Update the payload for this client's chain execution
+                var clientParams = new ExecuteChainRequestParams
                 {
-                    Id = request.Id,
-                    Error = new JsonRpcErrorDetail { Code = -32603, Message = ex.Message },
-                },
+                    Event = chainParams.Event,
+                    Phase = chainParams.Phase,
+                    Payload = currentPayload,
+                    InterceptorNames = chainParams.InterceptorNames,
+                    Config = chainParams.Config,
+                    TimeoutMs = chainParams.TimeoutMs,
+                    Context = chainParams.Context,
+                };
+
+                lastResult = await client.ExecuteChainAsync(clientParams, ct);
+
+                // If this client's chain failed validation, abort immediately
+                if (lastResult.Status == InterceptorChainStatus.ValidationFailed)
+                {
+                    break;
+                }
+
+                // Pass mutated payload to the next client
+                currentPayload = lastResult.FinalPayload ?? currentPayload;
+            }
+
+            var resultNode = JsonSerializer.SerializeToNode(lastResult, _jsonOptions);
+            await context.Server.SendMessageAsync(
+                new JsonRpcResponse { Id = request.Id, Result = resultNode },
                 ct);
         }
+        catch (Exception ex)
+        {
+            await SendError(context, request.Id, -32603, ex.Message, ct);
+        }
+    }
+
+    private static async Task SendError(MessageContext context, RequestId requestId, int code, string message, CancellationToken ct)
+    {
+        await context.Server.SendMessageAsync(
+            new JsonRpcError
+            {
+                Id = requestId,
+                Error = new JsonRpcErrorDetail { Code = code, Message = message },
+            },
+            ct);
     }
 }
