@@ -32,6 +32,8 @@ namespace ModelContextProtocol.Interceptors.Gateway;
 public sealed class McpInterceptorGateway : IAsyncDisposable
 {
     private readonly McpInterceptorGatewayOptions _options;
+    private readonly IReadOnlyList<McpClient> _interceptorClients;
+    private readonly List<IAsyncDisposable> _ownedClients = new();
     private readonly GatewayProxyConfigurator _proxyConfigurator;
     private readonly GatewayInterceptorProtocolBridge _protocolBridge;
     private readonly List<IAsyncDisposable> _notificationRegistrations = new();
@@ -43,23 +45,96 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.BackendClient);
-        ArgumentNullException.ThrowIfNull(options.InterceptorClients);
 
-        if (options.InterceptorClients.Count == 0)
+        _interceptorClients = GetConfiguredInterceptorClients(options);
+        if (_interceptorClients.Count == 0)
         {
             throw new ArgumentException("At least one interceptor client is required.", nameof(options));
         }
 
         _options = options;
         var chainRunner = new InterceptorChainRunner(
-            options.InterceptorClients,
+            _interceptorClients,
             options.Events,
             options.TimeoutMs,
             options.DefaultContext);
         var jsonOptions = InterceptorJsonUtilities.DefaultOptions;
 
         _proxyConfigurator = new GatewayProxyConfigurator(options.BackendClient, chainRunner, jsonOptions);
-        _protocolBridge = new GatewayInterceptorProtocolBridge(options.InterceptorClients, jsonOptions);
+        _protocolBridge = new GatewayInterceptorProtocolBridge(_interceptorClients, jsonOptions);
+    }
+
+    private McpInterceptorGateway(McpInterceptorGatewayOptions options, IReadOnlyList<McpClient> interceptorClients)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options.BackendClient);
+
+        if (interceptorClients.Count == 0)
+        {
+            throw new ArgumentException("At least one interceptor client is required.", nameof(interceptorClients));
+        }
+
+        _options = options;
+        _interceptorClients = interceptorClients;
+        var chainRunner = new InterceptorChainRunner(
+            interceptorClients,
+            options.Events,
+            options.TimeoutMs,
+            options.DefaultContext);
+        var jsonOptions = InterceptorJsonUtilities.DefaultOptions;
+
+        _proxyConfigurator = new GatewayProxyConfigurator(options.BackendClient, chainRunner, jsonOptions);
+        _protocolBridge = new GatewayInterceptorProtocolBridge(interceptorClients, jsonOptions);
+    }
+
+    /// <summary>
+    /// Creates a gateway and connects any configured external interceptor servers using the standard MCP client transport pattern.
+    /// </summary>
+    public static async Task<McpInterceptorGateway> CreateAsync(
+        McpInterceptorGatewayOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var ownedClients = new List<McpClient>();
+        try
+        {
+            var interceptorClients = new List<McpClient>();
+            if (options.InterceptorClients is { Count: > 0 })
+            {
+                interceptorClients.AddRange(options.InterceptorClients);
+            }
+
+            if (options.InterceptorServerConnections is { Count: > 0 })
+            {
+                foreach (var connection in options.InterceptorServerConnections)
+                {
+                    ArgumentNullException.ThrowIfNull(connection);
+                    ArgumentNullException.ThrowIfNull(connection.Transport);
+
+                    var client = await McpClient.CreateAsync(
+                        connection.Transport,
+                        connection.ClientOptions,
+                        connection.LoggerFactory,
+                        cancellationToken);
+                    interceptorClients.Add(client);
+                    ownedClients.Add(client);
+                }
+            }
+
+            var gateway = new McpInterceptorGateway(options, interceptorClients);
+            gateway._ownedClients.AddRange(ownedClients);
+            return gateway;
+        }
+        catch
+        {
+            foreach (var client in ownedClients)
+            {
+                await client.DisposeAsync();
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Gets the backend MCP client.</summary>
@@ -139,6 +214,11 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         {
             await registration.DisposeAsync();
         }
+
+        foreach (var ownedClient in _ownedClients)
+        {
+            await ownedClient.DisposeAsync();
+        }
     }
 
     private void AddNotificationRegistration(IAsyncDisposable registration)
@@ -147,6 +227,22 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         {
             _notificationRegistrations.Add(registration);
         }
+    }
+
+    private static IReadOnlyList<McpClient> GetConfiguredInterceptorClients(McpInterceptorGatewayOptions options)
+    {
+        if (options.InterceptorClients is { Count: > 0 } interceptorClients)
+        {
+            return interceptorClients;
+        }
+
+        if (options.InterceptorServerConnections is { Count: > 0 })
+        {
+            throw new InvalidOperationException(
+                $"{nameof(McpInterceptorGateway)}.{nameof(CreateAsync)} must be used when {nameof(McpInterceptorGatewayOptions.InterceptorServerConnections)} is configured.");
+        }
+
+        return [];
     }
 
 }

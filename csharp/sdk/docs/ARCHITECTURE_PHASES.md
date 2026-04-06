@@ -153,6 +153,12 @@ Likely direction:
 2. Support static, per-request, or per-identity interceptor resolution
 3. Keep chain semantics unchanged regardless of interceptor source
 
+Current implementation note:
+
+1. `McpInterceptorGateway.CreateAsync(...)` now supports static external interceptor connections via `McpInterceptorServerConnectionOptions`
+2. Those connections use the same transport-driven pattern as `McpClient.CreateAsync(...)`
+3. Dynamic per-request or per-identity interceptor resolution is not implemented yet
+
 ## Open Design Notes
 
 1. The interceptor extension capability key should stay aligned with the SEP for now

@@ -33,6 +33,14 @@ public static class McpInterceptorGatewayBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(options);
 
+        if (options.InterceptorServerConnections is { Count: > 0 })
+        {
+            throw new ArgumentException(
+                $"{nameof(McpInterceptorGatewayBuilderExtensions)}.{nameof(WithInterceptorGateway)} requires already-connected interceptor clients. " +
+                $"Use {nameof(McpInterceptorGateway)}.{nameof(McpInterceptorGateway.CreateAsync)} when {nameof(McpInterceptorGatewayOptions.InterceptorServerConnections)} is configured.",
+                nameof(options));
+        }
+
         return builder.WithInterceptorGateway(_ => options);
     }
 
@@ -50,7 +58,18 @@ public static class McpInterceptorGatewayBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(optionsFactory);
 
-        builder.Services.AddSingleton(optionsFactory);
+        builder.Services.AddSingleton(sp =>
+        {
+            var options = optionsFactory(sp);
+            if (options.InterceptorServerConnections is { Count: > 0 })
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(McpInterceptorGatewayBuilderExtensions)}.{nameof(WithInterceptorGateway)} requires already-connected interceptor clients. " +
+                    $"Use {nameof(McpInterceptorGateway)}.{nameof(McpInterceptorGateway.CreateAsync)} when {nameof(McpInterceptorGatewayOptions.InterceptorServerConnections)} is configured.");
+            }
+
+            return options;
+        });
         builder.Services.AddSingleton(sp => new McpInterceptorGateway(sp.GetRequiredService<McpInterceptorGatewayOptions>()));
         builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>, GatewayServerOptionsSetup>();
 

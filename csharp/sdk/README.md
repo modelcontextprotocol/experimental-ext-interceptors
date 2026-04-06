@@ -132,6 +132,28 @@ await server.RunAsync();
 
 The proxy mirrors the backend's advertised capability graph and forwards `*_list_changed` notifications for the supported list surfaces. Multiple interceptor clients can be chained — they execute in order, each receiving the previous client's mutated payload.
 
+If you want the gateway to connect to external SEP-exposing interceptor servers itself, use the async factory and provide standard MCP client transports:
+
+```csharp
+await using var gateway = await McpInterceptorGateway.CreateAsync(new McpInterceptorGatewayOptions
+{
+    BackendClient = backend,
+    InterceptorServerConnections =
+    [
+        new McpInterceptorServerConnectionOptions
+        {
+            Transport = new StdioClientTransport(new StdioClientTransportOptions
+            {
+                Command = "dotnet",
+                Arguments = ["run", "--project", "path/to/interceptor-server"],
+            }),
+        },
+    ],
+});
+```
+
+This follows the same transport-driven pattern as `McpClient.CreateAsync(...)`: you supply `IClientTransport` instances such as `StdioClientTransport`, `HttpClientTransport`, or `StreamClientTransport`, along with optional `McpClientOptions` and logging via `McpInterceptorServerConnectionOptions`.
+
 **With DI / builder pattern:**
 
 ```csharp
@@ -157,6 +179,8 @@ builder.Services.AddMcpServer()
 ```
 
 Internally, the builder path wires notification forwarding once per logical connection. Current transports may expose a session identifier, but that is treated as an implementation detail rather than a public architectural concept.
+
+The builder-based gateway configuration currently expects already-connected interceptor clients. External interceptor server connections that need async transport setup should use `McpInterceptorGateway.CreateAsync(...)`.
 
 To expose the SEP interceptor protocol through the gateway as an advanced mode, set:
 

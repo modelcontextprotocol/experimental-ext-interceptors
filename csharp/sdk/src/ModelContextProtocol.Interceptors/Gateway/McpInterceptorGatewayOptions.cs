@@ -14,9 +14,17 @@ public sealed class McpInterceptorGatewayOptions
 
     /// <summary>
     /// Gets or sets the clients connected to interceptor servers, executed in order.
-    /// Required; must contain at least one client.
+    /// Use this when the interceptor clients are already connected.
     /// </summary>
-    public required IReadOnlyList<McpClient> InterceptorClients { get; set; }
+    public IReadOnlyList<McpClient>? InterceptorClients { get; set; }
+
+    /// <summary>
+    /// Gets or sets external interceptor server connections that should be created by the gateway
+    /// using <see cref="McpClient.CreateAsync(IClientTransport, McpClientOptions?, Microsoft.Extensions.Logging.ILoggerFactory?, CancellationToken)"/>.
+    /// Use <see cref="McpInterceptorGateway.CreateAsync(McpInterceptorGatewayOptions, CancellationToken)"/>
+    /// when this property is populated.
+    /// </summary>
+    public IReadOnlyList<McpInterceptorServerConnectionOptions>? InterceptorServerConnections { get; set; }
 
     /// <summary>
     /// Gets or sets the event types to intercept. When null or empty, all events are intercepted.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.IO.Pipes;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Gateway;
@@ -65,17 +66,66 @@ public class GatewayComponentsTests
         Assert.True(serverOptions.Capabilities!.Experimental!.ContainsKey("com.example/test"));
     }
 
+    [Fact]
+    public async Task McpInterceptorGateway_CreateAsync_ConnectsExternalInterceptorTransport()
+    {
+        await using var fixture = await GatewayComponentFixture.CreateAsync();
+
+        await using var gateway = await McpInterceptorGateway.CreateAsync(new McpInterceptorGatewayOptions
+        {
+            BackendClient = fixture.BackendClient,
+            InterceptorServerConnections =
+            [
+                new McpInterceptorServerConnectionOptions
+                {
+                    Transport = fixture.CreateInterceptorTransport(),
+                },
+            ],
+            ExposeInterceptorProtocol = true,
+        });
+
+        var serverOptions = new McpServerOptions();
+        gateway.ConfigureServerOptions(serverOptions);
+
+#pragma warning disable MCPEXP001
+        Assert.True(serverOptions.Capabilities?.Extensions?.ContainsKey(InterceptorProtocolConstants.ExtensionCapabilityKey) ?? false);
+#pragma warning restore MCPEXP001
+    }
+
+    [Fact]
+    public void WithInterceptorGateway_RejectsExternalConnectionsInBuilderPath()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+            services.AddMcpServer().WithInterceptorGateway(new McpInterceptorGatewayOptions
+            {
+                BackendClient = NullMcpClient.Instance,
+                InterceptorServerConnections =
+                [
+                    new McpInterceptorServerConnectionOptions
+                    {
+                        Transport = new ThrowingClientTransport(),
+                    },
+                ],
+            }));
+
+        Assert.Contains(nameof(McpInterceptorGateway.CreateAsync), exception.Message);
+    }
+
     private sealed class GatewayComponentFixture : IAsyncDisposable
     {
         private readonly List<IAsyncDisposable> _disposables;
 
         public McpClient BackendClient { get; }
         public McpClient InterceptorClient { get; }
+        private readonly Func<IClientTransport> _interceptorTransportFactory;
 
-        private GatewayComponentFixture(McpClient backendClient, McpClient interceptorClient, List<IAsyncDisposable> disposables)
+        private GatewayComponentFixture(McpClient backendClient, McpClient interceptorClient, Func<IClientTransport> interceptorTransportFactory, List<IAsyncDisposable> disposables)
         {
             BackendClient = backendClient;
             InterceptorClient = interceptorClient;
+            _interceptorTransportFactory = interceptorTransportFactory;
             _disposables = disposables;
         }
 
@@ -100,6 +150,7 @@ public class GatewayComponentsTests
                 disposables.Add(backendServer);
                 disposables.Add(backendClient);
 
+                Func<IClientTransport>? interceptorTransportFactory = null;
                 var (interceptorServer, interceptorClient) = await McpInterceptorGatewayTests.GatewayTestFixture.CreateServerClientPairForTesting(
                     "component-interceptor",
                     options =>
@@ -128,7 +179,48 @@ public class GatewayComponentsTests
                 disposables.Add(interceptorServer);
                 disposables.Add(interceptorClient);
 
-                return new GatewayComponentFixture(backendClient, interceptorClient, disposables);
+                interceptorTransportFactory = () =>
+                {
+                    var clientToServer = new AnonymousPipeServerStream(PipeDirection.Out);
+                    var serverFromClient = new AnonymousPipeClientStream(PipeDirection.In, clientToServer.GetClientHandleAsString());
+
+                    var serverToClient = new AnonymousPipeServerStream(PipeDirection.Out);
+                    var clientFromServer = new AnonymousPipeClientStream(PipeDirection.In, serverToClient.GetClientHandleAsString());
+
+                    var serverOptions = new McpServerOptions
+                    {
+                        ServerInfo = new() { Name = "component-interceptor-external", Version = "1.0.0" },
+                    };
+                    var collection = new McpServerPrimitiveCollection<McpServerInterceptor>();
+                    collection.Add(new TestInterceptor(
+                        new Interceptor
+                        {
+                            Name = "validator",
+                            Type = InterceptorType.Validation,
+                            Phase = InterceptorPhase.Both,
+                            Events = [InterceptorEvents.ToolsCall],
+                        },
+                        (_, _, _, _) => new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success())));
+
+                    var filter = new InterceptorMessageFilter(collection);
+                    serverOptions.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
+                    serverOptions.Capabilities ??= new();
+#pragma warning disable MCPEXP001
+                    serverOptions.Capabilities.Extensions ??= new Dictionary<string, object>();
+                    serverOptions.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
+                        new InterceptorsCapability { SupportedEvents = [InterceptorEvents.ToolsCall] },
+                        InterceptorJsonUtilities.DefaultOptions);
+#pragma warning restore MCPEXP001
+
+                    var serverTransport = new StreamServerTransport(serverFromClient, serverToClient);
+                    var server = McpServer.Create(serverTransport, serverOptions);
+                    _ = server.RunAsync();
+                    disposables.Add(server);
+
+                    return new StreamClientTransport(clientToServer, clientFromServer);
+                };
+
+                return new GatewayComponentFixture(backendClient, interceptorClient, interceptorTransportFactory, disposables);
             }
             catch
             {
@@ -148,6 +240,34 @@ public class GatewayComponentsTests
                 await _disposables[i].DisposeAsync();
             }
         }
+
+        public IClientTransport CreateInterceptorTransport() => _interceptorTransportFactory();
+    }
+
+    private sealed class ThrowingClientTransport : IClientTransport
+    {
+        public string Name => "throwing";
+
+        public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+#pragma warning disable MCPEXP002
+    private sealed class NullMcpClient : McpClient
+#pragma warning restore MCPEXP002
+    {
+        internal static NullMcpClient Instance { get; } = new();
+
+        public override string? SessionId => null;
+        public override string? NegotiatedProtocolVersion => null;
+        public override ServerCapabilities ServerCapabilities => new();
+        public override Implementation ServerInfo => new() { Name = "null", Version = "1.0.0" };
+        public override string? ServerInstructions => null;
+        public override Task<ClientCompletionDetails> Completion => Task.FromResult(new ClientCompletionDetails());
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) => throw new NotSupportedException();
+        public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class TestInterceptor : McpServerInterceptor
