@@ -30,6 +30,13 @@ public sealed class McpInterceptorGatewayOptions
     public InvokeInterceptorContext? DefaultContext { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the gateway should expose the SEP interceptor protocol
+    /// (`interceptors/list`, `interceptor/invoke`, `interceptor/executeChain`) to connecting clients.
+    /// When <see langword="false"/>, the gateway is transparent by default and only proxies the backend surface.
+    /// </summary>
+    public bool ExposeInterceptorProtocol { get; set; }
+
+    /// <summary>
     /// Gets or sets the server info to advertise to connecting clients.
     /// When null, the backend server's info is proxied.
     /// </summary>

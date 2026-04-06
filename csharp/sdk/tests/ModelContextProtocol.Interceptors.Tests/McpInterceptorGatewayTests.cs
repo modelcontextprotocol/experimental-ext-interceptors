@@ -200,7 +200,7 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task ConfigureServerOptions_InterceptorsCapabilityAdvertised()
+    public async Task ConfigureServerOptions_DoesNotAdvertiseInterceptorsCapabilityByDefault()
     {
         await using var fixture = await GatewayTestFixture.CreateAsync(
             backendConfigure: (options) =>
@@ -215,13 +215,59 @@ public class McpInterceptorGatewayTests
 
 #pragma warning disable MCPEXP001
         var caps = fixture.ProxyClient.ServerCapabilities;
+        Assert.False(caps?.Extensions?.ContainsKey("interceptors") ?? false);
+#pragma warning restore MCPEXP001
+    }
+
+    [Fact]
+    public async Task ConfigureServerOptions_AdvertisesInterceptorsCapabilityWhenEnabled()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            },
+            exposeInterceptorProtocol: true);
+
+#pragma warning disable MCPEXP001
+        var caps = fixture.ProxyClient.ServerCapabilities;
         Assert.NotNull(caps?.Extensions);
         Assert.True(caps!.Extensions!.ContainsKey("interceptors"));
 #pragma warning restore MCPEXP001
     }
 
     [Fact]
-    public async Task ListInterceptorsAsync_AggregatesFromInterceptorServers()
+    public async Task ListInterceptorsAsync_IsNotExposedByDefault()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            },
+            interceptors:
+            [
+                CreateValidationInterceptor("validator-1", (_, _, _, _) =>
+                    new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success())),
+            ]);
+
+        await Assert.ThrowsAsync<McpProtocolException>(async () =>
+        {
+            await fixture.ProxyClient.ListInterceptorsAsync();
+        });
+    }
+
+    [Fact]
+    public async Task ListInterceptorsAsync_AggregatesFromInterceptorServersWhenEnabled()
     {
         await using var fixture = await GatewayTestFixture.CreateAsync(
             backendConfigure: (options) =>
@@ -239,7 +285,8 @@ public class McpInterceptorGatewayTests
                     new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success())),
                 CreateMutationInterceptor("mutator-1", (req, _, _, _) =>
                     new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false, Payload = req.Payload })),
-            ]);
+            ],
+            exposeInterceptorProtocol: true);
 
         // List interceptors through the proxy
         var result = await fixture.ProxyClient.ListInterceptorsAsync();
@@ -355,7 +402,38 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task ExecuteChainPassthrough_AggregatesResultsFromAllClients()
+    public async Task ExecuteChainPassthrough_IsNotExposedByDefault()
+    {
+        await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            },
+            interceptorConfigs:
+            [
+                [CreateMutationInterceptor("mutator-a", (req, _, _, _) =>
+                    new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false, Payload = req.Payload }))],
+            ]);
+
+        await Assert.ThrowsAsync<McpProtocolException>(async () =>
+        {
+            await fixture.ProxyClient.ExecuteChainAsync(
+                new ExecuteChainRequestParams
+                {
+                    Event = InterceptorEvents.ToolsCall,
+                    Phase = InterceptorPhase.Request,
+                    Payload = JsonNode.Parse("""{"original":true}""")!,
+                });
+        });
+    }
+
+    [Fact]
+    public async Task ExecuteChainPassthrough_AggregatesResultsFromAllClientsWhenEnabled()
     {
         // Two interceptor servers, each with one mutation interceptor
         await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
@@ -390,7 +468,8 @@ public class McpInterceptorGatewayTests
                         Payload = obj,
                     });
                 })],
-            ]);
+            ],
+            exposeInterceptorProtocol: true);
 
         // Execute chain directly through the proxy (interceptor protocol passthrough)
         var chainResult = await fixture.ProxyClient.ExecuteChainAsync(
@@ -778,7 +857,8 @@ public class McpInterceptorGatewayTests
         public static async Task<GatewayTestFixture> CreateAsync(
             Action<McpServerOptions> backendConfigure,
             McpServerInterceptor[]? interceptors = null,
-            int? timeoutMs = null)
+            int? timeoutMs = null,
+            bool exposeInterceptorProtocol = false)
         {
             var disposables = new List<IAsyncDisposable>();
 
@@ -828,6 +908,7 @@ public class McpInterceptorGatewayTests
                     BackendClient = backendClient,
                     InterceptorClients = [interceptorClient],
                     TimeoutMs = timeoutMs,
+                    ExposeInterceptorProtocol = exposeInterceptorProtocol,
                 });
                 disposables.Add(gateway);
 
@@ -858,7 +939,8 @@ public class McpInterceptorGatewayTests
 
         public static async Task<GatewayTestFixture> CreateWithMultipleInterceptorServersAsync(
             Action<McpServerOptions> backendConfigure,
-            McpServerInterceptor[][] interceptorConfigs)
+            McpServerInterceptor[][] interceptorConfigs,
+            bool exposeInterceptorProtocol = false)
         {
             var disposables = new List<IAsyncDisposable>();
 
@@ -905,6 +987,7 @@ public class McpInterceptorGatewayTests
                 {
                     BackendClient = backendClient,
                     InterceptorClients = interceptorClients,
+                    ExposeInterceptorProtocol = exposeInterceptorProtocol,
                 });
                 disposables.Add(gateway);
 
@@ -928,7 +1011,8 @@ public class McpInterceptorGatewayTests
 
         public static async Task<GatewayTestFixture> CreateWithBuilderGatewayAsync(
             Action<McpServerOptions> backendConfigure,
-            Action<string>? onRegisterNotificationHandler = null)
+            Action<string>? onRegisterNotificationHandler = null,
+            bool exposeInterceptorProtocol = false)
         {
             var disposables = new List<IAsyncDisposable>();
 
@@ -969,6 +1053,7 @@ public class McpInterceptorGatewayTests
                     {
                         BackendClient = backendClient,
                         InterceptorClients = [interceptorClient],
+                        ExposeInterceptorProtocol = exposeInterceptorProtocol,
                     });
 
                 var serverOptions = new McpServerOptions();

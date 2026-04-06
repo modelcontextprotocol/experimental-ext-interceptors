@@ -2,6 +2,8 @@
 
 C# implementation of the [MCP Interceptors Extension (SEP-1763)](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763) — gateway-level interceptors for the Model Context Protocol.
 
+Architecture work is tracked in [`docs/ARCHITECTURE_PHASES.md`](docs/ARCHITECTURE_PHASES.md).
+
 ## Overview
 
 This package enables creating interceptor servers that sit between MCP clients and servers, providing validation, mutation, and observability capabilities without modifying either the client or server.
@@ -97,6 +99,8 @@ var result = await gateway.CallToolAsync("my-tool", new Dictionary<string, objec
 
 Use `McpInterceptorGateway` to create an MCP server that transparently proxies requests through interceptors to a backend server. Connecting clients see the proxy as the backend itself — no client-side changes needed.
 
+By default, the gateway is transparent-only: it does not advertise or expose the SEP interceptor protocol to connecting clients. If you want the gateway to also expose `interceptors/list`, `interceptor/invoke`, and `interceptor/executeChain`, enable that explicitly with `ExposeInterceptorProtocol = true`.
+
 ```
 Client  ──▶  Proxy Server  ──▶  Interceptor Server  ──▶  Backend Server
         ◀──  (transparent)  ◀──  (validates/mutates)  ◀──  (tools, etc.)
@@ -113,6 +117,7 @@ await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOpt
     BackendClient = backend,
     InterceptorClients = [interceptors],
     Events = [InterceptorEvents.ToolsCall], // null = intercept all events
+    ExposeInterceptorProtocol = false,
 });
 
 // Configure and start the proxy server on stdio
@@ -139,6 +144,12 @@ builder.Services.AddMcpServer()
 ```
 
 The builder extension handles notification forwarding automatically, registering once per session for multi-connection transports (HTTP) and once for single-connection transports (stdio).
+
+To expose the SEP interceptor protocol through the gateway as an advanced mode, set:
+
+```csharp
+ExposeInterceptorProtocol = true
+```
 
 **Claude Desktop integration** — point it at a proxy binary:
 

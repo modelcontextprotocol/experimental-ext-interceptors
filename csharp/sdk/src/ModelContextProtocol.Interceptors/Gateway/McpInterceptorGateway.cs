@@ -353,7 +353,10 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         }
 
         // Advertise interceptor extension capability and add passthrough filter
-        ConfigureInterceptorPassthrough(serverOptions);
+        if (_options.ExposeInterceptorProtocol)
+        {
+            ConfigureInterceptorPassthrough(serverOptions);
+        }
     }
 
     /// <summary>
