@@ -1,7 +1,9 @@
 using System.IO.Pipes;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Client;
 using ModelContextProtocol.Interceptors.Gateway;
@@ -408,6 +410,42 @@ public class McpInterceptorGatewayTests
         Assert.True(chainResult.FinalPayload!["original"]!.GetValue<bool>());
     }
 
+    [Fact]
+    public async Task WithInterceptorGateway_RegistersNotificationForwardingOncePerSession()
+    {
+        var forwardingRegistrations = 0;
+
+        await using var fixture = await GatewayTestFixture.CreateWithBuilderGatewayAsync(
+            backendConfigure: options =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new() { ListChanged = true };
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = "ok" }],
+                    });
+            },
+            onRegisterNotificationHandler: method =>
+            {
+                if (method == NotificationMethods.ToolListChangedNotification)
+                {
+                    Interlocked.Increment(ref forwardingRegistrations);
+                }
+            });
+
+        await fixture.ProxyClient.ListToolsAsync();
+        await fixture.ProxyClient.ListToolsAsync();
+        await fixture.ProxyClient.CallToolAsync("echo");
+
+        Assert.Equal(1, forwardingRegistrations);
+    }
+
     // ── Test helpers ──────────────────────────────────────────────────
 
     private static McpServerInterceptor CreateMutationInterceptor(
@@ -630,9 +668,88 @@ public class McpInterceptorGatewayTests
             }
         }
 
+        public static async Task<GatewayTestFixture> CreateWithBuilderGatewayAsync(
+            Action<McpServerOptions> backendConfigure,
+            Action<string>? onRegisterNotificationHandler = null)
+        {
+            var disposables = new List<IAsyncDisposable>();
+
+            try
+            {
+                var (backendServer, backendClientInner) = await CreateServerClientPair(
+                    "test-backend",
+                    backendConfigure,
+                    onRegisterNotificationHandler);
+                var backendClient = onRegisterNotificationHandler is null
+                    ? backendClientInner
+                    : new NotificationTrackingClient(backendClientInner, onRegisterNotificationHandler);
+                disposables.Add(backendServer);
+                disposables.Add(backendClient);
+
+                var (interceptorServer, interceptorClient) = await CreateServerClientPair(
+                    "test-interceptors",
+                    options =>
+                    {
+                        var collection = new McpServerPrimitiveCollection<McpServerInterceptor>();
+                        var filter = new InterceptorMessageFilter(collection);
+                        options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
+
+                        options.Capabilities ??= new();
+#pragma warning disable MCPEXP001
+                        options.Capabilities.Extensions ??= new Dictionary<string, object>();
+                        options.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+                            new InterceptorsCapability { SupportedEvents = [] },
+                            InterceptorJsonUtilities.DefaultOptions);
+#pragma warning restore MCPEXP001
+                    });
+                disposables.Add(interceptorServer);
+                disposables.Add(interceptorClient);
+
+                var services = new ServiceCollection();
+                services.AddMcpServer()
+                    .WithInterceptorGateway(new McpInterceptorGatewayOptions
+                    {
+                        BackendClient = backendClient,
+                        InterceptorClients = [interceptorClient],
+                    });
+
+                var serverOptions = new McpServerOptions();
+                foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IConfigureOptions<McpServerOptions>)))
+                {
+                    if (descriptor.ImplementationInstance is IConfigureOptions<McpServerOptions> configure)
+                    {
+                        configure.Configure(serverOptions);
+                    }
+                }
+                var (proxyServer, proxyClient) = await CreateServerClientPair(
+                    "test-proxy",
+                    options =>
+                    {
+                        options.ServerInfo = serverOptions.ServerInfo;
+                        options.Capabilities = serverOptions.Capabilities;
+                        options.Handlers = serverOptions.Handlers;
+                        options.Filters = serverOptions.Filters;
+                    });
+                disposables.Add(proxyServer);
+                disposables.Add(proxyClient);
+
+                return new GatewayTestFixture(proxyClient, disposables);
+            }
+            catch
+            {
+                foreach (var d in disposables)
+                {
+                    await d.DisposeAsync();
+                }
+
+                throw;
+            }
+        }
+
         private static async Task<(McpServer server, McpClient client)> CreateServerClientPair(
             string name,
-            Action<McpServerOptions> configure)
+            Action<McpServerOptions> configure,
+            Action<string>? onRegisterNotificationHandler = null)
         {
             // Create anonymous pipes for communication
             var clientToServer = new AnonymousPipeServerStream(PipeDirection.Out);
@@ -675,5 +792,31 @@ public class McpInterceptorGatewayTests
                 }
             }
         }
+
+#pragma warning disable MCPEXP002
+        private sealed class NotificationTrackingClient(McpClient inner, Action<string> onRegister) : McpClient
+#pragma warning restore MCPEXP002
+        {
+            public override string? SessionId => inner.SessionId;
+            public override string? NegotiatedProtocolVersion => inner.NegotiatedProtocolVersion;
+            public override ServerCapabilities ServerCapabilities => inner.ServerCapabilities;
+            public override Implementation ServerInfo => inner.ServerInfo;
+            public override string? ServerInstructions => inner.ServerInstructions;
+            public override Task<ClientCompletionDetails> Completion => inner.Completion;
+
+            public override ValueTask DisposeAsync() => inner.DisposeAsync();
+
+            public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
+            {
+                onRegister(method);
+                return inner.RegisterNotificationHandler(method, handler);
+            }
+
+            public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
+                inner.SendMessageAsync(message, cancellationToken);
+            public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default) =>
+                inner.SendRequestAsync(request, cancellationToken);
+        }
+
     }
 }

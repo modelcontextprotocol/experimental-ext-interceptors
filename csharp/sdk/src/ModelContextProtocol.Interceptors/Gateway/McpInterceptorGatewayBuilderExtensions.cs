@@ -56,19 +56,34 @@ public static class McpInterceptorGatewayBuilderExtensions
             _gateway.ConfigureServerOptions(options);
 
             // Wire notification forwarding lazily via an incoming message filter.
-            // In multi-session transports (HTTP), each session has its own McpServer,
-            // so we track which servers we've already registered for.
-            var registeredServers = new HashSet<McpServer>();
+            // Deduplicate by stable session identity when available. `context.Server`
+            // is a destination-bound wrapper created per message, so reference identity
+            // would re-register on every request.
+            var registeredSessionIds = new HashSet<string>(StringComparer.Ordinal);
+            var registeredFallback = 0;
             options.Filters.Message.IncomingFilters.Add(next =>
             {
                 return async (context, ct) =>
                 {
-                    lock (registeredServers)
+                    var registered = false;
+
+                    lock (registeredSessionIds)
                     {
-                        if (registeredServers.Add(context.Server))
+                        if (context.Server.SessionId is { Length: > 0 } sessionId)
                         {
-                            _gateway.RegisterNotificationForwarding(context.Server);
+                            registered = registeredSessionIds.Add(sessionId);
                         }
+                        else if (Interlocked.CompareExchange(ref registeredFallback, 1, 0) == 0)
+                        {
+                            // Non-session transports (for example stdio/stream) have a single
+                            // logical connection, so register only once.
+                            registered = true;
+                        }
+                    }
+
+                    if (registered)
+                    {
+                        _gateway.RegisterNotificationForwarding(context.Server);
                     }
 
                     await next(context, ct);
