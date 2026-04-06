@@ -86,16 +86,13 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
             serverOptions.ServerInfo = info;
         }
 
-        serverOptions.Capabilities ??= new();
+        serverOptions.Capabilities = backendCaps is not null
+            ? CloneCapabilities(backendCaps)
+            : serverOptions.Capabilities ?? new ServerCapabilities();
 
         // Tools
         if (backendCaps?.Tools is not null)
         {
-            serverOptions.Capabilities.Tools ??= new()
-            {
-                ListChanged = backendCaps.Tools.ListChanged,
-            };
-
             serverOptions.Handlers.ListToolsHandler = async (request, ct) =>
             {
                 var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
@@ -160,11 +157,6 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         // Prompts
         if (backendCaps?.Prompts is not null)
         {
-            serverOptions.Capabilities.Prompts ??= new()
-            {
-                ListChanged = backendCaps.Prompts.ListChanged,
-            };
-
             serverOptions.Handlers.ListPromptsHandler = async (request, ct) =>
             {
                 var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
@@ -229,12 +221,6 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         // Resources
         if (backendCaps?.Resources is not null)
         {
-            serverOptions.Capabilities.Resources ??= new()
-            {
-                ListChanged = backendCaps.Resources.ListChanged,
-                Subscribe = backendCaps.Resources.Subscribe,
-            };
-
             serverOptions.Handlers.ListResourcesHandler = async (request, ct) =>
             {
                 var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
@@ -332,8 +318,6 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         // Completions
         if (backendCaps?.Completions is not null)
         {
-            serverOptions.Capabilities.Completions ??= new();
-
             serverOptions.Handlers.CompleteHandler = async (request, ct) =>
             {
                 return await backend.CompleteAsync(request.Params!, ct);
@@ -343,8 +327,6 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         // Logging
         if (backendCaps?.Logging is not null)
         {
-            serverOptions.Capabilities.Logging ??= new();
-
             serverOptions.Handlers.SetLoggingLevelHandler = async (request, ct) =>
             {
                 await backend.SetLoggingLevelAsync(request.Params!, ct);
@@ -683,6 +665,14 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         {
             _notificationRegistrations.Add(registration);
         }
+    }
+
+    private ServerCapabilities CloneCapabilities(ServerCapabilities capabilities)
+    {
+        var node = JsonSerializer.SerializeToNode(capabilities, _jsonOptions)
+            ?? throw new InvalidOperationException("Failed to serialize backend server capabilities.");
+        return JsonSerializer.Deserialize<ServerCapabilities>(node, _jsonOptions)
+            ?? throw new InvalidOperationException("Failed to clone backend server capabilities.");
     }
 
 }

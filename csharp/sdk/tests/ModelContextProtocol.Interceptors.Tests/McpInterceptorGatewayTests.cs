@@ -200,6 +200,55 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
+    public async Task ConfigureServerOptions_MirrorsBackendExperimentalCapabilities()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Capabilities.Experimental = new Dictionary<string, object>
+                {
+                    ["com.example/feature"] = JsonSerializer.SerializeToElement(new { enabled = true }),
+                };
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            });
+
+        var caps = fixture.ProxyClient.ServerCapabilities;
+        Assert.NotNull(caps.Experimental);
+        Assert.True(caps.Experimental!.ContainsKey("com.example/feature"));
+    }
+
+    [Fact]
+    public async Task ConfigureServerOptions_MirrorsBackendExtensionsInTransparentMode()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+#pragma warning disable MCPEXP001
+                options.Capabilities.Extensions ??= new Dictionary<string, object>();
+                options.Capabilities.Extensions["com.example/backend"] = JsonSerializer.SerializeToElement(new { version = 1 });
+#pragma warning restore MCPEXP001
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            });
+
+#pragma warning disable MCPEXP001
+        var caps = fixture.ProxyClient.ServerCapabilities;
+        Assert.NotNull(caps.Extensions);
+        Assert.True(caps.Extensions!.ContainsKey("com.example/backend"));
+        Assert.False(caps.Extensions.ContainsKey("interceptors"));
+#pragma warning restore MCPEXP001
+    }
+
+    [Fact]
     public async Task ConfigureServerOptions_DoesNotAdvertiseInterceptorsCapabilityByDefault()
     {
         await using var fixture = await GatewayTestFixture.CreateAsync(
@@ -227,6 +276,10 @@ public class McpInterceptorGatewayTests
             {
                 options.Capabilities ??= new();
                 options.Capabilities.Tools ??= new();
+#pragma warning disable MCPEXP001
+                options.Capabilities.Extensions ??= new Dictionary<string, object>();
+                options.Capabilities.Extensions["com.example/backend"] = JsonSerializer.SerializeToElement(new { version = 1 });
+#pragma warning restore MCPEXP001
                 options.Handlers.ListToolsHandler = (request, ct) =>
                     new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
                 options.Handlers.CallToolHandler = (request, ct) =>
@@ -238,6 +291,7 @@ public class McpInterceptorGatewayTests
         var caps = fixture.ProxyClient.ServerCapabilities;
         Assert.NotNull(caps?.Extensions);
         Assert.True(caps!.Extensions!.ContainsKey("interceptors"));
+        Assert.True(caps.Extensions.ContainsKey("com.example/backend"));
 #pragma warning restore MCPEXP001
     }
 

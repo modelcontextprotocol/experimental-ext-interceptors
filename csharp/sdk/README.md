@@ -130,7 +130,7 @@ gateway.RegisterNotificationForwarding(server);
 await server.RunAsync();
 ```
 
-The proxy automatically mirrors the backend's capabilities (tools, prompts, resources, completions, logging) and forwards `*_list_changed` notifications. Multiple interceptor clients can be chained — they execute in order, each receiving the previous client's mutated payload.
+The proxy mirrors the backend's advertised capability graph and forwards `*_list_changed` notifications for the supported list surfaces. Multiple interceptor clients can be chained — they execute in order, each receiving the previous client's mutated payload.
 
 **With DI / builder pattern:**
 
