@@ -71,6 +71,12 @@ Changes:
 3. Keep `InterceptorChainRunner` and related chain semantics shared
 4. Centralize interceptor extension capability key handling behind one internal constant/provider
 
+Current implementation note:
+
+1. Transparent proxy wiring lives in `GatewayProxyConfigurator`
+2. SEP bridge wiring lives in `GatewayInterceptorProtocolBridge`
+3. The extension capability key is centralized in `InterceptorProtocolConstants`
+
 Expected result:
 
 1. Transparent proxy and SEP bridge can evolve independently

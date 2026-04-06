@@ -896,7 +896,7 @@ public class McpInterceptorGatewayTests
     /// Creates an in-memory test fixture with a backend server, interceptor server, and proxy server,
     /// all connected via anonymous pipes.
     /// </summary>
-    private sealed class GatewayTestFixture : IAsyncDisposable
+    internal sealed class GatewayTestFixture : IAsyncDisposable
     {
         private readonly List<IAsyncDisposable> _disposables;
 
@@ -1142,6 +1142,12 @@ public class McpInterceptorGatewayTests
                 throw;
             }
         }
+
+        internal static async Task<(McpServer server, McpClient client)> CreateServerClientPairForTesting(
+            string name,
+            Action<McpServerOptions> configure,
+            Action<string>? onRegisterNotificationHandler = null) =>
+            await CreateServerClientPair(name, configure, onRegisterNotificationHandler);
 
         private static async Task<(McpServer server, McpClient client)> CreateServerClientPair(
             string name,

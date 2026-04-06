@@ -190,7 +190,7 @@ internal sealed class InterceptorServerOptionsSetup : IConfigureOptions<McpServe
         {
             SupportedEvents = allEvents.ToList(),
         };
-        options.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+        options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
             capability, InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
     }
