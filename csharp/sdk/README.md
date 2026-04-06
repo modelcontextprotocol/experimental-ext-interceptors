@@ -145,6 +145,19 @@ builder.Services.AddMcpServer()
 
 The builder extension handles notification forwarding automatically, registering once per session for multi-connection transports (HTTP) and once for single-connection transports (stdio).
 
+You can also configure the gateway from DI using a service-provider-based overload:
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithInterceptorGateway(sp => new McpInterceptorGatewayOptions
+    {
+        BackendClient = sp.GetRequiredService<BackendMcpClientHolder>().Client,
+        InterceptorClients = [sp.GetRequiredService<InterceptorMcpClientHolder>().Client],
+    });
+```
+
+Internally, the builder path wires notification forwarding once per logical connection. Current transports may expose a session identifier, but that is treated as an implementation detail rather than a public architectural concept.
+
 To expose the SEP interceptor protocol through the gateway as an advanced mode, set:
 
 ```csharp

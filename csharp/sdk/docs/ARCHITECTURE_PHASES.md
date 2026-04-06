@@ -111,6 +111,12 @@ Acceptance criteria:
 2. A service-provider-based configuration path exists
 3. Notification forwarding logic is isolated from proxy handler registration
 
+Current implementation note:
+
+1. Builder DI now supports both direct options and `Func<IServiceProvider, McpInterceptorGatewayOptions>`
+2. Connection-bound forwarding registration lives in `GatewayConnectionForwardingRegistrar`
+3. Transport session identifiers are only used as an internal deduplication mechanism where available
+
 ## Phase 5: Follow-Up Cleanup
 
 Goal: tighten API roles after the bigger structural changes are done.

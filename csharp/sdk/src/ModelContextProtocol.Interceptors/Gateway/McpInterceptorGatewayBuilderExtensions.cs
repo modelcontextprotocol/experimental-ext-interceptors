@@ -33,11 +33,26 @@ public static class McpInterceptorGatewayBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(options);
 
-        var gateway = new McpInterceptorGateway(options);
+        return builder.WithInterceptorGateway(_ => options);
+    }
 
-        builder.Services.AddSingleton(gateway);
-        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>>(
-            new GatewayServerOptionsSetup(gateway));
+    /// <summary>
+    /// Configures the MCP server as a transparent interceptor gateway using options
+    /// resolved from the application's service provider.
+    /// </summary>
+    /// <param name="builder">The server builder.</param>
+    /// <param name="optionsFactory">Creates the gateway options from the service provider.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static IMcpServerBuilder WithInterceptorGateway(
+        this IMcpServerBuilder builder,
+        Func<IServiceProvider, McpInterceptorGatewayOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+
+        builder.Services.AddSingleton(optionsFactory);
+        builder.Services.AddSingleton(sp => new McpInterceptorGateway(sp.GetRequiredService<McpInterceptorGatewayOptions>()));
+        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>, GatewayServerOptionsSetup>();
 
         return builder;
     }
@@ -45,50 +60,18 @@ public static class McpInterceptorGatewayBuilderExtensions
     private sealed class GatewayServerOptionsSetup : IConfigureOptions<McpServerOptions>
     {
         private readonly McpInterceptorGateway _gateway;
+        private readonly GatewayConnectionForwardingRegistrar _forwardingRegistrar;
 
         internal GatewayServerOptionsSetup(McpInterceptorGateway gateway)
         {
             _gateway = gateway;
+            _forwardingRegistrar = new GatewayConnectionForwardingRegistrar(gateway);
         }
 
         public void Configure(McpServerOptions options)
         {
             _gateway.ConfigureServerOptions(options);
-
-            // Wire notification forwarding lazily via an incoming message filter.
-            // Deduplicate by stable session identity when available. `context.Server`
-            // is a destination-bound wrapper created per message, so reference identity
-            // would re-register on every request.
-            var registeredSessionIds = new HashSet<string>(StringComparer.Ordinal);
-            var registeredFallback = 0;
-            options.Filters.Message.IncomingFilters.Add(next =>
-            {
-                return async (context, ct) =>
-                {
-                    var registered = false;
-
-                    lock (registeredSessionIds)
-                    {
-                        if (context.Server.SessionId is { Length: > 0 } sessionId)
-                        {
-                            registered = registeredSessionIds.Add(sessionId);
-                        }
-                        else if (Interlocked.CompareExchange(ref registeredFallback, 1, 0) == 0)
-                        {
-                            // Non-session transports (for example stdio/stream) have a single
-                            // logical connection, so register only once.
-                            registered = true;
-                        }
-                    }
-
-                    if (registered)
-                    {
-                        _gateway.RegisterNotificationForwarding(context.Server);
-                    }
-
-                    await next(context, ct);
-                };
-            });
+            _forwardingRegistrar.Configure(options);
         }
     }
 }

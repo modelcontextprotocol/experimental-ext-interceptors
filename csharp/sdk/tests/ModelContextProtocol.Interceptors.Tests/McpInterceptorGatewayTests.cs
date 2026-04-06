@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Collections;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
@@ -660,6 +661,36 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
+    public async Task WithInterceptorGateway_ServiceProviderFactoryOverloadConfiguresGateway()
+    {
+        await using var fixture = await GatewayTestFixture.CreateWithBuilderGatewayFactoryAsync(
+            backendConfigure: options =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = request.Params!.Name }],
+                    });
+            },
+            exposeInterceptorProtocol: true);
+
+#pragma warning disable MCPEXP001
+        Assert.True(fixture.ProxyClient.ServerCapabilities.Extensions?.ContainsKey(InterceptorProtocolConstants.ExtensionCapabilityKey) ?? false);
+#pragma warning restore MCPEXP001
+
+        var tools = await fixture.ProxyClient.ListToolsAsync();
+        Assert.Single(tools);
+        Assert.Equal("echo", tools[0].Name);
+    }
+
+    [Fact]
     public async Task ListPromptsAsync_ProxiesToBackend()
     {
         await using var fixture = await GatewayTestFixture.CreateAsync(
@@ -948,7 +979,7 @@ public class McpInterceptorGatewayTests
                         options.Capabilities ??= new();
 #pragma warning disable MCPEXP001
                         options.Capabilities.Extensions ??= new Dictionary<string, object>();
-                        options.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+                        options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                             new InterceptorsCapability { SupportedEvents = allEvents.ToList() },
                             InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
@@ -1027,7 +1058,7 @@ public class McpInterceptorGatewayTests
                             options.Capabilities ??= new();
 #pragma warning disable MCPEXP001
                             options.Capabilities.Extensions ??= new Dictionary<string, object>();
-                            options.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+                            options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                                 new InterceptorsCapability { SupportedEvents = allEvents.ToList() },
                                 InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
@@ -1093,7 +1124,7 @@ public class McpInterceptorGatewayTests
                         options.Capabilities ??= new();
 #pragma warning disable MCPEXP001
                         options.Capabilities.Extensions ??= new Dictionary<string, object>();
-                        options.Capabilities.Extensions["interceptors"] = JsonSerializer.SerializeToElement(
+                        options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                             new InterceptorsCapability { SupportedEvents = [] },
                             InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
@@ -1110,14 +1141,98 @@ public class McpInterceptorGatewayTests
                         ExposeInterceptorProtocol = exposeInterceptorProtocol,
                     });
 
+                var optionsDescriptor = services.Single(d => d.ServiceType == typeof(McpInterceptorGatewayOptions));
+                var gatewayOptions = optionsDescriptor.ImplementationFactory is not null
+                    ? (McpInterceptorGatewayOptions)optionsDescriptor.ImplementationFactory(EmptyServiceProvider.Instance)!
+                    : optionsDescriptor.ImplementationInstance as McpInterceptorGatewayOptions
+                        ?? throw new InvalidOperationException("Gateway options were not registered.");
+                var gateway = new McpInterceptorGateway(gatewayOptions);
+                disposables.Add(gateway);
+
                 var serverOptions = new McpServerOptions();
-                foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IConfigureOptions<McpServerOptions>)))
-                {
-                    if (descriptor.ImplementationInstance is IConfigureOptions<McpServerOptions> configure)
+                new TestGatewayServerOptionsSetup(gateway).Configure(serverOptions);
+                var (proxyServer, proxyClient) = await CreateServerClientPair(
+                    "test-proxy",
+                    options =>
                     {
-                        configure.Configure(serverOptions);
-                    }
+                        options.ServerInfo = serverOptions.ServerInfo;
+                        options.Capabilities = serverOptions.Capabilities;
+                        options.Handlers = serverOptions.Handlers;
+                        options.Filters = serverOptions.Filters;
+                    });
+                disposables.Add(proxyServer);
+                disposables.Add(proxyClient);
+
+                return new GatewayTestFixture(proxyClient, disposables);
+            }
+            catch
+            {
+                foreach (var d in disposables)
+                {
+                    await d.DisposeAsync();
                 }
+
+                throw;
+            }
+        }
+
+        public static async Task<GatewayTestFixture> CreateWithBuilderGatewayFactoryAsync(
+            Action<McpServerOptions> backendConfigure,
+            bool exposeInterceptorProtocol = false)
+        {
+            var disposables = new List<IAsyncDisposable>();
+
+            try
+            {
+                var (backendServer, backendClient) = await CreateServerClientPair(
+                    "test-backend",
+                    backendConfigure);
+                disposables.Add(backendServer);
+                disposables.Add(backendClient);
+
+                var (interceptorServer, interceptorClient) = await CreateServerClientPair(
+                    "test-interceptors",
+                    options =>
+                    {
+                        var collection = new McpServerPrimitiveCollection<McpServerInterceptor>();
+                        var filter = new InterceptorMessageFilter(collection);
+                        options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
+
+                        options.Capabilities ??= new();
+#pragma warning disable MCPEXP001
+                        options.Capabilities.Extensions ??= new Dictionary<string, object>();
+                        options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
+                            new InterceptorsCapability { SupportedEvents = [] },
+                            InterceptorJsonUtilities.DefaultOptions);
+#pragma warning restore MCPEXP001
+                    });
+                disposables.Add(interceptorServer);
+                disposables.Add(interceptorClient);
+
+                var services = new ServiceCollection();
+                services.AddSingleton(new NamedClient("backend", backendClient));
+                services.AddSingleton(new NamedClient("interceptor", interceptorClient));
+                services.AddMcpServer()
+                    .WithInterceptorGateway(sp => new McpInterceptorGatewayOptions
+                    {
+                        BackendClient = sp.GetServices<NamedClient>().Single(c => c.Name == "backend").Client,
+                        InterceptorClients = [sp.GetServices<NamedClient>().Single(c => c.Name == "interceptor").Client],
+                        ExposeInterceptorProtocol = exposeInterceptorProtocol,
+                    });
+
+                var serviceProvider = new TestServiceProvider(
+                    new NamedClient("backend", backendClient),
+                    new NamedClient("interceptor", interceptorClient));
+                var optionsDescriptor = services.Single(d => d.ServiceType == typeof(McpInterceptorGatewayOptions));
+                var serverOptions = new McpServerOptions();
+                var gatewayOptions = optionsDescriptor.ImplementationFactory is not null
+                    ? (McpInterceptorGatewayOptions)optionsDescriptor.ImplementationFactory(serviceProvider)!
+                    : optionsDescriptor.ImplementationInstance as McpInterceptorGatewayOptions
+                        ?? throw new InvalidOperationException("Gateway options were not registered.");
+                var gateway = new McpInterceptorGateway(gatewayOptions);
+                disposables.Add(gateway);
+                new TestGatewayServerOptionsSetup(gateway).Configure(serverOptions);
+
                 var (proxyServer, proxyClient) = await CreateServerClientPair(
                     "test-proxy",
                     options =>
@@ -1219,6 +1334,51 @@ public class McpInterceptorGatewayTests
                 inner.SendMessageAsync(message, cancellationToken);
             public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default) =>
                 inner.SendRequestAsync(request, cancellationToken);
+        }
+
+        private sealed record NamedClient(string Name, McpClient Client);
+
+        private sealed class EmptyServiceProvider : IServiceProvider
+        {
+            internal static EmptyServiceProvider Instance { get; } = new();
+
+            public object? GetService(Type serviceType) => null;
+        }
+
+        private sealed class TestGatewayServerOptionsSetup(McpInterceptorGateway gateway) : IConfigureOptions<McpServerOptions>
+        {
+            private readonly GatewayConnectionForwardingRegistrar _forwardingRegistrar = new(gateway);
+
+            public void Configure(McpServerOptions options)
+            {
+                gateway.ConfigureServerOptions(options);
+                _forwardingRegistrar.Configure(options);
+            }
+        }
+
+        private sealed class TestServiceProvider(params NamedClient[] clients) : IServiceProvider
+        {
+            private readonly NamedClient[] _clients = clients;
+
+            public object? GetService(Type serviceType)
+            {
+                if (serviceType == typeof(IEnumerable<NamedClient>))
+                {
+                    return _clients;
+                }
+
+                if (serviceType == typeof(NamedClient[]))
+                {
+                    return _clients;
+                }
+
+                if (serviceType == typeof(IEnumerable))
+                {
+                    return _clients;
+                }
+
+                return null;
+            }
         }
 
     }
