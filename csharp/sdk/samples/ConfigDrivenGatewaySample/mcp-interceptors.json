@@ -1,0 +1,32 @@
+{
+  "serverInfo": {
+    "name": "config-driven-interceptor-proxy",
+    "version": "1.0.0"
+  },
+  "backend": {
+    "transport": "stdio",
+    "name": "EverythingServer",
+    "command": "npx",
+    "arguments": ["-y", "@modelcontextprotocol/server-everything"]
+  },
+  "staticInterceptors": [
+    {
+      "transport": "stdio",
+      "name": "SecurityInterceptorServer",
+      "command": "dotnet",
+      "arguments": ["run", "--project", "../InterceptorServerSample"]
+    }
+  ],
+  "dynamicInterceptors": {
+    "alice": [
+      {
+        "connectionId": "alice-observability",
+        "transport": "stdio",
+        "name": "AliceInterceptorServer",
+        "command": "dotnet",
+        "arguments": ["run", "--project", "../InterceptorServerSample"]
+      }
+    ]
+  },
+  "interceptedEvents": ["tools/call"]
+}
