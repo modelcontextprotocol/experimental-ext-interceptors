@@ -6,7 +6,7 @@ C# implementation of gateway-level interceptors from [SEP-1763](https://github.c
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 52 tests across 4 files
+dotnet test    # 66 tests across the interceptor test project
 ```
 
 ## Key architectural constraints
@@ -54,13 +54,17 @@ Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
 
 ## Transparent gateway/proxy (`Gateway/`)
 
-**`McpInterceptorGateway`**: Configures an `McpServer` as a transparent proxy. Reads backend `ServerCapabilities`, registers handler delegates (`CallToolHandler`, `ListToolsHandler`, etc.) that route through `InterceptorChainRunner` before forwarding to the backend. To connecting clients, the proxy appears to be the backend server.
+**`McpInterceptorGateway`**: Configures an `McpServer` as a transparent proxy. Reads backend `ServerCapabilities`, registers handler delegates (`CallToolHandler`, `ListToolsHandler`, etc.) that route through interceptor chains before forwarding to the backend. By default the gateway is transparent-only; SEP passthrough is opt-in via `ExposeInterceptorProtocol = true`. To connecting clients, the proxy appears to be the backend server.
 
 **`InterceptorChainRunner`** (internal): Shared interception logic used by both `InterceptingMcpClient` and `McpInterceptorGateway`. Supports multiple interceptor clients executed sequentially — each client's `ExecuteChainAsync` receives the mutated payload from the previous one.
 
-**`McpInterceptorGatewayOptions`**: Configuration — `BackendClient`, `InterceptorClients` (ordered), `Events` filter, `TimeoutMs`, `DefaultContext`, optional `ServerInfo` override.
+**Gateway split**: `GatewayProxyConfigurator` owns transparent MCP proxy wiring, `GatewayInterceptorProtocolBridge` owns optional SEP passthrough wiring, and `GatewayConnectionForwardingRegistrar` owns connection-bound notification forwarding registration.
 
-**Builder extension**: `IMcpServerBuilder.WithInterceptorGateway(options)` for DI/builder scenarios.
+**`McpInterceptorGatewayOptions`**: Configuration — `BackendClient`, optional preconnected `InterceptorClients`, optional external `InterceptorServerConnections`, optional dynamic `InterceptorServerConnectionResolver`, `Events` filter, `TimeoutMs`, `DefaultContext`, optional `ServerInfo` override, and `ExposeInterceptorProtocol`.
+
+**External interceptor connections**: `McpInterceptorGateway.CreateAsync(...)` can create interceptor clients from standard SDK transports (`IClientTransport`) via `McpInterceptorServerConnectionOptions`. Dynamic per-request transparent resolution is supported via `InterceptorServerConnectionResolver` using the SDK's `MessageContext` plus SEP event name.
+
+**Builder extension**: `IMcpServerBuilder.WithInterceptorGateway(options)` and `WithInterceptorGateway(Func<IServiceProvider, McpInterceptorGatewayOptions>)` for DI/builder scenarios. Builder-based wiring still expects already-connected interceptor clients; async external transport setup should use `McpInterceptorGateway.CreateAsync(...)`.
 
 **Notification forwarding**: `gateway.RegisterNotificationForwarding(proxyServer)` subscribes to backend `tools/list_changed`, `prompts/list_changed`, `resources/list_changed` and re-sends through the proxy.
 
@@ -92,3 +96,4 @@ Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
 - `InterceptorClientSample` — client API: list, invoke, execute chain directly
 - `GatewayChainSample` — chained gateways: security layer → logging layer → server
 - `TransparentProxySample` — stdio proxy server: clients connect to it as if it were the backend, all requests routed through interceptors
+- `ConfigDrivenGatewaySample` — sample-only config-driven host composed from the gateway primitives; demonstrates static and dynamic external interceptor resolution with transport-configured backend/interceptor clients
