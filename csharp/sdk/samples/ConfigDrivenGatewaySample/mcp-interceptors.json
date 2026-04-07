@@ -4,27 +4,24 @@
     "version": "1.0.0"
   },
   "backend": {
-    "transport": "stdio",
+    "transport": "http",
     "name": "EverythingServer",
-    "command": "npx",
-    "arguments": ["-y", "@modelcontextprotocol/server-everything"]
+    "endpoint": "http://localhost:3001/mcp"
   },
   "staticInterceptors": [
     {
-      "transport": "stdio",
+      "transport": "http",
       "name": "SecurityInterceptorServer",
-      "command": "dotnet",
-      "arguments": ["run", "--project", "../InterceptorServerSample"]
+      "endpoint": "http://localhost:3002/mcp"
     }
   ],
   "dynamicInterceptors": {
     "alice": [
       {
         "connectionId": "alice-observability",
-        "transport": "stdio",
+        "transport": "http",
         "name": "AliceInterceptorServer",
-        "command": "dotnet",
-        "arguments": ["run", "--project", "../InterceptorServerSample"]
+        "endpoint": "http://localhost:3003/mcp"
       }
     ]
   },

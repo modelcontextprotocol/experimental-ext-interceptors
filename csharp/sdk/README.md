@@ -216,7 +216,9 @@ Internally, the builder path wires notification forwarding once per logical conn
 
 The builder-based gateway configuration currently expects already-connected interceptor clients. External interceptor server connections that need async transport setup should use `McpInterceptorGateway.CreateAsync(...)`.
 
-If you want to see how these primitives can be composed into a config-driven host without the library defining a config format, see `samples/ConfigDrivenGatewaySample`. The JSON schema in that sample is sample-only.
+If you want to see how these primitives can be composed into a config-driven host without the library defining a config format, see `samples/ConfigDrivenGatewaySample`. The sample shows transport-agnostic outbound connectivity for backend/interceptor servers (including Streamable HTTP). Its JSON schema is sample-only.
+
+If you want to host the gateway itself over Streamable HTTP instead of stdio, compose `McpInterceptorGateway` with the core SDK's ASP.NET transport support (`AddMcpServer().WithHttpTransport()` and `MapMcp()`).
 
 To expose the SEP interceptor protocol through the gateway as an advanced mode, set:
 

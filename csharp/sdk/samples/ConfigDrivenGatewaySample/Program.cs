@@ -14,10 +14,14 @@ using ModelContextProtocol.Server;
 // The core library does not prescribe a config schema.
 //
 // Features demonstrated:
-//   1. Backend client created from a transport config
+//   1. Backend client created from transport config (stdio or streamable-http)
 //   2. Static external interceptor servers via CreateAsync(...)
 //   3. Dynamic per-request interceptor resolution via MessageContext
-//   4. Transparent stdio proxy surface for downstream MCP clients
+//   4. Transparent proxy surface for downstream MCP clients (stdio in this sample)
+//
+// To host the gateway itself over Streamable HTTP, compose the same gateway
+// primitives with the core SDK's ASP.NET transport support
+// (AddMcpServer().WithHttpTransport(), then MapMcp()).
 // ──────────────────────────────────────────────────────────────────────
 
 var configPath = Path.Combine(GetSourceDir(), "mcp-interceptors.json");
@@ -75,8 +79,14 @@ static IClientTransport CreateTransport(TransportConfig config)
         "stdio" => new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = config.Name,
-            Command = config.Command,
+            Command = config.Command ?? throw new InvalidOperationException("Command is required for stdio transport."),
             Arguments = config.Arguments,
+        }),
+        "http" => new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Name = config.Name,
+            Endpoint = config.Endpoint ?? throw new InvalidOperationException("HTTP endpoint is required for streamable-http transport."),
+            TransportMode = HttpTransportMode.StreamableHttp,
         }),
         _ => throw new NotSupportedException($"Unsupported transport '{config.Transport}' in sample."),
     };
@@ -107,7 +117,8 @@ internal sealed class TransportConfig
 {
     public required string Transport { get; set; }
     public required string Name { get; set; }
-    public required string Command { get; set; }
+    public string? Command { get; set; }
     public IList<string> Arguments { get; set; } = [];
+    public Uri? Endpoint { get; set; }
     public string? ConnectionId { get; set; }
 }
