@@ -34,6 +34,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     private readonly McpInterceptorGatewayOptions _options;
     private readonly IReadOnlyList<McpClient> _interceptorClients;
     private readonly List<IAsyncDisposable> _ownedClients = new();
+    private readonly GatewayInterceptorClientProvider _interceptorClientProvider;
     private readonly GatewayProxyConfigurator _proxyConfigurator;
     private readonly GatewayInterceptorProtocolBridge _protocolBridge;
     private readonly List<IAsyncDisposable> _notificationRegistrations = new();
@@ -47,20 +48,35 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options.BackendClient);
 
         _interceptorClients = GetConfiguredInterceptorClients(options);
-        if (_interceptorClients.Count == 0)
+        if (options.ExposeInterceptorProtocol && options.InterceptorServerConnectionResolver is not null)
         {
-            throw new ArgumentException("At least one interceptor client is required.", nameof(options));
+            throw new ArgumentException(
+                $"{nameof(McpInterceptorGatewayOptions.InterceptorServerConnectionResolver)} is only supported for the transparent proxy path. " +
+                $"Disable {nameof(McpInterceptorGatewayOptions.ExposeInterceptorProtocol)} or provide static interceptor clients for SEP passthrough.",
+                nameof(options));
+        }
+
+        if (_interceptorClients.Count == 0 && options.InterceptorServerConnectionResolver is null)
+        {
+            throw new ArgumentException(
+                $"At least one of {nameof(McpInterceptorGatewayOptions.InterceptorClients)}, {nameof(McpInterceptorGatewayOptions.InterceptorServerConnections)}, " +
+                $"or {nameof(McpInterceptorGatewayOptions.InterceptorServerConnectionResolver)} is required.",
+                nameof(options));
         }
 
         _options = options;
-        var chainRunner = new InterceptorChainRunner(
+        var jsonOptions = InterceptorJsonUtilities.DefaultOptions;
+        _interceptorClientProvider = new GatewayInterceptorClientProvider(
             _interceptorClients,
+            options.InterceptorServerConnectionResolver);
+
+        _proxyConfigurator = new GatewayProxyConfigurator(
+            options.BackendClient,
+            _interceptorClientProvider,
             options.Events,
             options.TimeoutMs,
-            options.DefaultContext);
-        var jsonOptions = InterceptorJsonUtilities.DefaultOptions;
-
-        _proxyConfigurator = new GatewayProxyConfigurator(options.BackendClient, chainRunner, jsonOptions);
+            options.DefaultContext,
+            jsonOptions);
         _protocolBridge = new GatewayInterceptorProtocolBridge(_interceptorClients, jsonOptions);
     }
 
@@ -69,21 +85,36 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.BackendClient);
 
-        if (interceptorClients.Count == 0)
+        if (options.ExposeInterceptorProtocol && options.InterceptorServerConnectionResolver is not null)
         {
-            throw new ArgumentException("At least one interceptor client is required.", nameof(interceptorClients));
+            throw new ArgumentException(
+                $"{nameof(McpInterceptorGatewayOptions.InterceptorServerConnectionResolver)} is only supported for the transparent proxy path. " +
+                $"Disable {nameof(McpInterceptorGatewayOptions.ExposeInterceptorProtocol)} or provide static interceptor clients for SEP passthrough.",
+                nameof(options));
+        }
+
+        if (interceptorClients.Count == 0 && options.InterceptorServerConnectionResolver is null)
+        {
+            throw new ArgumentException(
+                $"At least one of {nameof(McpInterceptorGatewayOptions.InterceptorClients)}, {nameof(McpInterceptorGatewayOptions.InterceptorServerConnections)}, " +
+                $"or {nameof(McpInterceptorGatewayOptions.InterceptorServerConnectionResolver)} is required.",
+                nameof(options));
         }
 
         _options = options;
         _interceptorClients = interceptorClients;
-        var chainRunner = new InterceptorChainRunner(
+        var jsonOptions = InterceptorJsonUtilities.DefaultOptions;
+        _interceptorClientProvider = new GatewayInterceptorClientProvider(
             interceptorClients,
+            options.InterceptorServerConnectionResolver);
+
+        _proxyConfigurator = new GatewayProxyConfigurator(
+            options.BackendClient,
+            _interceptorClientProvider,
             options.Events,
             options.TimeoutMs,
-            options.DefaultContext);
-        var jsonOptions = InterceptorJsonUtilities.DefaultOptions;
-
-        _proxyConfigurator = new GatewayProxyConfigurator(options.BackendClient, chainRunner, jsonOptions);
+            options.DefaultContext,
+            jsonOptions);
         _protocolBridge = new GatewayInterceptorProtocolBridge(interceptorClients, jsonOptions);
     }
 
@@ -221,6 +252,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         }
 
         _ownedClients.Clear();
+        await _interceptorClientProvider.DisposeAsync();
     }
 
     private void AddNotificationRegistration(IAsyncDisposable registration)

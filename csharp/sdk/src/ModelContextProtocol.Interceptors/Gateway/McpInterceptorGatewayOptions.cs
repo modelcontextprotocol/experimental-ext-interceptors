@@ -1,6 +1,7 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Protocol;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Interceptors.Gateway;
 
@@ -25,6 +26,15 @@ public sealed class McpInterceptorGatewayOptions
     /// when this property is populated.
     /// </summary>
     public IReadOnlyList<McpInterceptorServerConnectionOptions>? InterceptorServerConnections { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional dynamic resolver for external interceptor server connections used by the
+    /// transparent proxy path. This enables per-request interceptor selection based on the existing SDK
+    /// <see cref="MessageContext"/> and SEP event name.
+    /// Resolved connections are appended after any statically configured <see cref="InterceptorClients"/>.
+    /// SEP passthrough exposure is not supported with this resolver.
+    /// </summary>
+    public Func<MessageContext, string, CancellationToken, ValueTask<IReadOnlyList<McpInterceptorServerConnectionOptions>>>? InterceptorServerConnectionResolver { get; set; }
 
     /// <summary>
     /// Gets or sets the event types to intercept. When null or empty, all events are intercepted.

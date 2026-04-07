@@ -10,6 +10,12 @@ namespace ModelContextProtocol.Interceptors.Gateway;
 public sealed class McpInterceptorServerConnectionOptions
 {
     /// <summary>
+    /// Gets or sets an optional stable identifier for reusing a connected interceptor client across requests.
+    /// When omitted, the gateway creates and disposes a client for each resolution.
+    /// </summary>
+    public string? ConnectionId { get; set; }
+
+    /// <summary>
     /// Gets or sets the client transport used to connect to the external interceptor server.
     /// </summary>
     public required IClientTransport Transport { get; set; }

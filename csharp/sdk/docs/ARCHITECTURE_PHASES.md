@@ -157,7 +157,8 @@ Current implementation note:
 
 1. `McpInterceptorGateway.CreateAsync(...)` now supports static external interceptor connections via `McpInterceptorServerConnectionOptions`
 2. Those connections use the same transport-driven pattern as `McpClient.CreateAsync(...)`
-3. Dynamic per-request or per-identity interceptor resolution is not implemented yet
+3. Dynamic per-request interceptor resolution is now supported for the transparent proxy path via `InterceptorServerConnectionResolver`
+4. SEP passthrough still requires statically configured interceptor clients
 
 ## Open Design Notes
 

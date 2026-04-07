@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.IO.Pipes;
+using System.Security.Claims;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Gateway;
@@ -52,10 +53,13 @@ public class GatewayComponentsTests
                 new ValueTask<CallToolResult>(new CallToolResult());
         });
 
-        var chainRunner = new InterceptorChainRunner([fixture.InterceptorClient]);
+        var provider = new GatewayInterceptorClientProvider([fixture.InterceptorClient], connectionResolver: null);
         var configurator = new GatewayProxyConfigurator(
             fixture.BackendClient,
-            chainRunner,
+            provider,
+            events: null,
+            timeoutMs: null,
+            defaultContext: null,
             InterceptorJsonUtilities.DefaultOptions);
 
         var serverOptions = new McpServerOptions();
@@ -64,6 +68,8 @@ public class GatewayComponentsTests
         Assert.NotSame(fixture.BackendClient.ServerCapabilities, serverOptions.Capabilities);
         Assert.NotNull(serverOptions.Capabilities?.Experimental);
         Assert.True(serverOptions.Capabilities!.Experimental!.ContainsKey("com.example/test"));
+
+        await provider.DisposeAsync();
     }
 
     [Fact]
@@ -111,6 +117,90 @@ public class GatewayComponentsTests
             }));
 
         Assert.Contains(nameof(McpInterceptorGateway.CreateAsync), exception.Message);
+    }
+
+    [Fact]
+    public async Task GatewayInterceptorClientProvider_ResolvesConnectionsFromMessageContext()
+    {
+        await using var fixture = await GatewayComponentFixture.CreateAsync();
+
+        var provider = new GatewayInterceptorClientProvider(
+            staticClients: [],
+            connectionResolver: (context, @event, ct) =>
+            {
+                var userName = context.User?.Identity?.Name;
+                return ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>(
+                    @event == InterceptorEvents.ToolsCall && userName == "alice"
+                        ?
+                        [
+                            new McpInterceptorServerConnectionOptions
+                            {
+                                ConnectionId = "alice",
+                                Transport = fixture.CreateInterceptorTransport(),
+                            },
+                        ]
+                        : []);
+            });
+
+        var message = new JsonRpcRequest
+        {
+            Method = RequestMethods.ToolsCall,
+            Id = new RequestId(1),
+            Params = JsonSerializer.SerializeToNode(new CallToolRequestParams { Name = "echo" }),
+            Context = new JsonRpcMessageContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "alice")], authenticationType: "test")),
+            },
+        };
+        var context = new MessageContext(NullMcpServer.Instance, message);
+
+        await using var resolved = await provider.ResolveAsync(context, InterceptorEvents.ToolsCall, CancellationToken.None);
+
+        Assert.Single(resolved.Clients);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task McpInterceptorGateway_SupportsResolverOnlyTransparentMode()
+    {
+        await using var fixture = await GatewayComponentFixture.CreateAsync();
+
+        await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOptions
+        {
+            BackendClient = fixture.BackendClient,
+            InterceptorServerConnectionResolver = (context, @event, ct) =>
+                ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>(
+                    @event == InterceptorEvents.ToolsCall
+                        ?
+                        [
+                            new McpInterceptorServerConnectionOptions
+                            {
+                                Transport = fixture.CreateInterceptorTransport(),
+                            },
+                        ]
+                        : []),
+        });
+
+        var serverOptions = new McpServerOptions();
+        gateway.ConfigureServerOptions(serverOptions);
+
+        Assert.NotNull(serverOptions.Handlers.CallToolHandler);
+    }
+
+    [Fact]
+    public void McpInterceptorGateway_RejectsDynamicResolverWhenSepPassthroughEnabled()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new McpInterceptorGateway(new McpInterceptorGatewayOptions
+            {
+                BackendClient = NullMcpClient.Instance,
+                InterceptorClients = [NullMcpClient.Instance],
+                ExposeInterceptorProtocol = true,
+                InterceptorServerConnectionResolver = (context, @event, ct) =>
+                    ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>([]),
+            }));
+
+        Assert.Contains(nameof(McpInterceptorGatewayOptions.InterceptorServerConnectionResolver), exception.Message);
     }
 
     private sealed class GatewayComponentFixture : IAsyncDisposable
@@ -250,6 +340,26 @@ public class GatewayComponentsTests
 
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+#pragma warning disable MCPEXP002
+    private sealed class NullMcpServer : McpServer
+#pragma warning restore MCPEXP002
+    {
+        internal static NullMcpServer Instance { get; } = new();
+
+        public override string? SessionId => null;
+        public override string? NegotiatedProtocolVersion => null;
+        public override ClientCapabilities? ClientCapabilities => null;
+        public override Implementation? ClientInfo => null;
+        public override McpServerOptions ServerOptions => new();
+        public override IServiceProvider? Services => null;
+        public override LoggingLevel? LoggingLevel => null;
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) => throw new NotSupportedException();
+        public override Task RunAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
 #pragma warning disable MCPEXP002
