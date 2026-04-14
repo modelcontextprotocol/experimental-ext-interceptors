@@ -10,7 +10,7 @@ number:	1763
 --
 # Interceptor Framework for Model Context Protocol
 
-## 1. Preamble
+## Preamble
 
 **Title:** Interceptor Framework for Model Context Protocol
 
@@ -20,11 +20,11 @@ number:	1763
 
 **Authors:** @sambhav
 
-## 2. Abstract
+## Abstract
 
 This SEP proposes an interceptor framework for the Model Context Protocol (MCP) that allows context operations to be intercepted, validated, and transformed at key points in the agentic lifecycle. It introduces a new MCP primitive for operations that shape agent context, including MCP-defined operations such as tool invocations, resource access, and prompt handling, as well as other well defined context operations with a standardized interface. Like other MCP primitives, interceptors are deployed as MCP servers and can be invoked by both clients and servers. The framework defines two types of interceptors, validators, which check context and return a pass/fail decision, and mutators, which transform context and return a modified payload. Interceptors follow a deterministic, trust-boundary-aware execution model and are discoverable and invockable  through MCP's existing JSON-RPC patterns.
 
-## 3. Motivation
+## Motivation
 
 **The Problem: A Sprawling Ecosystem Without Reusability**
 
@@ -132,19 +132,19 @@ These limitations become critical in enterprise deployments where:
 
 An interceptor framework addresses these needs by providing standardized extension points that maintain MCP's design principles while enabling powerful cross-cutting functionality and solving the ecosystem's reusability challenge.
 
-## 4. Specification
+## Specification
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
-### 4.1. Interceptor
+### Interceptor
 
-> A **Context Operation** is any operation that shapes, accesses, or modifies agentic context, such as tool invocations (which add results to context), resource access (which add content to context), prompt handling (which provide context templates), and skills (which orchestrate context).
+> **Defination:**  a **Context Operation** is any operation that shapes, accesses, or modifies agentic context, such as tool invocations (which add results to context), resource access (which add content to context), prompt handling (which provide context templates), and skills (which orchestrate context).
 
-An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable (`interceptors/list`), invocable (`interceptor/invoke`), and hosted on MCP servers (called MCP Interceptor Servers).
+An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable, and hosted on MCP servers.
 
-Interceptors come in two types: **Validators** (see [Section 4.1.3](#413-validator)) and **Mutators** (see [Section 4.1.4](#414-mutator)). 
+Interceptors come in two types: **Validators** (see [Validator](#validator)) and **Mutators** (see [Mutator](#mutator)). 
 
-> **How do Interceptors Differ from Tools?**
+> **Important: How do Interceptors Differ from Tools?**
 >
 > Tools and interceptors have fundamentally different invocation models:
 >
@@ -153,10 +153,8 @@ Interceptors come in two types: **Validators** (see [Section 4.1.3](#413-validat
 > | **Invoked by** | LLM (non-deterministic) | Invoked on specific Lifecycle Events (deterministic) |
 > | **Result handling** | Automatically added to LLM context | Returned to invoker (client, server, or agent harness) who then decides what to do with it. |
 > | **Purpose** | Extend agent capabilities | Govern context operations |
->
-> This deterministic invocation model enables guaranteed enforcement of safety invariants, as the framework, not the LLM, controls when and how context governance occurs.
 
-#### 4.1.1. Interface
+#### Interface
 
 ```typescript
 interface Interceptor {
@@ -271,13 +269,17 @@ interface Interceptor {
 }
 ```
 
-#### 4.1.2. Hooks
+#### Hooks
 
-> A **Lifecycle Event** is an occurrence during a Context Operation, a specific moment when a context operation is initiated (request phase) or completed (response phase). Examples include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.
+> **Defination**: A **Lifecycle Event** is an occurrence during a Context Operation, a specific moment when a context operation is initiated (request phase) or completed (response phase). 
+> 
+> Example of MCP Lifecycle events include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.  
 
-**Hooks** define which lifecycle events trigger an interceptor's invocation. The `hook` object in the interceptor definition declares the lifecycle events (`hook.events`, e.g., `tools/call`, `resources/read`) and the phase (`hook.phase`: request, response, or both) that MUST cause the interceptor to be invoked.
 
-The following interception events are defined by this specification. This list is not an exhaustive—implementations MAY define additional interception events for custom or non-MCP context operations.
+**Hooks** define which lifecycle events trigger an interceptor's invocation. The `hook` object in the interceptor definition declares the  set of lifecycle events (`hook.events`, e.g., `tools/call`, `resources/read`) and the phase (`hook.phase`: request, response, or both) where this interceptor will be invoked. 
+
+
+The following interception events are defined by this specification. This list is NOT  exhaustive, implementations MAY define additional interception events for custom or non-MCP context operations.
 
 ```typescript
 type InterceptionEvent =
@@ -310,21 +312,24 @@ type InterceptionPhase = "request" | "response" | "both";
 ```
 
 **Wildcards:**
-- `"*"` — Matches all lifecycle events on all phases. Interceptors that hook into `"*"` MUST be invoked for every event.
-- `"*/request"` — Matches all lifecycle events on the request phase only.
-- `"*/response"` — Matches all lifecycle events on the response phase only.
+- `"*"`:  Matches all lifecycle events on all phases. Interceptors that hook into `"*"` MUST be invoked for every event.
+- `"*/request"`:  Matches all lifecycle events on the request phase only.
+- `"*/response"`: Matches all lifecycle events on the response phase only.
 
 Implementations MAY support additional wildcard patterns, such as namespace wildcards (e.g., `"tools/*"` to match all tool events, `"resources/*"` to match all resource events). Custom wildcard patterns SHOULD follow glob-style conventions.
 
 > **Note:** When a wildcard is used in `hook.events`, the `hook.phase` field is still respected. For example, `hook: { events: ["*"], phase: "request" }` is equivalent to `hook: { events: ["*/request"], phase: "request" }`.
 
-**Custom Events:** Implementations MAY extend the set of interception events beyond those defined in this specification. Custom events SHOULD follow the `namespace/operation` naming convention (e.g., `"custom/myOperation"`) and MUST provide a standardized payload.
+**Custom Lifecycle Events** 
 
-#### 4.1.3. Validator
+Implementations MAY extend the set of interception events beyond those defined in this specification. Custom events SHOULD follow the `namespace/operation` naming convention (e.g., `"custom/myOperation"`).
 
-A **Validator** is defined as strictly non-mutating interceptor that inspects a context operation and returns a structured decision about whether the operation proceed. Validators MUST NOT modify the payload. 
+#### Validator
 
-Common use cases of include:
+A **Validator** is defined as strictly non-mutating interceptor that inspects a context operation and returns a structured decision. Validators MUST NOT modify the payload. 
+
+
+Common use cases of Validators include:
 
 - **As Governance Checks (guardrails)**: 
     - PII detection, 
@@ -334,9 +339,7 @@ Common use cases of include:
     - JSON schema validation, 
     - Code compilation checks, 
 
-When invoked (see [Section 4.2.2](#422-interceptor-invocation)), a validator receives the event payload and MUST return a `ValidationResult`.
-
-See [Section 4.3](#43-execution-model) for validator execution semantics.
+When invoked a validator receives the event payload and MUST return a `ValidationResult`.
 
 **ValidationResult:**
 
@@ -351,13 +354,13 @@ interface ValidationResult {
 
   // Validation-specific fields
   valid: boolean;                         // Overall validation outcome
-  severity?: "info" | "warn" | "error";  // Only "error" blocks execution
+  severity?: "info" | "warn" | "error";  
   messages?: Array<{
     path?: string;                        // JSON path to the offending field
     message: string;                      // Human-readable explanation
     severity: "info" | "warn" | "error";
   }>;
-  suggestions?: Array<{                  // Optional corrections
+  suggestions?: Array<{                   // Optional corrections
     path: string;
     value: unknown;
   }>;
@@ -369,7 +372,9 @@ interface ValidationResult {
 }
 ```
 
-#### 4.1.4. Mutator
+See [Exuection Model](execution-model) for validator execution semantics.
+
+#### Mutator
 
 A **Mutator** is a transformation interceptor that modifies context as it flows through the system. Mutators MAY change payloads to enforce policies, sanitize data, or enrich context.
 
@@ -384,9 +389,7 @@ Common use cases include:
   - Context Augmentation
   - Prompt template injection
 
-When invoked (see [Section 4.2.2](#422-interceptor-invocation)), a mutator receives the event payload and MUST return a `MutationResult` 
-
-See [Section 4.3](#43-execution-model) for mutator execution semantics (sequential execution, atomicity, audit mode behavior).
+When invoked a mutator receives the event payload and MUST return a `MutationResult` 
 
 **MutationResult:**
 
@@ -405,9 +408,11 @@ interface MutationResult {
 }
 ```
 
-### 4.2. JSON-RPC Methods
+See [Execution-Model](#execution-model) for mutator execution semantics.
 
-#### 4.2.1. Interceptor Discovery
+### JSON-RPC Methods
+
+#### Interceptor Discovery
 
 **Request:**
 ```typescript
@@ -418,8 +423,6 @@ interface MutationResult {
   params?: {
     // Optional filter by event 
     event?: InterceptionEvent;
-    // Optional filter by phase
-    phase?: string;
   }
 }
 ```
@@ -583,7 +586,7 @@ interface MutationResult {
 }
 ```
 
-#### 4.2.2. Interceptor Invocation
+#### Interceptor Invocation
 
 **Request for Validation:**
 ```typescript
@@ -697,7 +700,7 @@ interface MutationResult {
 ```
 
 
-#### 4.2.3. Interceptor Chain Execution
+#### Interceptor Chain Execution
 
 **Request:**
 ```typescript
@@ -723,7 +726,7 @@ interface MutationResult {
     config?: Record<string, Record<string, unknown>>;
     // Optional: timeout for entire chain
     timeoutMs?: number;
-    // Optional: context passed to all interceptor
+    // Optional: context passed to all interceptors
     context?: {
       principal?: {
         type: "user" | "service" | "anonymous";
@@ -824,7 +827,7 @@ interface MutationResult {
 }
 ```
 
-The `interceptor/executeChain` method executes the full interceptor chain for a lifecycle event and phase, handling ordering, parallel execution, and aggregation automatically. **This is an optional convenience helper, not required by MCP.** Implementations can choose to use individual `interceptor/invoke` calls if they prefer explicit control. The helper method obeys negotiated capabilities and protocol versions per the MCP Lifecycle initialization.
+The `interceptor/executeChain` method executes the full interceptor chain for a lifecycle event and phase, handling ordering, parallel execution, and aggregation automatically. **This is an optional convenience helper, not required by the spec.** Implementations can choose to use individual `interceptor/invoke` calls if they prefer explicit control. The helper method obeys negotiated capabilities and protocol versions per the MCP Lifecycle initialization.
 
 This is the recommended way to invoke interceptor as it:
 
@@ -835,7 +838,7 @@ This is the recommended way to invoke interceptor as it:
 - Provides detailed execution metrics and validation summaries
 - Simplifies client/server implementation
 
-#### 4.2.4. Error Handling
+#### Error Handling
 
 Interceptor invocation errors follow standard JSON-RPC error format:
 
@@ -854,9 +857,9 @@ Interceptor invocation errors follow standard JSON-RPC error format:
 }
 ```
 
-### 4.3. Execution Model
+### Execution Model
 
-#### 4.3.1. Interceptor Chain
+#### Interceptor Chain
 
 Multiple interceptors MAY be chained for given set of events and a phase. The execution model follow a **Trust-Boundary-Aware Pattern** where validation acts as a security gate.
 
@@ -1016,7 +1019,7 @@ Interceptor chains MUST handle errors based on type:
 - **failOpen: true**: If an interceptor fails (crash/timeout), the message MUST be allowed to proceed.
 - **failOpen: false** (default): If an interceptor fails, the message MUST be blocked.
 
-#### 4.3.2. Priority Resolution
+#### Priority Resolution
 
 When ordering mutations, the invoker resolves phase-specific priorities:
 
@@ -1068,7 +1071,7 @@ Different interceptors MAY need different priorities for request vs response pha
 }
 ```
 
-#### 4.3.3. Sequence Diagrams
+#### Sequence Diagrams
 
 **Client-Side Interceptor Invocation:**
 
@@ -1232,7 +1235,7 @@ sequenceDiagram
     Note over App,Tool: Validation guards both sides of trust boundary
 ```
 
-### 4.4. Interceptor Server Capabilities
+### Interceptor Server Capabilities
 
 During initialization, servers declare interceptor support:
 
@@ -1257,7 +1260,7 @@ During initialization, servers declare interceptor support:
 }
 ```
 
-### 4.5. Configuration and Context
+### Configuration and Context
 
 Interceptor may receive configuration and context:
 
@@ -1329,9 +1332,9 @@ When `timeoutMs` is specified:
 }
 ```
 
-### 4.6. Future Enhancements
+### Future Enhancements
 
-#### 4.6.1. Context Propagation and Interceptor State (Future)
+#### Context Propagation and Interceptor State (Future)
 
 **Status**: Reserved for future specification
 
@@ -1467,9 +1470,9 @@ interface MutationResult extends BaseInterceptorResult {
 
 This feature would be opt-in and backward compatible, with interceptor that don't support context enrichment working unchanged.
 
-## 5. Rationale
+## Rationale
 
-### 5.1. Design Decisions
+### Design Decisions
 
 **1. Separation of Validation and Mutation**
 
@@ -1506,30 +1509,7 @@ Mutations declare `priorityHint` (default: 0) which can differ by phase. Benefit
 
 Alternative (global fixed ordering) rejected as too rigid for phase-aware operations like compression/decompression.
 
-**4. Failure Routing (failOpen)**
-
-Interceptors support configurable failure routing via the `failOpen` field (default: false). The semantics differ based on execution mode:
-
-**Enforce Mode:**
-- `failOpen: false` (fail-closed): If interceptor crashes/times out → **block the message**
-- `failOpen: true` (fail-open): If interceptor fails → **allow the message to proceed**
-
-**Audit Mode:**
-- `failOpen: false`: If interceptor fails → **log failure, mark chain as failed**, but message proceeds
-- `failOpen: true`: If interceptor fails → **log failure as warning**, message proceeds
-
-**Note:** In audit mode, the message itself *always* proceeds (audit mode never blocks execution). `failOpen` controls whether audit failures are treated as errors vs warnings in the result.
-
-This enables operators to balance security vs availability based on criticality:
-- Security-critical interceptors (PII redaction, injection detection): `mode: "enforce"`, `failOpen: false`
-- Observability interceptors (logging, metrics): `mode: "audit"`, `failOpen: true`
-- Testing new validators safely: `mode: "audit"`, `failOpen: false` (to surface errors without blocking)
-
-Following Kubernetes admission controller patterns, these two concerns are orthogonal - execution mode (enforce/audit) and failure policy (fail-open/fail-closed) are independent configuration dimensions.
-
-Alternative (single global policy) rejected as too inflexible - different interceptors have different risk profiles.
-
-**5. Other Design Choices**
+**4. Other Design Choices**
 
 - **Hook-Based Targeting**: Interceptors declare specific hooks (vs. all traffic) for performance and security
 - **Severity Levels** (info/warn/error): Graduated response vs. binary pass/fail enables audit logging without blocking
@@ -1538,7 +1518,7 @@ Alternative (single global policy) rejected as too inflexible - different interc
 - **"info" Field**: Used instead of "metadata" to avoid confusion with MCP's `_meta` protocol metadata
 - **Cross-Boundary Support**: Client and server interceptors enable defense-in-depth and zero-trust architecture
 
-### 5.2. Related Work and Inspiration
+### Related Work and Inspiration
 
 **Inspired By:**
 - **Kubernetes Admission Controllers**: Validation/mutation webhooks (MCP uses replace vs. patch for simplicity)
@@ -1550,7 +1530,7 @@ Alternative (single global policy) rejected as too inflexible - different interc
 - Adds validation/mutation capabilities to sampling, tools, prompts, and resources
 - Enables parameter validation, access control, and content filtering across all MCP features
 
-## 6. Backward Compatibility
+## Backward Compatibility
 
 This SEP is fully backward compatible:
 
@@ -1564,9 +1544,9 @@ This SEP is fully backward compatible:
 
 5. **Version Negotiation**: The existing protocol version negotiation during initialization SHOULD be used to discover interceptor support.
 
-## 7. Security Implications
+## Security Implications
 
-### 7.1. Threat Model
+### Threat Model
 
 **1. Malicious Interceptor**
 
@@ -1631,7 +1611,7 @@ Interceptor mutation could be used to inject unauthorized operations:
 - Immutable fields should be enforced at protocol level
 - Audit all mutations that touch security-sensitive fields
 
-### 7.2. Security Best Practices
+### Security Best Practices
 
 1. **Principle of Least Privilege**: Interceptors SHOULD only have access to the data they need to process
 
@@ -1647,7 +1627,7 @@ Interceptor mutation could be used to inject unauthorized operations:
 
 7. **Isolation**: Untrusted interceptors SHOULD be run in sandboxed environments
 
-### 7.3. Compliance Considerations
+### Compliance Considerations
 
 Interceptors enable compliance with:
 - **GDPR**: PII detection and redaction
@@ -1660,15 +1640,15 @@ However, organizations MUST ensure:
 - Audit trails are tamper-proof
 - Data retention policies apply to interceptor logs
 
-## 8. Reference Implementation
+## Reference Implementation
 
 The reference implementation will provide:
 
-### 8.1. Multi-Language SDKs
+### Multi-Language SDKs
 
 SDK libraries for writing and running interceptors in various languages, including Python, TypeScript/JavaScript, Go and other community-contributed languages. These SDKs will provide base classes, helpers, and patterns for building validation and mutation interceptors, with built-in support for audit mode operation.
 
-### 8.2. Common Interceptor Sidecar
+### Common Interceptor Sidecar
 
 A universal interceptor runtime that enables teams to deploy and manage interceptors without modifying individual MCP servers. The sidecar acts as an MCP proxy that loads custom interceptors (both local and remote) via configuration and injects interceptor invocations transparently.
 
@@ -1718,7 +1698,7 @@ routing:
 This approach enables platform teams to deploy guardrails across all services from a central control plane without code changes to existing MCP servers.
 
 
-## 9. Acknowledgments
+## Acknowledgments
 
 This proposal draws inspiration from:
 - [Kubernetes Admission Controllers](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/)
