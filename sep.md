@@ -86,7 +86,8 @@ Interceptors provide a standardized execution model with clear semantics for:
 - Validation severity levels (info, warn, error)
 - Error handling and propagation
 
-**Technical Gaps Addressed**
+
+#### *Technical Gaps Addressed**
 
 The current MCP specification lacks a standardized mechanism for:
 
@@ -104,7 +105,7 @@ These limitations become critical in enterprise deployments where:
 - Security policies require validation of inputs and outputs
 - Performance monitoring requires instrumentation across protocol operations
 
-**Ecosystem Benefits**
+#### **Ecosystem Benefits**
 
 **For Platform Teams**
 
@@ -138,7 +139,12 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ### Interceptor
 
-> **Defination:**  a **Context Operation** is any operation that shapes, accesses, or modifies agentic context, such as tool invocations (which add results to context), resource access (which add content to context), prompt handling (which provide context templates), and skills (which orchestrate context).
+> **Definition:**  a **Context Operation** is any operation that shapes, accesses, or modifies agentic context, such as tool invocations (which add results to context), resource access (which add content to context), prompt handling (which provide context templates), and skills (which orchestrate context).
+
+> **Definition**: a **Lifecycle Event** is an occurrence during a Context Operation, a specific moment when a context operation is initiated (request phase) or completed (response phase). 
+> 
+> Example of MCP Lifecycle events include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.  
+
 
 An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable, and hosted on MCP servers.
 
@@ -271,10 +277,6 @@ interface Interceptor {
 
 #### Hooks
 
-> **Defination**: A **Lifecycle Event** is an occurrence during a Context Operation, a specific moment when a context operation is initiated (request phase) or completed (response phase). 
-> 
-> Example of MCP Lifecycle events include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.  
-
 
 **Hooks** define which lifecycle events trigger an interceptor's invocation. The `hook` object in the interceptor definition declares the  set of lifecycle events (`hook.events`, e.g., `tools/call`, `resources/read`) and the phase (`hook.phase`: request, response, or both) where this interceptor will be invoked. 
 
@@ -316,13 +318,12 @@ type InterceptionPhase = "request" | "response" | "both";
 - `"*/request"`:  Matches all lifecycle events on the request phase only.
 - `"*/response"`: Matches all lifecycle events on the response phase only.
 
+When a wildcard is used in `hook.events`, the `hook.phase` field is still respected. For example, `hook: { events: ["*"], phase: "request" }` is equivalent to `hook: { events: ["*/request"], phase: "request" }`.
+
+
 Implementations MAY support additional wildcard patterns, such as namespace wildcards (e.g., `"tools/*"` to match all tool events, `"resources/*"` to match all resource events). Custom wildcard patterns SHOULD follow glob-style conventions.
 
-> **Note:** When a wildcard is used in `hook.events`, the `hook.phase` field is still respected. For example, `hook: { events: ["*"], phase: "request" }` is equivalent to `hook: { events: ["*/request"], phase: "request" }`.
-
-**Custom Lifecycle Events** 
-
-Implementations MAY extend the set of interception events beyond those defined in this specification. Custom events SHOULD follow the `namespace/operation` naming convention (e.g., `"custom/myOperation"`).
+Implementations MAY extend the set of interceptable lifecycle events beyond those defined in this specification. Custom events SHOULD follow the `namespace/operation` naming convention (e.g., `"custom/myOperation"`).
 
 #### Validator
 
@@ -568,7 +569,7 @@ See [Execution-Model](#execution-model) for mutator execution semantics.
           phase: "both"
         },
         mode: "audit",
-        failOpen: true,  // Fail-open: allow messages if logger fails (availability over completeness)
+        failOpen: true,
         configSchema: {
           type: "object",
           properties: {
@@ -596,7 +597,7 @@ See [Execution-Model](#execution-model) for mutator execution semantics.
   method: "interceptor/invoke",
   params: {
     name: "parameter-validator",
-    hook: "tools/call",
+    event: "tools/call",
     phase: "request",
     payload: {
       // Original request content
@@ -658,7 +659,7 @@ See [Execution-Model](#execution-model) for mutator execution semantics.
   method: "interceptor/invoke",
   params: {
     name: "content-filter",
-    hook: "llm/completion",
+    event: "llm/completion",
     phase: "request",
     payload: {
       // LLM completion request (following common format)
@@ -709,7 +710,7 @@ See [Execution-Model](#execution-model) for mutator execution semantics.
   id: 5,
   method: "interceptor/executeChain",
   params: {
-    hook: "tools/call",
+    event: "tools/call",
     phase: "request",
     payload: {
       method: "tools/call",
@@ -753,7 +754,7 @@ See [Execution-Model](#execution-model) for mutator execution semantics.
     /**
      * Lifecycle event (hook) and phase for this chain
      */
-    hook: "tools/call",
+    event: "tools/call",
     phase: "request",
     
     /**
@@ -827,7 +828,9 @@ See [Execution-Model](#execution-model) for mutator execution semantics.
 }
 ```
 
-The `interceptor/executeChain` method executes the full interceptor chain for a lifecycle event and phase, handling ordering, parallel execution, and aggregation automatically. **This is an optional convenience helper, not required by the spec.** Implementations can choose to use individual `interceptor/invoke` calls if they prefer explicit control. The helper method obeys negotiated capabilities and protocol versions per the MCP Lifecycle initialization.
+The `interceptor/executeChain` method executes the full interceptor chain for a given Lifecycle Event and phase, handling ordering, parallel execution, and aggregation automatically
+
+**This is an optional convenience helper, not required by the spec.** Implementations can choose to use individual `interceptor/invoke` calls if they prefer explicit control. The helper method obeys negotiated capabilities and protocol versions per the MCP Lifecycle initialization.
 
 This is the recommended way to invoke interceptor as it:
 
@@ -859,9 +862,7 @@ Interceptor invocation errors follow standard JSON-RPC error format:
 
 ### Execution Model
 
-#### Interceptor Chain
-
-Multiple interceptors MAY be chained for given set of events and a phase. The execution model follow a **Trust-Boundary-Aware Pattern** where validation acts as a security gate.
+The execution model follows a **Trust-Boundary-Aware Pattern** where validation acts as a security gate.
 
 **Trust Boundary Execution Pattern**
 
@@ -881,7 +882,12 @@ Receive → Validate (parallel) → Mutate (sequential)
 - Validations MUST run first as a security barrier (can block)
 - Mutations MUST run only after all validations pass
 
-Implementations MUST follow this trust-boundary-aware ordering to ensure validation guards every boundary crossing.
+
+Implementations MUST follow this trust-boundary-aware ordering when executing interceptors to ensure validation guards every boundary crossing. 
+
+
+This execution model MUST be followed irrespective of whether implementations invoke interceptors individually via `interceptor/invoke` or via the convenience helper, `interceptor/exuecteChain` which manages the invocation chain
+
 
 **Interceptor Type Behaviors**
 
@@ -896,7 +902,7 @@ Key semantics:
 - Only validations with `severity: "error"` MUST block execution
 - Interceptors in audit mode MUST NOT block execution regardless of results
 
-**4. Example Interceptor Chain**
+**Example Interceptor Chain**
 
 For a `tools/call` event, assume the following interceptor are available:
 
@@ -1247,8 +1253,8 @@ During initialization, servers declare interceptor support:
     protocolVersion: "2024-11-05",
     capabilities: {
       interceptor?: {
-        // Hooks this server's interceptor can handle
-        supportedHooks: InterceptionEvent[];
+        // Events this server's interceptor can handle
+        supportedEvents: InterceptionEvent[];
       },
       // ...existing capabilities
     },
@@ -1267,7 +1273,7 @@ Interceptor may receive configuration and context:
 ```typescript
 interface InterceptorInvocationParams {
   name: string;
-  hook: InterceptionEvent;
+  event: InterceptionEvent;
   phase: "request" | "response";
   payload: unknown;
   
@@ -1705,6 +1711,3 @@ This proposal draws inspiration from:
 - [gRPC interceptors](https://grpc.io/docs/guides/interceptors/) - particularly context propagation concepts ([Section 4.6.1](#461-context-propagation-and-interceptor-state-future))
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/) and [W3C Baggage](https://www.w3.org/TR/baggage/) specifications for distributed tracing
 - The MCP community's discussions on extensibility and security
-
-
-
