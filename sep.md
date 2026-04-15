@@ -2,10 +2,6 @@ title:	SEP-1763: Interceptors for Model Context Protocol
 state:	OPEN
 author:	sambhav
 labels:	proposal, SEP
-comments:	33
-assignees:	
-projects:	
-milestone:	
 number:	1763
 --
 # Interceptor Framework for Model Context Protocol
