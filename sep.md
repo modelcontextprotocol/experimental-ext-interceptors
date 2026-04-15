@@ -139,7 +139,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ### Interceptor
 
-> **Definition:**  a **Context Operation** is any operation that shapes, accesses, or modifies agentic context, such as tool invocations (which add results to context), resource access (which add content to context), prompt handling (which provide context templates), and skills (which orchestrate context).
+> **Definition:** a **Context Operation** is any operation that shapes, accesses, or modifies agentic context, such as tool invocations (which add results to context), resource access (which add content to context), prompt handling (which provide context templates), and skills (which orchestrate context).
 
 > **Definition**: a **Lifecycle Event** is an occurrence during a Context Operation, a specific moment when a context operation is initiated (request phase) or completed (response phase). 
 > 
@@ -886,7 +886,7 @@ Receive → Validate (parallel) → Mutate (sequential)
 Implementations MUST follow this trust-boundary-aware ordering when executing interceptors to ensure validation guards every boundary crossing. 
 
 
-This execution model MUST be followed irrespective of whether implementations invoke interceptors individually via `interceptor/invoke` or via the convenience helper, `interceptor/exuecteChain` which manages the invocation chain
+This execution model MUST be followed irrespective of whether implementations invoke interceptors individually via `interceptor/invoke` or via the convenience helper `interceptor/executeChain`.
 
 
 **Interceptor Type Behaviors**
