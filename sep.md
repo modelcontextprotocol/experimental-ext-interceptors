@@ -143,7 +143,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 > **Definition**: a **Lifecycle Event** is an occurrence during a Context Operation, a specific moment when a context operation is initiated (request phase) or completed (response phase). 
 > 
-> Example of MCP Lifecycle events include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.  
+> Example of MCP Lifecycle Events include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.  
 
 
 An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable, and hosted on MCP servers.
@@ -185,11 +185,11 @@ interface Interceptor {
   type: "validation" | "mutation";
 
   /**
-   * Hook: defines which lifecycle events and phase trigger this interceptor
+   * Hook: defines which Lifecycle Events and phase trigger this interceptor
    */
   hook: {
     /**
-     * List of Lifecycle events this interceptor hooks into
+     * List of Lifecycle Events this interceptor hooks into
      */
     events: InterceptionEvent[];
 
@@ -278,7 +278,7 @@ interface Interceptor {
 #### Hooks
 
 
-**Hooks** define which lifecycle events trigger an interceptor's invocation. The `hook` object in the interceptor definition declares the  set of lifecycle events (`hook.events`, e.g., `tools/call`, `resources/read`) and the phase (`hook.phase`: request, response, or both) where this interceptor will be invoked. 
+**Hooks** define which Lifecycle Events trigger an interceptor's invocation. The `hook` object in the interceptor definition declares the  set of Lifecycle Events (`hook.events`, e.g., `tools/call`, `resources/read`) and the phase (`hook.phase`: request, response, or both) where this interceptor will be invoked. 
 
 
 The following interception events are defined by this specification. This list is NOT  exhaustive, implementations MAY define additional interception events for custom or non-MCP context operations.
@@ -314,16 +314,16 @@ type InterceptionPhase = "request" | "response" | "both";
 ```
 
 **Wildcards:**
-- `"*"`:  Matches all lifecycle events on all phases. Interceptors that hook into `"*"` MUST be invoked for every event.
-- `"*/request"`:  Matches all lifecycle events on the request phase only.
-- `"*/response"`: Matches all lifecycle events on the response phase only.
+- `"*"`:  Matches all Lifecycle Events on all phases. Interceptors that hook into `"*"` MUST be invoked for every event.
+- `"*/request"`:  Matches all Lifecycle Events on the request phase only.
+- `"*/response"`: Matches all Lifecycle Events on the response phase only.
 
 When a wildcard is used in `hook.events`, the `hook.phase` field is still respected. For example, `hook: { events: ["*"], phase: "request" }` is equivalent to `hook: { events: ["*/request"], phase: "request" }`.
 
 
 Implementations MAY support additional wildcard patterns, such as namespace wildcards (e.g., `"tools/*"` to match all tool events, `"resources/*"` to match all resource events). Custom wildcard patterns SHOULD follow glob-style conventions.
 
-Implementations MAY extend the set of interceptable lifecycle events beyond those defined in this specification. Custom events SHOULD follow the `namespace/operation` naming convention (e.g., `"custom/myOperation"`).
+Implementations MAY extend the set of interceptable Lifecycle Events beyond those defined in this specification. Custom events SHOULD follow the `namespace/operation` naming convention (e.g., `"custom/myOperation"`).
 
 #### Validator
 
