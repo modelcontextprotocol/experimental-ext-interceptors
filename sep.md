@@ -18,7 +18,7 @@ number:	1763
 
 ## Abstract
 
-This SEP proposes an interceptor framework for the Model Context Protocol (MCP) that allows context operations to be intercepted, validated, and transformed at key points in the agentic lifecycle. It introduces a new MCP primitive for operations that shape agent context, including MCP-defined operations such as tool invocations, resource access, and prompt handling, as well as other well defined context operations with a standardized interface. Like other MCP primitives, interceptors are deployed as MCP servers and can be invoked by both clients and servers. The framework defines two types of interceptors, validators, which check context and return a pass/fail decision, and mutators, which transform context and return a modified payload. Interceptors follow a deterministic, trust-boundary-aware execution model and are discoverable and invockable  through MCP's existing JSON-RPC patterns.
+This SEP proposes an interceptor framework for the Model Context Protocol (MCP) that allows context operations to be intercepted, validated, and transformed at key points in the agentic lifecycle. It introduces a new MCP primitive for operations that shape agent context, including MCP-defined operations such as tool invocations, resource access, and prompt handling, as well as other well defined context operations with a standardized interface. Like other MCP primitives, interceptors are deployed as MCP servers and can be invoked by both clients and servers. The framework defines two types of interceptors, validators, which check context and return a pass/fail decision, and mutators, which transform context and return a modified payload. Interceptors follow a deterministic, trust-boundary-aware execution model and are discoverable and invocable through MCP's existing JSON-RPC patterns.
 
 ## Motivation
 
@@ -41,7 +41,7 @@ This SEP proposes standardizing interceptors in the same plug-and-play fashion t
 - **Servers** expose interceptors through a standardized interface once
 - **Platform teams** can deploy interceptors across all compatible clients and servers
 
-#### Key Advantages
+### Key Advantages
 
 **1. Plug-and-Play Simplicity**
 
@@ -83,7 +83,7 @@ Interceptors provide a standardized execution model with clear semantics for:
 - Error handling and propagation
 
 
-#### Technical Gaps Addressed
+### Technical Gaps Addressed
 
 The current MCP specification lacks a standardized mechanism for:
 
@@ -101,7 +101,7 @@ These limitations become critical in enterprise deployments where:
 - Security policies require validation of inputs and outputs
 - Performance monitoring requires instrumentation across protocol operations
 
-#### **Ecosystem Benefits**
+### Ecosystem Benefits
 
 **For Platform Teams**
 
@@ -365,7 +365,7 @@ interface ValidationResult {
 }
 ```
 
-See [Exuection Model](execution-model) for validator execution semantics.
+See [Execution Model](#execution-model) for validator execution semantics.
 
 #### Mutator
 
@@ -401,7 +401,7 @@ interface MutationResult {
 }
 ```
 
-See [Execution-Model](#execution-model) for mutator execution semantics.
+See [Execution Model](#execution-model) for mutator execution semantics.
 
 ### JSON-RPC Methods
 
@@ -1248,20 +1248,20 @@ For a `tools/call` event, assume the following interceptor are available:
   {
     name: "schema-validator",
     type: "validation",
-    hook: { events: ["tools/call"], phase: "request" }
+    hook: { events: ["tools/call"], phase: "request" },
     // No priorityHint - runs in parallel with other validators
   },
   {
     name: "parameter-validator",
     type: "validation",
-    hook: { events: ["tools/call"], phase: "request" }
+    hook: { events: ["tools/call"], phase: "request" },
     // No priorityHint - runs in parallel
   },
   {
     name: "audit-logger",
     type: "validation",
     hook: { events: ["*"], phase: "both" },
-    mode: "audit"
+    mode: "audit",
     // No priorityHint - runs in parallel with other validators
     // Audit mode means violations logged but don't block
   }
@@ -1398,16 +1398,20 @@ interface InterceptorChainContext {
 
 **Interceptor State Enrichment:**
 
-Mutation and validation interceptor could optionally return context updates:
+Mutation and validation interceptors could optionally return context updates:
 
 ```typescript
-// FUTURE: Interceptor result with context enrichment
-interface MutationResult extends BaseInterceptorResult {
+// FUTURE: MutationResult extended with context enrichment
+interface MutationResult {
+  interceptor: string;
   type: "mutation";
+  phase: "request" | "response";
+  durationMs?: number;
+  info?: Record<string, unknown>;
   modified: boolean;
   payload: unknown;
-  
-  // Optional: Updates to propagate to downstream interceptor
+
+  // Optional: Updates to propagate to downstream interceptors
   contextUpdates?: {
     interceptorState?: Record<string, unknown>;
     baggage?: Record<string, string>;
@@ -1556,7 +1560,7 @@ This SEP is fully backward compatible:
 
 1. **Optional Capability**: Interceptors are an OPTIONAL server capability. Servers without interceptor support MUST continue to work unchanged.
 
-2. **No Protocol Changes**: Existing JSON-RPC methods MUST NOT be modified. Interceptors add new methods (`interceptor/list`, `interceptor/invoke`) without changing existing ones.
+2. **No Protocol Changes**: Existing JSON-RPC methods MUST NOT be modified. Interceptors add new methods (`interceptors/list`, `interceptors/invoke`) without changing existing ones.
 
 3. **Client Compatibility**: Clients that do not support interceptors MUST be able to communicate with interceptor-enabled servers. Interceptors MAY run transparently on the server side.
 
@@ -1699,18 +1703,18 @@ interceptors:
   - name: rate-limiter
     type: validation
     transport: local
-    comamnd: ./interceptors/rate-limiter.js
+    command: ./interceptors/rate-limiter.js
     args: []
     config:
       requests_per_minute: 100
 
 routing:
   # Apply interceptors to specific lifecycle event types
-  tools.call:
+  tools/call:
     request: [rate-limiter, security-scanner]
     response: [pii-redactor]
-  
-  llm.chatCompletion:
+
+  llm/completion:
     request: [security-scanner]
     response: [pii-redactor]
 ```
@@ -1722,6 +1726,6 @@ This approach enables platform teams to deploy guardrails across all services fr
 
 This proposal draws inspiration from:
 - [Kubernetes Admission Controllers](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/)
-- [gRPC interceptors](https://grpc.io/docs/guides/interceptors/) - particularly context propagation concepts ([Section 4.6.1](#461-context-propagation-and-interceptor-state-future))
+- [gRPC interceptors](https://grpc.io/docs/guides/interceptors/) - particularly context propagation concepts ([Context Propagation](#context-propagation-and-interceptor-state-future))
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/) and [W3C Baggage](https://www.w3.org/TR/baggage/) specifications for distributed tracing
 - The MCP community's discussions on extensibility and security
