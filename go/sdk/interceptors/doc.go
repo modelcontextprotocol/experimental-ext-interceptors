@@ -2,53 +2,44 @@
 // Use of this source code is governed by an Apache-2.0
 // license that can be found in the LICENSE file.
 
-// Package interceptors provides a protocol-agnostic validation and
-// mutation middleware framework. It defines interceptor types
-// ([Validator], [Mutator]), the chain engine ([Chain]), and all
-// supporting types needed to build interceptor pipelines for any
-// server protocol.
+// Package interceptors defines the core types for the MCP interceptor
+// framework: interceptor descriptors ([Validator], [Mutator]), wire
+// protocol types ([InvokeParams], [InvokeResult]), result types
+// ([ValidationResult], [MutationResult]), and supporting enums.
 //
-// This package has no dependency on MCP or any specific transport.
-// For MCP-specific integration (wrapping an [mcp.Server] with
-// middleware), see the [interceptors/mcpserver] sub-package.
+// This package is transport-agnostic — it has no dependency on the
+// MCP SDK's server or client types. The chain orchestrator lives in
+// the [interceptors/chain] sub-package, MCP server integration in
+// [interceptors/mcpserver], and middleware in
+// [interceptors/integrations/gomiddleware].
 //
-// # Standalone Usage (any protocol)
+// # Usage with MCP
 //
-// Create a [Chain], register interceptors, and call
-// [Chain.ExecuteForReceiving] or [Chain.ExecuteForSending] from your
-// server's request/response pipeline:
+// Create an interceptor [mcpserver.Server], register interceptors,
+// then use [mcpserver.Server.LocalChain] to get a chain for
+// middleware:
 //
-//	chain := interceptors.NewChain(
-//	    interceptors.WithChainLogger(logger),
+//	srv := mcpserver.NewServer(mcpServer)
+//	srv.AddInterceptor(myValidator)
+//	srv.AddInterceptor(myMutator)
+//
+//	chain, err := srv.LocalChain(ctx)
+//	mcpServer.AddReceivingMiddleware(
+//	    gomiddleware.Middleware(chain),
 //	)
-//	chain.Add(myValidator)
-//	chain.Add(myMutator)
-//
-//	// In your request handler:
-//	inv := &interceptors.Invocation{
-//	    Event:   "tools/call",
-//	    Phase:   interceptors.PhaseRequest,
-//	    Payload: typedParams,
-//	}
-//	cr, err := chain.ExecuteForReceiving(ctx, inv)
-//	if err != nil { ... }
-//	if cr != nil && len(cr.AbortedAt) > 0 {
-//	    // handle abort
-//	}
 //
 // # Validators
 //
-// A [Validator] inspects the typed payload and decides whether the
-// request or response should proceed. All validators for a given
-// event run in parallel; because they share the same [Invocation]
-// pointer, handlers MUST treat the Invocation and its Payload as
-// read-only — mutating either is a data race. If any validator in
-// enforced mode ([ModeEnforce]) returns an error-severity message, the
-// chain aborts before any mutators run. Only error-severity messages
-// cause an abort; warn and info findings are recorded in the
-// [ChainResult] but do not block the chain.
+// A [Validator] inspects the payload and decides whether the request
+// or response should proceed. All validators for a given event run
+// in parallel. If any validator in enforced mode ([ModeEnforce])
+// returns an error-severity message, the chain aborts before any
+// mutators run. Only error-severity messages cause an abort; warn
+// and info findings are recorded in the chain execution result but
+// do not block the chain.
 //
-// Type-assert the payload to its concrete type:
+// Interceptor handlers receive [json.RawMessage] payloads when
+// invoked via interceptor/invoke:
 //
 //	v := &interceptors.Validator{
 //	    Metadata: interceptors.Metadata{
@@ -60,10 +51,9 @@
 //	        Mode: interceptors.ModeEnforce,
 //	    },
 //	    Handler: func(ctx context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
-//	        params, ok := inv.Payload.(*MyRequestParams)
-//	        if !ok {
-//	            return nil, fmt.Errorf("unexpected payload type %T", inv.Payload)
-//	        }
+//	        raw := inv.Payload.(json.RawMessage)
+//	        var params struct{ Name string `json:"name"` }
+//	        json.Unmarshal(raw, &params)
 //	        // inspect params ...
 //	        return &interceptors.ValidationResult{Valid: true}, nil
 //	    },
@@ -71,14 +61,13 @@
 //
 // # Mutators
 //
-// A [Mutator] transforms the payload in place. Mutators run sequentially
-// in priority order (see [Priority]). Each mutator receives the typed
-// value and can modify it directly. If any mutator fails (and is not
+// A [Mutator] transforms the payload. Mutators run sequentially in
+// priority order (see [Priority]). Each mutator receives the payload
+// as [json.RawMessage], unmarshals it, modifies it, and sets the
+// updated JSON back on inv.Payload. If any mutator fails (and is not
 // configured with FailOpen), the chain aborts. FailOpen mutators
-// record an [ExecutionResult] (with the error captured) for
+// record an [InvokeResult] (with the error captured) for
 // observability but do not block.
-//
-// Type-assert the payload and modify the value in place:
 //
 //	m := &interceptors.Mutator{
 //	    Metadata: interceptors.Metadata{
@@ -90,12 +79,12 @@
 //	        Mode: interceptors.ModeEnforce,
 //	    },
 //	    Handler: func(ctx context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
-//	        result, ok := inv.Payload.(*MyResponseResult)
-//	        if !ok {
-//	            return nil, fmt.Errorf("unexpected payload type %T", inv.Payload)
-//	        }
-//	        // modify result in place ...
-//	        return &interceptors.MutationResult{Modified: true}, nil
+//	        raw := inv.Payload.(json.RawMessage)
+//	        var result map[string]any
+//	        json.Unmarshal(raw, &result)
+//	        // modify result ...
+//	        data, _ := json.Marshal(result)
+//	        return &interceptors.MutationResult{Modified: true, Payload: data}, nil
 //	    },
 //	}
 //
@@ -120,19 +109,18 @@
 // successful results, and a FailOpen flag that controls what happens
 // when the handler returns a Go error. These are orthogonal:
 //
-//   - [ModeEnforce]: fully enforced — validation failures block, mutations
-//     apply in place.
+//   - [ModeEnforce]: fully enforced — validation failures block,
+//     mutations are applied.
 //   - [ModeAudit]: the handler runs and results are recorded, but
-//     validation findings do not block and mutations run on a
-//     deep-copied payload so the real data is unaffected.
+//     validation findings do not block and mutated payloads are
+//     not propagated to subsequent interceptors.
 //
 // FailOpen (default false) controls crash resilience:
 //
 //   - FailOpen=false: a handler error aborts the chain. An
-//     [ExecutionResult] (with Error populated) and an [AbortInfo]
-//     are both recorded.
+//     [InvokeResult] and a [chain.AbortInfo] are both recorded.
 //   - FailOpen=true: a handler error is logged and an
-//     [ExecutionResult] is recorded, but the chain continues.
+//     [InvokeResult] is recorded, but the chain continues.
 //
 // Note that [ModeAudit] does NOT imply FailOpen. Audit mode only
 // suppresses enforcement of successful results (validation findings
@@ -149,13 +137,13 @@
 //
 //	Mode=Enforce,  FailOpen=false → error aborts, Valid=false+SeverityError aborts
 //	Mode=Enforce,  FailOpen=true  → error continues, Valid=false+SeverityError aborts
-//	ModeAudit, FailOpen=false → error aborts, findings recorded only
-//	ModeAudit, FailOpen=true  → error continues, findings recorded only
+//	Mode=Audit, FailOpen=false → error aborts, findings recorded only
+//	Mode=Audit, FailOpen=true  → error continues, findings recorded only
 //
 // Behavior matrix for mutators:
 //
-//	Mode=Enforce,  FailOpen=false → error aborts, mutations applied in place
-//	Mode=Enforce,  FailOpen=true  → error continues, mutations applied in place
-//	ModeAudit, FailOpen=false → error aborts, mutations recorded (deep copy)
-//	ModeAudit, FailOpen=true  → error continues, mutations recorded (deep copy)
+//	Mode=Enforce,  FailOpen=false → error aborts, mutations applied
+//	Mode=Enforce,  FailOpen=true  → error continues, mutations applied
+//	Mode=Audit, FailOpen=false → error aborts, mutations not propagated
+//	Mode=Audit, FailOpen=true  → error continues, mutations not propagated
 package interceptors

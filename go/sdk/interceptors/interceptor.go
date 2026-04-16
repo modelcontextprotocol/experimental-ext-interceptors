@@ -9,6 +9,14 @@ import (
 	"encoding/json"
 )
 
+// Interceptor is the common interface for all interceptors. It is implemented by both Validator and Mutator.
+type Interceptor interface {
+	GetMetadata() *Metadata
+	GetType() InterceptorType
+}
+
+// --- Enums ---
+
 // InterceptionPhase determines when an interceptor runs.
 type InterceptionPhase string
 
@@ -37,61 +45,6 @@ const (
 	TypeMutation   InterceptorType = "mutation"
 )
 
-// Priority represents an interceptor's ordering hint.
-// Can be a single value (applies to both phases) or per-phase.
-//
-// JSON representation is polymorphic: a single number when both
-// phases are equal, or {"request": N, "response": N} when they differ.
-type Priority struct {
-	Request  int
-	Response int
-}
-
-// NewPriority creates a Priority with the same value for both phases.
-func NewPriority(v int) Priority {
-	return Priority{Request: v, Response: v}
-}
-
-// Resolve returns the priority for the given phase.
-func (p Priority) Resolve(phase InterceptionPhase) int {
-	if phase == PhaseResponse {
-		return p.Response
-	}
-	return p.Request
-}
-
-// MarshalJSON implements polymorphic serialization:
-// emits a single number when both phases are equal, or an object otherwise.
-func (p Priority) MarshalJSON() ([]byte, error) {
-	if p.Request == p.Response {
-		return json.Marshal(p.Request)
-	}
-	return json.Marshal(struct {
-		Request  int `json:"request,omitempty"`
-		Response int `json:"response,omitempty"`
-	}{p.Request, p.Response})
-}
-
-// UnmarshalJSON handles both number and {request, response} forms.
-func (p *Priority) UnmarshalJSON(data []byte) error {
-	var n int
-	if err := json.Unmarshal(data, &n); err == nil {
-		p.Request = n
-		p.Response = n
-		return nil
-	}
-	var obj struct {
-		Request  int `json:"request"`
-		Response int `json:"response"`
-	}
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return err
-	}
-	p.Request = obj.Request
-	p.Response = obj.Response
-	return nil
-}
-
 // Severity represents validation message severity.
 type Severity string
 
@@ -100,6 +53,8 @@ const (
 	SeverityWarn  Severity = "warn"
 	SeverityError Severity = "error" // Only error blocks execution
 )
+
+// --- Metadata ---
 
 // Compat represents protocol version compatibility.
 type Compat struct {
@@ -127,13 +82,7 @@ type Metadata struct {
 	FailOpen     bool            `json:"failOpen,omitempty"`
 }
 
-// Interceptor is the common interface for all interceptors. It is implemented by both Validator and Mutator.
-type Interceptor interface {
-	GetMetadata() *Metadata
-	GetType() InterceptorType
-}
-
-// --- ValidatorHandler ---
+// --- Validator ---
 
 // ValidatorHandler is the function signature for validation handlers.
 //
@@ -152,7 +101,7 @@ type Validator struct {
 func (v *Validator) GetMetadata() *Metadata   { return &v.Metadata }
 func (v *Validator) GetType() InterceptorType { return TypeValidation }
 
-// --- MutatorHandler ---
+// --- Mutator ---
 
 // MutatorHandler is the function signature for raw mutation handlers.
 type MutatorHandler func(ctx context.Context, inv *Invocation) (*MutationResult, error)
@@ -165,3 +114,60 @@ type Mutator struct {
 
 func (m *Mutator) GetMetadata() *Metadata   { return &m.Metadata }
 func (m *Mutator) GetType() InterceptorType { return TypeMutation }
+
+// --- Invocation ---
+
+// Invocation is the context passed to every interceptor handler.
+type Invocation struct {
+	Event   string             // e.g. "tools/call"
+	Phase   InterceptionPhase  // "request" or "response"
+	Payload any                // The payload (json.RawMessage when invoked via interceptor/invoke)
+	Config  map[string]any     // Per-invocation config
+	Context *InvocationContext // Optional caller context (identity, trace, etc.)
+}
+
+// InvocationContext holds optional context passed to interceptors.
+type InvocationContext struct {
+	Principal *Principal `json:"principal,omitempty"`
+	TraceID   string     `json:"traceId,omitempty"`
+	SpanID    string     `json:"spanId,omitempty"`
+	Timestamp string     `json:"timestamp,omitempty"`
+	SessionID string     `json:"sessionId,omitempty"`
+}
+
+// Principal identifies the caller.
+type Principal struct {
+	Type   string         `json:"type"`
+	ID     string         `json:"id,omitempty"`
+	Claims map[string]any `json:"claims,omitempty"`
+}
+
+// --- Results ---
+
+// ValidationMessage is a single validation finding.
+type ValidationMessage struct {
+	Path     string   `json:"path,omitempty"`
+	Message  string   `json:"message"`
+	Severity Severity `json:"severity"`
+}
+
+// ValidationSuggestion is an optional suggested correction.
+type ValidationSuggestion struct {
+	Path  string `json:"path"`
+	Value any    `json:"value"`
+}
+
+// ValidationResult is returned by validation interceptors.
+type ValidationResult struct {
+	Valid       bool                   `json:"valid"`
+	Severity    Severity               `json:"severity,omitempty"`
+	Messages    []ValidationMessage    `json:"messages,omitempty"`
+	Suggestions []ValidationSuggestion `json:"suggestions,omitempty"`
+}
+
+// MutationResult is returned by mutation interceptors.
+type MutationResult struct {
+	Modified bool            `json:"modified"`
+	Info     map[string]any  `json:"info,omitempty"`
+	Payload  json.RawMessage `json:"payload,omitempty"`
+}

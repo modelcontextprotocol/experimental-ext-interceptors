@@ -12,30 +12,30 @@ mcpServer := mcp.NewServer(&mcp.Implementation{
 }, nil)
 
 // Wrap with interceptor support.
-srv := interceptors.NewServer(mcpServer,
-    // Optional Context Provider
-    interceptors.WithContextProvider(
-        func(_ context.Context, _ mcp.Request) *interceptors.InvocationContext {
-            return &interceptors.InvocationContext{
-                Principal: &interceptors.Principal{Type: "user", ID: "alice"},
-            }
-        },
-    ),
-)
+srv := mcpserver.NewServer(mcpServer)
 
 // Register a validator that blocks dangerous tool calls.
 srv.AddInterceptor(&interceptors.Validator{
     Metadata: interceptors.Metadata{
-        Name:   "block-dangerous",
-        Events: []string{interceptors.EventToolsCall},
-        Phase:  interceptors.PhaseRequest,
-        Mode:   interceptors.ModeOn,
+        Name: "block-dangerous",
+        Hook: interceptors.Hook{
+            Events: []string{interceptors.EventToolsCall},
+            Phase:  interceptors.PhaseRequest,
+        },
+        Mode: interceptors.ModeEnforce,
     },
     Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
+        raw := inv.Payload.(json.RawMessage)
+        var params struct{ Name string `json:"name"` }
+        json.Unmarshal(raw, &params)
         // validate the request...
         return &interceptors.ValidationResult{Valid: true}, nil
     },
 })
+
+// Create a chain and install middleware for automatic execution.
+chain, err := srv.LocalChain(ctx)
+mcpServer.AddReceivingMiddleware(gomiddleware.Middleware(chain))
 
 srv.Run(context.Background(), &mcp.StdioTransport{})
 ```
