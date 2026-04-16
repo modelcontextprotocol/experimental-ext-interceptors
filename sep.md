@@ -83,7 +83,7 @@ Interceptors provide a standardized execution model with clear semantics for:
 - Error handling and propagation
 
 
-#### *Technical Gaps Addressed**
+#### Technical Gaps Addressed
 
 The current MCP specification lacks a standardized mechanism for:
 
@@ -197,7 +197,7 @@ interface Interceptor {
 
   /**
    * Execution mode (default: "enforce")
-   * - "enforce": Normal blocking/transforming behavior
+   * - "enforce": Normal blocking / transforming behavior
    * - "audit": Non-blocking operation
    *   - For validators: logs violations without blocking execution
    *   - For mutators: computes transformations without applying them (shadow mutations)
@@ -210,10 +210,6 @@ interface Interceptor {
    * Enforce mode:
    * - false (fail-closed): If the interceptor crashes or times out, block the message
    * - true (fail-open): If the interceptor fails, allow the message to proceed
-   *
-   * Audit mode:
-   * - false: Log failure and mark chain as failed, but message still proceeds
-   * - true: Log failure as warning and continue
    *
    * Note: In audit mode, the message itself always proceeds (audit never blocks execution).
    * failOpen controls whether audit failures are treated as errors or warnings.
@@ -696,146 +692,74 @@ See [Execution-Model](#execution-model) for mutator execution semantics.
 }
 ```
 
+##### Invocation Configuration and Context 
 
-#### Interceptor Chain Execution
+Interceptors MAY receive configuration and context:
 
-**Request:**
 ```typescript
-{
-  jsonrpc: "2.0",
-  id: 5,
-  method: "interceptor/executeChain",
-  params: {
-    event: "tools/call",
-    phase: "request",
-    payload: {
-      method: "tools/call",
-      params: {
-        name: "get_weather",
-        arguments: {
-          location: "San Francisco"
-        }
-      }
-    },
-    // Optional: specify which interceptor to include
-    interceptor?: string[];
-    // Optional: per-invocation configuration
-    config?: Record<string, Record<string, unknown>>;
-    // Optional: timeout for entire chain
-    timeoutMs?: number;
-    // Optional: context passed to all interceptors
-    context?: {
-      principal?: {
-        type: "user" | "service" | "anonymous";
-        id?: string;
-      };
-      traceId?: string;
-      timestamp: string;
+interface InterceptorInvocationParams {
+  name: string;
+  event: InterceptionEvent;
+  phase: "request" | "response";
+  payload: unknown;
+
+  // Optional configuration for this invocation
+  config?: Record<string, unknown>;
+
+  // Optional timeout in milliseconds
+  // If exceeded, interceptor execution is cancelled and returns timeout error
+  timeoutMs?: number;
+
+  // Optional context information
+  context?: {
+    // Identity information
+    principal?: {
+      type: "user" | "service" | "anonymous";
+      id?: string;
+      claims?: Record<string, unknown>;
     };
-  }
+
+    // Tracing information
+    traceId?: string;
+    spanId?: string;
+
+    // Timing information
+    timestamp: string;  // ISO 8601
+
+    // Session information
+    sessionId?: string;
+
+    // FUTURE: Interceptor state propagation
+    // Allows interceptor to share state through the chain
+    // This field is reserved for future enhancement
+    interceptorState?: Record<string, unknown>;
+  };
 }
 ```
+**Timeout and Cancellation:**
 
-**Response:**
+When an interceptor is invoked with `timeoutMs` specified:
+- The interceptor execution MUST be cancelled if it exceeds the timeout
+- A timeout error MUST be returned with code `-32000` (Server error)
+- Interceptors in audit mode that timeout MUST be logged but MUST NOT block the main flow
+- When `failOpen` is `true`, a timed-out interceptor MUST allow the message to proceed
+
 ```typescript
+// Timeout error response
 {
   jsonrpc: "2.0",
-  id: 5,
-  result: {
-    /**
-     * Overall chain execution status
-     */
-    status: "success" | "validation_failed" | "mutation_failed" | "timeout",
-    
-    /**
-     * Lifecycle event (hook) and phase for this chain
-     */
-    event: "tools/call",
-    phase: "request",
-    
-    /**
-     * Results from all executed interceptor
-     */
-    results: [
-      {
-        interceptor: "pii-redactor",
-        type: "mutation",
-        phase: "request",
-        modified: true,
-        payload: { /* mutated payload */ },
-        durationMs: 5
-      },
-      {
-        interceptor: "content-filter",
-        type: "mutation",
-        phase: "request",
-        modified: false,
-        payload: { /* unchanged */ },
-        durationMs: 3
-      },
-      {
-        interceptor: "parameter-validator",
-        type: "validation",
-        phase: "request",
-        valid: true,
-        durationMs: 2
-      },
-      {
-        interceptor: "audit-logger",
-        type: "validation",
-        phase: "request",
-        mode: "audit",
-        valid: true,
-        severity: "info",
-        messages: [{ message: "Request logged for audit", severity: "info" }],
-        info: { payloadSize: 156 },
-        durationMs: 1
-      }
-    ],
-    
-    /**
-     * Final payload after all mutations (if chain completed)
-     */
-    finalPayload?: unknown;
-    
-    /**
-     * Validation summary
-     */
-    validationSummary: {
-      errors: 0,
-      warnings: 0,
-      infos: 1
-    },
-    
-    /**
-     * Total execution time
-     */
-    totalDurationMs: 11,
-    
-    /**
-     * If chain was aborted, details about where and why
-     */
-    abortedAt?: {
-      interceptor: string;
-      reason: string;
-      type: "validation" | "mutation" | "timeout";
+  id: 1,
+  error: {
+    code: -32000,
+    message: "Interceptor execution timeout",
+    data: {
+      interceptor: "slow-validator",
+      timeoutMs: 5000,
+      phase: "request"
     }
   }
 }
 ```
-
-The `interceptor/executeChain` method executes the full interceptor chain for a given Lifecycle Event and phase, handling ordering, parallel execution, and aggregation automatically
-
-**This is an optional convenience helper, not required by the spec.** Implementations can choose to use individual `interceptor/invoke` calls if they prefer explicit control. The helper method obeys negotiated capabilities and protocol versions per the MCP Lifecycle initialization.
-
-This is the recommended way to invoke interceptor as it:
-
-- Automatically discovers and orders applicable interceptor
-- Handles mutations sequentially by `priorityHint` with alphabetical tie-breaking
-- Executes validations in parallel
-- Aggregates results into a single response
-- Provides detailed execution metrics and validation summaries
-- Simplifies client/server implementation
 
 #### Error Handling
 
@@ -858,6 +782,15 @@ Interceptor invocation errors follow standard JSON-RPC error format:
 
 ### Execution Model
 
+> **Execution Model Summary:**
+> - **Sending**: Mutate → Validate → Send. A mutation error MUST halt the chain before validation runs.
+> - **Receiving**: Validate → Mutate → Process. A validation error MUST prevent mutations from running.
+> - **Mutations**: Sequential by `priorityHint` (alphabetical tie-break). MUST be atomic — the entire chain succeeds or none apply.
+> - **Validations**: Parallel. Only `severity: "error"` blocks; `"warn"` and `"info"` MUST NOT block.
+> - **Audit Mode**: Interceptors in audit mode MUST NOT block execution regardless of results.
+> - **failOpen: true**: If an interceptor fails (crash/timeout), the message MUST be allowed to proceed.
+> - **failOpen: false** (default): If an interceptor fails, the message MUST be blocked.
+
 The execution model follows a **Trust-Boundary-Aware Pattern** where validation acts as a security gate.
 
 **Trust Boundary Execution Pattern**
@@ -878,12 +811,7 @@ Receive → Validate (parallel) → Mutate (sequential)
 - Validations MUST run first as a security barrier (can block)
 - Mutations MUST run only after all validations pass
 
-
 Implementations MUST follow this trust-boundary-aware ordering when executing interceptors to ensure validation guards every boundary crossing. 
-
-
-This execution model MUST be followed irrespective of whether implementations invoke interceptors individually via `interceptor/invoke` or via the convenience helper `interceptor/executeChain`.
-
 
 **Interceptor Type Behaviors**
 
@@ -897,129 +825,6 @@ Key semantics:
 - Validations with `severity: "warn"` or `"info"` MUST NOT block execution
 - Only validations with `severity: "error"` MUST block execution
 - Interceptors in audit mode MUST NOT block execution regardless of results
-
-**Example Interceptor Chain**
-
-For a `tools/call` event, assume the following interceptor are available:
-
-```typescript
-// From interceptor/list response:
-[
-  {
-    name: "pii-redactor",
-    type: "mutation",
-    hook: { events: ["tools/call", "llm/completion"], phase: "both" },
-    priorityHint: {
-      request: -1000,   // Run first when sending
-      response: 1000    // Run last when receiving
-    }
-  },
-  {
-    name: "content-filter",
-    type: "mutation",
-    hook: { events: ["llm/completion"], phase: "both" },
-    priorityHint: -500  // Same priority for both phases
-  },
-  {
-    name: "format-normalizer",
-    type: "mutation",
-    hook: { events: ["tools/call"], phase: "both" },
-    priorityHint: { request: 100 }  // Only applies to requests, response uses default (0)
-  },
-  {
-    name: "schema-validator",
-    type: "validation",
-    hook: { events: ["tools/call"], phase: "request" }
-    // No priorityHint - runs in parallel with other validators
-  },
-  {
-    name: "parameter-validator",
-    type: "validation",
-    hook: { events: ["tools/call"], phase: "request" }
-    // No priorityHint - runs in parallel
-  },
-  {
-    name: "audit-logger",
-    type: "validation",
-    hook: { events: ["*"], phase: "both" },
-    mode: "audit"
-    // No priorityHint - runs in parallel with other validators
-    // Audit mode means violations logged but don't block
-  }
-]
-```
-
-**Full Request/Response Cycle**
-
-```
-CLIENT REQUEST (Sending):
-  Original: { email: "john@example.com", ssn: "123-45-6789" }
-  → Mutate: pii-redactor (-1000), content-filter (-500), format-normalizer (100)
-  → Result: { email: "[EMAIL]", ssn: "[SSN]" }
-  → Validate & Observe: client-validator ✓, audit-logger ✓
-  → Send across TRUST BOUNDARY
-
-SERVER REQUEST (Receiving):
-  Received: { email: "[EMAIL]", ssn: "[SSN]" }
-  → Validate & Observe: schema-validator ✓, parameter-validator ✓, audit-logger ✓
-  → Mutate: sanitizer (10)
-  → Execute Tool → { result: { name: "John", ... } }
-
-SERVER RESPONSE (Sending):
-  Original: { name: "John", ... }
-  → Mutate: pii-redactor (1000), content-filter (-500)
-  → Validate & Observe: response-validator ✓, audit-logger ✓
-  → Send across TRUST BOUNDARY
-
-CLIENT RESPONSE (Receiving):
-  Received: { name: "John", ... }
-  → Validate & Observe: response-validator ✓, audit-logger ✓
-  → Mutate: response-enhancer (10)
-  → Deliver to Application
-```
-
-**Key Points:**
-- Mutations MUST run in priority order: pii-redactor (-1000) → content-filter (-500) → format-normalizer (100)
-- Validations MUST run in parallel at each boundary
-- Trust boundaries MUST be guarded by validation on both sides
-- Interceptors in audit mode MUST NOT block execution
-
-**Error Handling**
-
-Interceptor chains MUST handle errors based on type:
-
-```typescript
-// Mutation failure: Chain MUST halt immediately
-{
-  error: {
-    code: -32603,
-    message: "Interceptor mutation failed",
-    data: { failedInterceptor: "content-filter", lastValidPayload: {...} }
-  }
-}
-```
-
-```typescript
-// Validation failure: All validations MUST complete, then reject if any has severity: "error"
-{
-  error: {
-    code: -32602,
-    message: "Interceptor validation failed",
-    data: {
-      validationErrors: [
-        { interceptor: "schema-validator", severity: "error", message: "Required field missing" }
-      ]
-    }
-  }
-}
-```
-
-**Short-Circuit Semantics:**
-- **Sending**: Mutations → Validate → Send. A mutation error MUST halt the chain before validation runs.
-- **Receiving**: Validate → Mutations → Process. A validation error MUST prevent mutations from running.
-- **Audit Mode**: Interceptors in audit mode MUST NOT block execution regardless of results.
-- **failOpen: true**: If an interceptor fails (crash/timeout), the message MUST be allowed to proceed.
-- **failOpen: false** (default): If an interceptor fails, the message MUST be blocked.
 
 #### Priority Resolution
 
@@ -1237,6 +1042,291 @@ sequenceDiagram
     Note over App,Tool: Validation guards both sides of trust boundary
 ```
 
+#### Chain Execution
+
+Chain execution is a **convenience utility**, provided by SDKs to enforce the execution model defined above. Its purpose is to execute interceptors — potentially hosted across N MCP servers — in a way that enforces the trust-boundary-aware ordering, type-specific execution semantics, and failure behaviors.
+
+> Important: The execution model defined above MUST be followed by all implementations, whether invoking interceptors individually via `interceptor/invoke` or using this convenience utility.
+
+The orchestration pattern is as follows:
+
+1. **Discover:** Call `interceptors/list` on one or more MCP servers to collect all registered interceptors.
+2. **Merge & Sort:** Combine all discovered interceptors into a single chain, sorted by `priorityHint` (ascending, with alphabetical tie-breaking by interceptor name).
+3. **Order by Trust Boundary:** Apply the trust-boundary-aware execution model — mutations before validations when sending, validations before mutations when receiving.
+4. **Execute:** Call `interceptor/invoke` on the appropriate MCP server for each interceptor. Mutations MUST be invoked sequentially (each receiving the output of the previous). Validations MAY be invoked in parallel.
+5. **Aggregate:** Collect all results, assembling the final payload and validation summary.
+
+SDK libraries are expected to provide reference implementations of this orchestration logic so that individual applications do not need to implement it from scratch.
+
+##### Interceptor Chain
+
+The chain is constructed from interceptor entries, each describing an interceptor and the server that hosts it:
+
+```typescript
+interface InterceptorChain {
+  /**
+   * All interceptor entries in the chain, collected from one or more servers.
+   * Entries are merged and ordered by the chain 
+   * according to the execution model.
+   */
+  entries: ChainEntry[];
+
+  /**
+   * Execute the chain for a given event and phase.
+   */
+  execute(params: ChainExecutionParams): ChainExecutionResult;
+}
+
+interface ChainEntry {
+  /**
+   * The interceptor descriptor (as returned by interceptors/list)
+   */
+  interceptor: {
+    name: string;
+    type: "mutation" | "validation";
+    hook: {
+      events: InterceptionEvent[];
+      phase: "request" | "response" | "both";
+    };
+    priorityHint?: number | { request?: number; response?: number };
+    mode?: "audit";
+    failOpen?: boolean;
+  };
+
+  /**
+   * The MCP server that hosts this interceptor.
+   * Used to route interceptor/invoke calls to the correct server.
+   * The concrete type is implementation-specific.
+   */
+  server: MCPServerConnection;
+}
+```
+
+###### ChainExecutionParams
+
+```typescript
+interface ChainExecutionParams {
+  /**
+   * The lifecycle event to execute the chain for
+   */
+  event: InterceptionEvent;
+
+  /**
+   * The phase of the lifecycle event
+   */
+  phase: "request" | "response";
+
+  /**
+   * The payload to pass through the interceptor chain
+   */
+  payload: unknown;
+
+  /**
+   * Optional: restrict chain to specific interceptors by name
+   */
+  interceptors?: string[];
+
+  /**
+   * Optional: per-interceptor configuration overrides
+   */
+  config?: Record<string, Record<string, unknown>>;
+
+  /**
+   * Optional: timeout for the entire chain in milliseconds
+   * implementations MUST cancel the entire chain if the aggregate timeout is exceeded.
+   */
+  timeoutMs?: number;
+
+  /**
+   * Optional: context passed to all interceptors
+   */
+  context?: {
+    principal?: {
+      type: "user" | "service" | "anonymous";
+      id?: string;
+    };
+    traceId?: string;
+    timestamp: string;
+  };
+}
+```
+
+###### ChainExecutionResult
+
+```typescript
+interface ChainExecutionResult {
+  /**
+   * Overall chain execution status
+   */
+  status: "success" | "validation_failed" | "mutation_failed" | "timeout";
+
+  /**
+   * Lifecycle event (hook) and phase for this chain
+   */
+  event: InterceptionEvent;
+  phase: "request" | "response";
+
+  /**
+   * Results from all executed interceptors
+   */
+  results: Array<{
+    interceptor: string;
+    type: "mutation" | "validation";
+    phase: "request" | "response";
+    // Mutation-specific fields
+    modified?: boolean;
+    payload?: unknown;
+    // Validation-specific fields
+    valid?: boolean;
+    severity?: "error" | "warn" | "info";
+    messages?: Array<{ message: string; severity: "error" | "warn" | "info" }>;
+    // Audit mode
+    mode?: "audit";
+    info?: Record<string, unknown>;
+    // Timing
+    durationMs: number;
+  }>;
+
+  /**
+   * Final payload after all mutations (if chain completed)
+   */
+  finalPayload?: unknown;
+
+  /**
+   * Validation summary
+   */
+  validationSummary: {
+    errors: number;
+    warnings: number;
+    infos: number;
+  };
+
+  /**
+   * Total execution time
+   */
+  totalDurationMs: number;
+
+  /**
+   * If chain was aborted, details about where and why
+   */
+  abortedAt?: {
+    interceptor: string;
+    reason: string;
+    type: "validation" | "mutation" | "timeout";
+  };
+}
+```
+
+##### Example Interceptor Chain
+
+For a `tools/call` event, assume the following interceptor are available:
+
+```typescript
+// From interceptor/list response:
+[
+  {
+    name: "pii-redactor",
+    type: "mutation",
+    hook: { events: ["tools/call", "llm/completion"], phase: "both" },
+    priorityHint: {
+      request: -1000,   // Run first when sending
+      response: 1000    // Run last when receiving
+    }
+  },
+  {
+    name: "content-filter",
+    type: "mutation",
+    hook: { events: ["llm/completion"], phase: "both" },
+    priorityHint: -500  // Same priority for both phases
+  },
+  {
+    name: "format-normalizer",
+    type: "mutation",
+    hook: { events: ["tools/call"], phase: "both" },
+    priorityHint: { request: 100 }  // Only applies to requests, response uses default (0)
+  },
+  {
+    name: "schema-validator",
+    type: "validation",
+    hook: { events: ["tools/call"], phase: "request" }
+    // No priorityHint - runs in parallel with other validators
+  },
+  {
+    name: "parameter-validator",
+    type: "validation",
+    hook: { events: ["tools/call"], phase: "request" }
+    // No priorityHint - runs in parallel
+  },
+  {
+    name: "audit-logger",
+    type: "validation",
+    hook: { events: ["*"], phase: "both" },
+    mode: "audit"
+    // No priorityHint - runs in parallel with other validators
+    // Audit mode means violations logged but don't block
+  }
+]
+```
+
+##### Full Request/Response Cycle
+
+```
+CLIENT REQUEST (Sending):
+  Original: { email: "john@example.com", ssn: "123-45-6789" }
+  → Mutate: pii-redactor (-1000), content-filter (-500), format-normalizer (100)
+  → Result: { email: "[EMAIL]", ssn: "[SSN]" }
+  → Validate & Observe: client-validator ✓, audit-logger ✓
+  → Send across TRUST BOUNDARY
+
+SERVER REQUEST (Receiving):
+  Received: { email: "[EMAIL]", ssn: "[SSN]" }
+  → Validate & Observe: schema-validator ✓, parameter-validator ✓, audit-logger ✓
+  → Mutate: sanitizer (10)
+  → Execute Tool → { result: { name: "John", ... } }
+
+SERVER RESPONSE (Sending):
+  Original: { name: "John", ... }
+  → Mutate: pii-redactor (1000), content-filter (-500)
+  → Validate & Observe: response-validator ✓, audit-logger ✓
+  → Send across TRUST BOUNDARY
+
+CLIENT RESPONSE (Receiving):
+  Received: { name: "John", ... }
+  → Validate & Observe: response-validator ✓, audit-logger ✓
+  → Mutate: response-enhancer (10)
+  → Deliver to Application
+```
+
+##### Error Handling
+
+Interceptor chains MUST handle errors based on type:
+
+```typescript
+// Mutation failure: Chain MUST halt immediately
+{
+  error: {
+    code: -32603,
+    message: "Interceptor mutation failed",
+    data: { failedInterceptor: "content-filter", lastValidPayload: {...} }
+  }
+}
+```
+
+```typescript
+// Validation failure: All validations MUST complete, then reject if any has severity: "error"
+{
+  error: {
+    code: -32602,
+    message: "Interceptor validation failed",
+    data: {
+      validationErrors: [
+        { interceptor: "schema-validator", severity: "error", message: "Required field missing" }
+      ]
+    }
+  }
+}
+```
+
 ### Interceptor Server Capabilities
 
 During initialization, servers declare interceptor support:
@@ -1257,78 +1347,6 @@ During initialization, servers declare interceptor support:
     serverInfo: {
       name: "example-server",
       version: "1.0.0"
-    }
-  }
-}
-```
-
-### Configuration and Context
-
-Interceptor may receive configuration and context:
-
-```typescript
-interface InterceptorInvocationParams {
-  name: string;
-  event: InterceptionEvent;
-  phase: "request" | "response";
-  payload: unknown;
-  
-  // Optional configuration for this invocation
-  config?: Record<string, unknown>;
-  
-  // Optional timeout in milliseconds
-  // If exceeded, interceptor execution is cancelled and returns timeout error
-  timeoutMs?: number;
-  
-  // Optional context information
-  context?: {
-    // Identity information
-    principal?: {
-      type: "user" | "service" | "anonymous";
-      id?: string;
-      claims?: Record<string, unknown>;
-    };
-    
-    // Tracing information
-    traceId?: string;
-    spanId?: string;
-    
-    // Timing information
-    timestamp: string;  // ISO 8601
-    
-    // Session information
-    sessionId?: string;
-    
-    // FUTURE: Interceptor state propagation
-    // Allows interceptor to share state through the chain
-    // This field is reserved for future enhancement
-    interceptorState?: Record<string, unknown>;
-  };
-}
-```
-
-**Timeout and Cancellation:**
-
-When `timeoutMs` is specified:
-- Interceptor execution MUST be cancelled if it exceeds the timeout
-- A timeout error MUST be returned with code `-32000` (Server error)
-- For `interceptor/executeChain`, the entire chain MUST be cancelled on timeout
-- Individual `interceptor/invoke` calls MUST timeout independently
-- Interceptors in audit mode that timeout MUST be logged but MUST NOT block the main flow
-- When `failOpen` is `true`, a timed-out interceptor MUST allow the message to proceed
-
-```typescript
-// Timeout error response
-{
-  jsonrpc: "2.0",
-  id: 1,
-  error: {
-    code: -32000,
-    message: "Interceptor execution timeout",
-    data: {
-      interceptor: "slow-validator",
-      timeoutMs: 5000,
-      phase: "request"
     }
   }
 }
