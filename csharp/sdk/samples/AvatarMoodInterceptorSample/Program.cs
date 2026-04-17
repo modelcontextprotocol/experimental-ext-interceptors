@@ -56,10 +56,20 @@ using var haiku = new AnthropicClient(new() { ApiKey = apiKey })
 var avatarState = new AvatarState();
 var interceptors = new AvatarInterceptors(haiku, HaikuModelId, avatarState);
 
+AvatarRenderer.Initialize();
+Console.CancelKeyPress += (_, e) =>
+{
+    AvatarRenderer.Reset();
+    // let default handler terminate the process
+};
+AppDomain.CurrentDomain.ProcessExit += (_, _) => AvatarRenderer.Reset();
+
+AvatarRenderer.Render(avatarState);
+
 Console.WriteLine("=== Avatar Mood Interceptor Sample ===");
 Console.WriteLine($"primary: {SonnetModelId}    mood classifier: {HaikuModelId}");
 Console.WriteLine("type a message and press enter. 'exit' to quit.");
-AvatarRenderer.Render(avatarState);
+Console.WriteLine();
 
 var history = new List<ChatMessage>();
 var sonnetOptions = new ChatOptions { MaxOutputTokens = 1024 };
@@ -106,6 +116,7 @@ while (true)
         cancellationToken: default);
 }
 
+AvatarRenderer.Reset();
 return 0;
 
 static JsonNode BuildCompletionPayload(string modelId, string userInput, string assistantReply, ChatResponse response)
