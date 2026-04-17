@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GatewayChainSample", "sampl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TransparentProxySample", "samples\TransparentProxySample\TransparentProxySample.csproj", "{FFF8A540-0AEF-4DF0-A7A1-EB75CDE277B5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvatarMoodInterceptorSample", "samples\AvatarMoodInterceptorSample\AvatarMoodInterceptorSample.csproj", "{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -115,6 +117,18 @@ Global
 		{FFF8A540-0AEF-4DF0-A7A1-EB75CDE277B5}.Release|x64.Build.0 = Release|Any CPU
 		{FFF8A540-0AEF-4DF0-A7A1-EB75CDE277B5}.Release|x86.ActiveCfg = Release|Any CPU
 		{FFF8A540-0AEF-4DF0-A7A1-EB75CDE277B5}.Release|x86.Build.0 = Release|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Debug|x64.Build.0 = Debug|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Debug|x86.Build.0 = Debug|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Release|x64.ActiveCfg = Release|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Release|x64.Build.0 = Release|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Release|x86.ActiveCfg = Release|Any CPU
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -123,5 +137,6 @@ Global
 		{40A103BD-6815-4EE8-B611-AF2E74D72F4D} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 		{398EFDAC-1286-4BEE-865F-BDB304B0694F} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 		{FFF8A540-0AEF-4DF0-A7A1-EB75CDE277B5} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
+		{A70E2A55-6F3C-4C86-9D42-1C8A7F6B3E2A} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 	EndGlobalSection
 EndGlobal
