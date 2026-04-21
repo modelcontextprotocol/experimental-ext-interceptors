@@ -1,10 +1,4 @@
-title:	SEP-1763: Interceptors for Model Context Protocol
-state:	OPEN
-author:	sambhav
-labels:	proposal, SEP
-number:	1763
---
-# Interceptor Framework for Model Context Protocol
+# SEP-1763: Interceptors for Model Context Protocol
 
 ## Preamble
 
@@ -14,7 +8,10 @@ number:	1763
 
 **Created:** 2025-11-04
 
-**Authors:** @sambhav
+**Authors**: Sambhav Kothari (@sambhav), Kurt Degiorgio (@Degiorgio), Peder Holdgaard Pedersen (@PederHP)
+
+**Number**: 1763
+
 
 ## Abstract
 
@@ -181,9 +178,10 @@ interface Interceptor {
   type: "validation" | "mutation";
 
   /**
-   * Hook: defines which Lifecycle Events and phase trigger this interceptor
+   * Hooks: defines which Lifecycle Events and phases trigger this interceptor.
+   * Each entry specifies a set of events and a single phase.
    */
-  hook: {
+  hooks: Array<{
     /**
      * List of Lifecycle Events this interceptor hooks into
      */
@@ -192,17 +190,17 @@ interface Interceptor {
     /**
      * Execution phase
      */
-    phase: InterceptionPhase;
-  };
+    phase: "request" | "response";
+  }>;
 
   /**
-   * Execution mode (default: "enforce")
-   * - "enforce": Normal blocking / transforming behavior
+   * Execution mode (default: "active")
+   * - "active": Normal blocking / transforming behavior
    * - "audit": Non-blocking operation
    *   - For validators: logs violations without blocking execution
    *   - For mutators: computes transformations without applying them (shadow mutations)
    */
-  mode?: "enforce" | "audit";
+  mode?: "active" | "audit";
 
   /**
    * Failure routing policy (default: false - fail-closed)
@@ -270,7 +268,7 @@ interface Interceptor {
 #### Hooks
 
 
-**Hooks** define which Lifecycle Events trigger an interceptor's invocation. The `hook` object in the interceptor definition declares the  set of Lifecycle Events (`hook.events`, e.g., `tools/call`, `resources/read`) and the phase (`hook.phase`: request, response, or both) where this interceptor will be invoked. 
+**Hooks** define which Lifecycle Events trigger an interceptor's invocation. The `hooks` array in the interceptor definition contains one or more entries, each declaring a set of Lifecycle Events (`events`, e.g., `tools/call`, `resources/read`) and a phase (`phase`: `"request"` or `"response"`) where this interceptor will be invoked. Interceptors that run on both phases use two entries — one per phase.
 
 
 The following interception events are defined by this specification. This list is NOT  exhaustive, implementations MAY define additional interception events for custom or non-MCP context operations.
@@ -295,22 +293,14 @@ type InterceptionEvent =
   | "llm/completion"
 
   // Wildcards
-  | "*/request"
-  | "*/response"
   | "*" // Matches all events
 
   // Implementations MAY define additional events
   | string;
-
-type InterceptionPhase = "request" | "response" | "both";
 ```
 
 **Wildcards:**
-- `"*"`:  Matches all Lifecycle Events on all phases. Interceptors that hook into `"*"` MUST be invoked for every event.
-- `"*/request"`:  Matches all Lifecycle Events on the request phase only.
-- `"*/response"`: Matches all Lifecycle Events on the response phase only.
-
-When a wildcard is used in `hook.events`, the `hook.phase` field is still respected. For example, `hook: { events: ["*"], phase: "request" }` is equivalent to `hook: { events: ["*/request"], phase: "request" }`.
+- `"*"`:  Matches all Lifecycle Events. Interceptors that hook into `"*"` MUST be invoked for every event on the phase specified by the enclosing hook entry.
 
 
 Implementations MAY support additional wildcard patterns, such as namespace wildcards (e.g., `"tools/*"` to match all tool events, `"resources/*"` to match all resource events). Custom wildcard patterns SHOULD follow glob-style conventions.
@@ -432,10 +422,10 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "1.2.0",
         description: "Filters sensitive content from prompts and responses",
         type: "mutation",
-        hook: {
-          events: ["llm/completion", "prompts/get"],
-          phase: "both"
-        },
+        hooks: [
+          { events: ["llm/completion", "prompts/get"], phase: "request" },
+          { events: ["llm/completion", "prompts/get"], phase: "response" }
+        ],
         priorityHint: -500,  // Same priority for both request and response
         compat: {
           minProtocol: "2024-11-05"
@@ -459,10 +449,9 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "2.0.1",
         description: "Validates tool call parameters",
         type: "validation",
-        hook: {
-          events: ["tools/call"],
-          phase: "request"
-        },
+        hooks: [
+          { events: ["tools/call"], phase: "request" }
+        ],
         compat: {
           minProtocol: "2024-11-05",
           maxProtocol: "2025-12-31"
@@ -479,10 +468,10 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "2.1.0",
         description: "Redacts PII from requests and responses",
         type: "mutation",
-        hook: {
-          events: ["tools/call", "llm/completion"],
-          phase: "both"
-        },
+        hooks: [
+          { events: ["tools/call", "llm/completion"], phase: "request" },
+          { events: ["tools/call", "llm/completion"], phase: "response" }
+        ],
         failOpen: false,  // Fail-closed: block if interceptor fails (security-critical)
         // Different priorities for request vs response
         priorityHint: {
@@ -507,10 +496,9 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "1.0.0",
         description: "Enforces token limits and model policies for sampling requests",
         type: "validation",
-        hook: {
-          events: ["sampling/createMessage"],
-          phase: "request"
-        },
+        hooks: [
+          { events: ["sampling/createMessage"], phase: "request" }
+        ],
         compat: {
           minProtocol: "2025-06-18"
         },
@@ -530,10 +518,9 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "1.0.0",
         description: "Prevents elicitation requests from asking for sensitive information",
         type: "validation",
-        hook: {
-          events: ["elicitation/create"],
-          phase: "request"
-        },
+        hooks: [
+          { events: ["elicitation/create"], phase: "request" }
+        ],
         compat: {
           minProtocol: "2025-06-18"
         },
@@ -556,10 +543,10 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "1.0.0",
         description: "Logs all MCP operations for compliance",
         type: "validation",
-        hook: {
-          events: ["*"],
-          phase: "both"
-        },
+        hooks: [
+          { events: ["*"], phase: "request" },
+          { events: ["*"], phase: "response" }
+        ],
         mode: "audit",
         failOpen: true,
         configSchema: {
@@ -1084,10 +1071,10 @@ interface ChainEntry {
   interceptor: {
     name: string;
     type: "mutation" | "validation";
-    hook: {
+    hooks: Array<{
       events: InterceptionEvent[];
-      phase: "request" | "response" | "both";
-    };
+      phase: "request" | "response";
+    }>;
     priorityHint?: number | { request?: number; response?: number };
     mode?: "audit";
     failOpen?: boolean;
@@ -1107,13 +1094,9 @@ interface ChainEntry {
 ```typescript
 interface ChainExecutionParams {
   /**
-   * The lifecycle event to execute the chain for
+   * Lifecycle event (hook) and phase for this chain
    */
   event: InterceptionEvent;
-
-  /**
-   * The phase of the lifecycle event
-   */
   phase: "request" | "response";
 
   /**
@@ -1227,7 +1210,10 @@ For a `tools/call` event, assume the following interceptor are available:
   {
     name: "pii-redactor",
     type: "mutation",
-    hook: { events: ["tools/call", "llm/completion"], phase: "both" },
+    hooks: [
+      { events: ["tools/call", "llm/completion"], phase: "request" },
+      { events: ["tools/call", "llm/completion"], phase: "response" }
+    ],
     priorityHint: {
       request: -1000,   // Run first when sending
       response: 1000    // Run last when receiving
@@ -1236,31 +1222,40 @@ For a `tools/call` event, assume the following interceptor are available:
   {
     name: "content-filter",
     type: "mutation",
-    hook: { events: ["llm/completion"], phase: "both" },
+    hooks: [
+      { events: ["llm/completion"], phase: "request" },
+      { events: ["llm/completion"], phase: "response" }
+    ],
     priorityHint: -500  // Same priority for both phases
   },
   {
     name: "format-normalizer",
     type: "mutation",
-    hook: { events: ["tools/call"], phase: "both" },
+    hooks: [
+      { events: ["tools/call"], phase: "request" },
+      { events: ["tools/call"], phase: "response" }
+    ],
     priorityHint: { request: 100 }  // Only applies to requests, response uses default (0)
   },
   {
     name: "schema-validator",
     type: "validation",
-    hook: { events: ["tools/call"], phase: "request" },
+    hooks: [{ events: ["tools/call"], phase: "request" }],
     // No priorityHint - runs in parallel with other validators
   },
   {
     name: "parameter-validator",
     type: "validation",
-    hook: { events: ["tools/call"], phase: "request" },
+    hooks: [{ events: ["tools/call"], phase: "request" }],
     // No priorityHint - runs in parallel
   },
   {
     name: "audit-logger",
     type: "validation",
-    hook: { events: ["*"], phase: "both" },
+    hooks: [
+      { events: ["*"], phase: "request" },
+      { events: ["*"], phase: "response" }
+    ],
     mode: "audit",
     // No priorityHint - runs in parallel with other validators
     // Audit mode means violations logged but don't block
@@ -1710,11 +1705,11 @@ interceptors:
 
 routing:
   # Apply interceptors to specific lifecycle event types
-  tools/call:
+  tools.call:
     request: [rate-limiter, security-scanner]
     response: [pii-redactor]
 
-  llm/completion:
+  llm.completion:
     request: [security-scanner]
     response: [pii-redactor]
 ```
