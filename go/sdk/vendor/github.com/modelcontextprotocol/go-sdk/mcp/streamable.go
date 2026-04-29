@@ -174,6 +174,14 @@ type StreamableHTTPOptions struct {
 	// Only disable this if you understand the security implications.
 	// See: https://modelcontextprotocol.io/specification/2025-11-25/basic/security_best_practices#local-mcp-server-compromise
 	DisableLocalhostProtection bool
+
+	// CrossOriginProtection allows to customize cross-origin protection.
+	// The deny handler set in the CrossOriginProtection through SetDenyHandler
+	// is ignored.
+	// If nil, default (zero-value) cross-origin protection will be used.
+	// Use `disablecrossoriginprotection` MCPGODEBUG compatibility parameter
+	// to disable the default protection until v1.6.0.
+	CrossOriginProtection *http.CrossOriginProtection
 }
 
 // NewStreamableHTTPHandler returns a new [StreamableHTTPHandler].
@@ -190,8 +198,10 @@ func NewStreamableHTTPHandler(getServer func(*http.Request) *Server, opts *Strea
 		h.opts = *opts
 	}
 
-	if h.opts.Logger == nil { // ensure we have a logger
-		h.opts.Logger = ensureLogger(nil)
+	h.opts.Logger = ensureLogger(h.opts.Logger)
+
+	if h.opts.CrossOriginProtection == nil {
+		h.opts.CrossOriginProtection = &http.CrossOriginProtection{}
 	}
 
 	return h
@@ -226,6 +236,13 @@ func (h *StreamableHTTPHandler) closeAll() {
 // The option will be removed in the 1.6.0 version of the SDK.
 var disablelocalhostprotection = mcpgodebug.Value("disablelocalhostprotection")
 
+// disablecrossoriginprotection is a compatibility parameter that allows to disable
+// the verification of the 'Origin' and 'Content-Type' headers, which was added in
+// the 1.4.1 version of the SDK. See the documentation for the mcpgodebug package
+// for instructions how to enable it.
+// The option will be removed in the 1.6.0 version of the SDK.
+var disablecrossoriginprotection = mcpgodebug.Value("disablecrossoriginprotection")
+
 func (h *StreamableHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// DNS rebinding protection: auto-enabled for localhost servers.
 	// See: https://modelcontextprotocol.io/specification/2025-11-25/basic/security_best_practices#local-mcp-server-compromise
@@ -233,6 +250,22 @@ func (h *StreamableHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 		if localAddr, ok := req.Context().Value(http.LocalAddrContextKey).(net.Addr); ok && localAddr != nil {
 			if util.IsLoopback(localAddr.String()) && !util.IsLoopback(req.Host) {
 				http.Error(w, fmt.Sprintf("Forbidden: invalid Host header %q", req.Host), http.StatusForbidden)
+				return
+			}
+		}
+	}
+
+	if disablecrossoriginprotection != "1" {
+		// Verify the 'Origin' header to protect against CSRF attacks.
+		if err := h.opts.CrossOriginProtection.Check(req); err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		// Validate 'Content-Type' header.
+		if req.Method == http.MethodPost {
+			contentType := req.Header.Get("Content-Type")
+			if contentType != "application/json" {
+				http.Error(w, "Content-Type must be 'application/json'", http.StatusUnsupportedMediaType)
 				return
 			}
 		}
@@ -387,7 +420,6 @@ func (h *StreamableHTTPHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 			EventStore:   h.opts.EventStore,
 			jsonResponse: h.opts.JSONResponse,
 			logger:       h.opts.Logger,
-			server:       server,
 		}
 
 		// Sessions without a session ID are also stateless: there's no way to
@@ -579,9 +611,6 @@ type StreamableServerTransport struct {
 	// to write their own streamable HTTP handler.
 	logger *slog.Logger
 
-	// server is a reference to the Server for custom method dispatch.
-	server *Server
-
 	// connection is non-nil if and only if the transport has been connected.
 	connection *streamableServerConn
 }
@@ -596,7 +625,6 @@ func (t *StreamableServerTransport) Connect(ctx context.Context) (Connection, er
 		stateless:      t.Stateless,
 		eventStore:     t.EventStore,
 		jsonResponse:   t.jsonResponse,
-		server:         t.server,
 		logger:         ensureLogger(t.logger), // see #556: must be non-nil
 		incoming:       make(chan jsonrpc.Message, 10),
 		done:           make(chan struct{}),
@@ -620,7 +648,6 @@ type streamableServerConn struct {
 	stateless    bool
 	jsonResponse bool
 	eventStore   EventStore
-	server       *Server // reference to Server for custom method checks
 
 	logger *slog.Logger
 
@@ -1103,17 +1130,8 @@ func (c *streamableServerConn) servePOST(w http.ResponseWriter, req *http.Reques
 			// Preemptively check that this is a valid request, so that we can fail
 			// the HTTP request. If we didn't do this, a request with a bad method or
 			// missing ID could be silently swallowed.
-			//
-			// Custom methods registered via AddCustomMethod bypass the standard
-			// method info check — they only need a valid request ID.
-			isCustom := c.server != nil && c.server.hasCustomMethod(jreq.Method)
-			if !isCustom {
-				if _, err := checkRequest(jreq, serverMethodInfos); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			} else if !jreq.IsCall() {
-				http.Error(w, fmt.Sprintf("missing id for %q", jreq.Method), http.StatusBadRequest)
+			if _, err := checkRequest(jreq, serverMethodInfos); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			if jreq.Method == methodInitialize {

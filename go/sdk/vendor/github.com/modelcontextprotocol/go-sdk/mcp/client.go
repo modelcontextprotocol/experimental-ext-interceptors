@@ -1180,12 +1180,3 @@ func paginate[P listParams, R listResult[T], T any](ctx context.Context, params 
 		}
 	}
 }
-
-// CallCustom sends a raw JSON-RPC call to the server for a custom method
-// that is not part of the standard MCP protocol. The params value is
-// marshaled to JSON and sent as the request params. The response is
-// unmarshaled into the provided result pointer.
-func (cs *ClientSession) CallCustom(ctx context.Context, method string, params any, result any) error {
-	call := cs.conn.Call(ctx, method, params)
-	return call.Await(ctx, result)
-}
