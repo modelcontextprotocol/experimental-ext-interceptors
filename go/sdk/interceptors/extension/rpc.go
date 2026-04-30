@@ -2,7 +2,7 @@
 // Use of this source code is governed by an Apache-2.0
 // license that can be found in the LICENSE file.
 
-package mcpserver
+package extension
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 
 // handleList implements the "interceptors/list" JSON-RPC method.
 // It returns all registered interceptors, optionally filtered by event.
-func (s *Server) handleList(_ context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
+func (e *Extension) handleList(_ context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
 	var params interceptors.ListParams
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &params); err != nil {
@@ -27,7 +27,7 @@ func (s *Server) handleList(_ context.Context, _ *mcp.ServerSession, raw json.Ra
 		}
 	}
 
-	all := s.getInterceptors()
+	all := e.getInterceptors()
 	infos := make([]interceptors.InterceptorInfo, 0, len(all))
 	for _, ri := range all {
 		if params.Event != "" && !slices.Contains(ri.GetMetadata().Hook.Events, params.Event) {
@@ -41,7 +41,7 @@ func (s *Server) handleList(_ context.Context, _ *mcp.ServerSession, raw json.Ra
 
 // handleInvoke implements the "interceptor/invoke" JSON-RPC method.
 // It invokes a single interceptor by name and returns its result.
-func (s *Server) handleInvoke(ctx context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
+func (e *Extension) handleInvoke(ctx context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
 	var params interceptors.InvokeParams
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (s *Server) handleInvoke(ctx context.Context, _ *mcp.ServerSession, raw jso
 	}
 
 	// Look up the interceptor by name.
-	i := s.findByName(params.Name)
+	i := e.findByName(params.Name)
 	if i == nil {
 		return nil, &jsonrpc.Error{
 			Code:    jsonrpc.CodeInvalidParams,

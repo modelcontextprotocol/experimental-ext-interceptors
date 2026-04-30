@@ -5,9 +5,10 @@
 The Go SDK follows the SEP execution model where interceptors are
 first-class MCP primitives:
 
-1. **Interceptor Server** (`mcpserver.Server`) — wraps an `mcp.Server`,
-   registers interceptors, and exposes them via `interceptors/list` and
-   `interceptor/invoke` JSON-RPC methods.
+1. **Interceptor Extension** (`extension.Extension`) — registers
+   interceptors and installs them on one or more `mcp.Server` instances,
+   exposing them via `interceptors/list` and `interceptor/invoke` JSON-RPC
+   methods.
 2. **Chain** (`chain.Chain`) — the SDK-level orchestrator in the
    `interceptors/chain` sub-package. It holds `ChainEntry` objects
    (interceptor descriptor + MCP client session) and invokes interceptors
@@ -31,8 +32,8 @@ Transport (SSE / stdio / HTTP)
 
 ## LocalChain: In-Memory Transport
 
-`Server.LocalChain(ctx)` creates a chain connected to the server via
-in-memory transport. Under the hood it:
+`Extension.LocalChain(ctx, server)` creates a chain connected to the given
+server via in-memory transport. Under the hood it:
 
 1. Creates an `InMemoryTransport` pair via `mcp.NewInMemoryTransports()`
 2. Connects the server side via `mcp.Server.Connect(ctx, serverTransport)`
@@ -206,11 +207,11 @@ Response-phase validators see the post-mutation payload.
 | `chain.go` | `Chain`, `ChainEntry`, `ExecutionParams`, `ExecutionResult`, `NewChain`, `AddMCPServer`, `Execute`; filtering, sorting, parallel validation, sequential mutation, trust-boundary ordering |
 | `result.go` | Chain result types: ChainStatus, AbortType, AbortInfo, ValidationSummary |
 
-### `interceptors/mcpserver/` — MCP server integration
+### `interceptors/extension/` — MCP server integration
 
 | File | Responsibility |
 |------|---------------|
-| `server.go` | `Server` wrapper, interceptor registry, `LocalChain`, capability declaration, `NewStreamableHTTPHandler` |
+| `server.go` | `Extension`, interceptor management, `Install`, `LocalChain`, capability declaration |
 | `rpc.go` | `handleList` and `handleInvoke` JSON-RPC method handlers |
 | `events.go` | Event name constants for standard MCP methods |
 

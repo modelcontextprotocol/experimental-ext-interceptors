@@ -15,8 +15,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors"
+	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/extension"
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/integrations/gomiddleware"
-	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/mcpserver"
 )
 
 func main() {
@@ -73,13 +73,14 @@ func main() {
 		},
 	}
 
-	// Create the interceptor server (registers interceptors as discoverable
+	// Create the interceptor extension (registers interceptors as discoverable
 	// resources via interceptors/list and interceptor/invoke).
-	srv := mcpserver.NewServer(mcpServer)
-	srv.AddInterceptor(m)
+	ext := extension.New()
+	ext.AddInterceptor(m)
+	ext.Install(mcpServer)
 
 	// Create a chain connected via in-memory transport.
-	chain, err := srv.LocalChain(context.Background())
+	chain, err := ext.LocalChain(context.Background(), mcpServer)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -101,7 +102,10 @@ func main() {
 		),
 	)
 
-	handler := mcpserver.NewStreamableHTTPHandler(srv, nil)
+	handler := mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server { return mcpServer },
+		nil,
+	)
 	log.Println("listening on :8080")
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatal(err)

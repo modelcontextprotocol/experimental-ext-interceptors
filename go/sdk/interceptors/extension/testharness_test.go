@@ -1,9 +1,10 @@
-package mcpserver_test
+package extension_test
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -12,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors"
+	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/extension"
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/integrations/gomiddleware"
-	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/mcpserver"
 )
 
 // --- Server setup ---
@@ -42,19 +43,23 @@ func setupWithTools(t *testing.T, tools []testTool, is ...interceptors.Intercept
 		mcpServer.AddTool(tool.tool, tool.handler)
 	}
 
-	srv := mcpserver.NewServer(mcpServer)
+	ext := extension.New()
 	for _, i := range is {
-		srv.AddInterceptor(i)
+		ext.AddInterceptor(i)
 	}
+	ext.Install(mcpServer)
 
 	// Create a chain via LocalChain (in-memory transport).
-	chain, err := srv.LocalChain(context.Background())
+	chain, err := ext.LocalChain(context.Background(), mcpServer)
 	require.NoError(t, err)
 
 	// Install the middleware for automatic interceptor execution.
 	mcpServer.AddReceivingMiddleware(gomiddleware.Middleware(chain))
 
-	handler := mcpserver.NewStreamableHTTPHandler(srv, nil)
+	handler := mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server { return mcpServer },
+		nil,
+	)
 	httpServer := httptest.NewServer(handler)
 	t.Cleanup(httpServer.Close)
 
@@ -130,7 +135,7 @@ func resultText(t *testing.T, result *mcp.CallToolResult) string {
 
 // --- RPC server setup ---
 
-// setupRPCServer creates an interceptor server with the given interceptors
+// setupRPCServer creates an interceptor extension with the given interceptors
 // and returns a connected client session. The client can call custom methods
 // via raw JSON-RPC.
 func setupRPCServer(t *testing.T, is ...interceptors.Interceptor) *mcp.ClientSession {
@@ -152,12 +157,16 @@ func setupRPCServer(t *testing.T, is ...interceptors.Interceptor) *mcp.ClientSes
 		}, nil
 	})
 
-	srv := mcpserver.NewServer(mcpServer)
+	ext := extension.New()
 	for _, i := range is {
-		srv.AddInterceptor(i)
+		ext.AddInterceptor(i)
 	}
+	ext.Install(mcpServer)
 
-	handler := mcpserver.NewStreamableHTTPHandler(srv, nil)
+	handler := mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server { return mcpServer },
+		nil,
+	)
 	httpServer := httptest.NewServer(handler)
 	t.Cleanup(httpServer.Close)
 

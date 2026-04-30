@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -13,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors"
+	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/extension"
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/integrations/gomiddleware"
-	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/mcpserver"
 )
 
 // setup creates a test server with middleware installed and returns a connected client session.
@@ -36,19 +37,23 @@ func setup(t *testing.T, is ...interceptors.Interceptor) *mcp.ClientSession {
 		}, nil
 	})
 
-	srv := mcpserver.NewServer(mcpServer)
+	ext := extension.New()
 	for _, i := range is {
-		srv.AddInterceptor(i)
+		ext.AddInterceptor(i)
 	}
+	ext.Install(mcpServer)
 
 	// Create chain via LocalChain (in-memory transport).
-	chain, err := srv.LocalChain(context.Background())
+	chain, err := ext.LocalChain(context.Background(), mcpServer)
 	require.NoError(t, err)
 
 	// Install the middleware.
 	mcpServer.AddReceivingMiddleware(gomiddleware.Middleware(chain))
 
-	handler := mcpserver.NewStreamableHTTPHandler(srv, nil)
+	handler := mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server { return mcpServer },
+		nil,
+	)
 	httpServer := httptest.NewServer(handler)
 	t.Cleanup(httpServer.Close)
 
@@ -260,10 +265,11 @@ func TestMiddlewareWithContextProvider(t *testing.T) {
 		}, nil
 	})
 
-	srv := mcpserver.NewServer(mcpServer)
-	srv.AddInterceptor(principalCheck)
+	ext := extension.New()
+	ext.AddInterceptor(principalCheck)
+	ext.Install(mcpServer)
 
-	chain, err := srv.LocalChain(context.Background())
+	chain, err := ext.LocalChain(context.Background(), mcpServer)
 	require.NoError(t, err)
 
 	mcpServer.AddReceivingMiddleware(gomiddleware.Middleware(chain,
@@ -277,7 +283,10 @@ func TestMiddlewareWithContextProvider(t *testing.T) {
 		}),
 	))
 
-	handler := mcpserver.NewStreamableHTTPHandler(srv, nil)
+	handler := mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server { return mcpServer },
+		nil,
+	)
 	httpServer := httptest.NewServer(handler)
 	t.Cleanup(httpServer.Close)
 

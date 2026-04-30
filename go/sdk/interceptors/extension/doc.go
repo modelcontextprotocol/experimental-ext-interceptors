@@ -2,30 +2,30 @@
 // Use of this source code is governed by an Apache-2.0
 // license that can be found in the LICENSE file.
 
-// Package mcpserver registers interceptors as first-class MCP
-// primitives. Adding an interceptor to the server makes it
+// Package extension registers interceptors as first-class MCP
+// primitives. Adding an interceptor to the extension makes it
 // discoverable via "interceptors/list" and invocable via
 // "interceptor/invoke", so any MCP client — local or remote — can
 // discover and call interceptors using standard JSON-RPC.
 //
 // # Getting Started
 //
-// Wrap an existing [mcp.Server] with [NewServer] and register
-// interceptors:
+// Create an [Extension], register interceptors, and install on an
+// [mcp.Server]:
 //
-//	srv := mcpserver.NewServer(mcpServer, mcpserver.WithLogger(logger))
-//	srv.AddInterceptor(myValidator)
-//	srv.AddInterceptor(myMutator)
-//	srv.Run(ctx, transport)
+//	ext := extension.New(extension.WithLogger(logger))
+//	ext.AddInterceptor(myValidator)
+//	ext.AddInterceptor(myMutator)
+//	ext.Install(mcpServer)
 //
 // At this point any connected MCP client can call interceptors/list
 // and interceptor/invoke.
 //
-// For convenience, [Server.LocalChain] creates a [chain.Chain] wired
+// For convenience, [Extension.LocalChain] creates a [chain.Chain] wired
 // to the server over an in-memory transport, ready for use with the
 // gomiddleware package:
 //
-//	chain, err := srv.LocalChain(ctx)
+//	chain, err := ext.LocalChain(ctx, mcpServer)
 //	mcpServer.AddReceivingMiddleware(
 //	    gomiddleware.Middleware(chain,
 //	        gomiddleware.WithContextProvider(myProvider),
@@ -34,7 +34,7 @@
 //
 // # JSON-RPC Methods
 //
-// The server registers two JSON-RPC methods:
+// The extension installs two JSON-RPC methods on the server:
 //
 //   - "interceptors/list": Returns all registered interceptors,
 //     optionally filtered by event name.
@@ -43,10 +43,13 @@
 //
 // # Transports
 //
-// The server works with any transport supported by the go-sdk.
-// For stdio, use [Server.Run]. For HTTP, use
-// [NewStreamableHTTPHandler]:
+// Users interact with the [mcp.Server] directly for transport
+// configuration. For stdio, use [mcp.Server.Run]. For HTTP, use
+// [mcp.NewStreamableHTTPHandler]:
 //
-//	handler := mcpserver.NewStreamableHTTPHandler(srv, nil)
+//	handler := mcp.NewStreamableHTTPHandler(
+//	    func(r *http.Request) *mcp.Server { return mcpServer },
+//	    nil,
+//	)
 //	http.ListenAndServe(":8080", handler)
-package mcpserver
+package extension

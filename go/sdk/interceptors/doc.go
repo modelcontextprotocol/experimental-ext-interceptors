@@ -10,20 +10,21 @@
 // This package is transport-agnostic — it has no dependency on the
 // MCP SDK's server or client types. The chain orchestrator lives in
 // the [interceptors/chain] sub-package, MCP server integration in
-// [interceptors/mcpserver], and middleware in
+// [interceptors/extension], and middleware in
 // [interceptors/integrations/gomiddleware].
 //
 // # Usage with MCP
 //
-// Create an interceptor [mcpserver.Server], register interceptors,
-// then use [mcpserver.Server.LocalChain] to get a chain for
-// middleware:
+// Create an [extension.Extension], register interceptors, install on
+// an [mcp.Server], then use [extension.Extension.LocalChain] to get a
+// chain for middleware:
 //
-//	srv := mcpserver.NewServer(mcpServer)
-//	srv.AddInterceptor(myValidator)
-//	srv.AddInterceptor(myMutator)
+//	ext := extension.New()
+//	ext.AddInterceptor(myValidator)
+//	ext.AddInterceptor(myMutator)
+//	ext.Install(mcpServer)
 //
-//	chain, err := srv.LocalChain(ctx)
+//	chain, err := ext.LocalChain(ctx, mcpServer)
 //	mcpServer.AddReceivingMiddleware(
 //	    gomiddleware.Middleware(chain),
 //	)

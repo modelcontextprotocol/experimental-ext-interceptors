@@ -13,11 +13,11 @@ mcpServer := mcp.NewServer(&mcp.Implementation{
     Version: "0.1.0",
 }, nil)
 
-// Wrap with interceptor support.
-srv := mcpserver.NewServer(mcpServer)
+// Create an extension and register interceptors.
+ext := extension.New()
 
 // Register a validator that blocks dangerous tool calls.
-srv.AddInterceptor(&interceptors.Validator{
+ext.AddInterceptor(&interceptors.Validator{
     Metadata: interceptors.Metadata{
         Name: "block-dangerous",
         Hook: interceptors.Hook{
@@ -35,11 +35,12 @@ srv.AddInterceptor(&interceptors.Validator{
     },
 })
 
-// Create a chain and install middleware for automatic execution.
-chain, err := srv.LocalChain(ctx)
+// Install on the server and create a chain for middleware.
+ext.Install(mcpServer)
+chain, err := ext.LocalChain(ctx, mcpServer)
 mcpServer.AddReceivingMiddleware(gomiddleware.Middleware(chain))
 
-srv.Run(context.Background(), &mcp.StdioTransport{})
+mcpServer.Run(context.Background(), &mcp.StdioTransport{})
 ```
 
 See [`examples/`](examples/) for complete working examples.

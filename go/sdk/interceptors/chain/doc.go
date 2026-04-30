@@ -32,8 +32,8 @@
 //	    gomiddleware.Middleware(chain),
 //	)
 //
-// For convenience, [mcpserver.Server.LocalChain] creates a chain
+// For convenience, [extension.Extension.LocalChain] creates a chain
 // pre-configured with a local in-process MCP server:
 //
-//	chain, err := srv.LocalChain(ctx)
+//	chain, err := ext.LocalChain(ctx, mcpServer)
 package chain

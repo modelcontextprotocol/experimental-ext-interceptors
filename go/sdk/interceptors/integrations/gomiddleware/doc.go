@@ -16,13 +16,14 @@
 //
 // # Usage
 //
-//	// Create interceptor server (registers interceptors as resources)
-//	srv := mcpserver.NewServer(mcpServer)
-//	srv.AddInterceptor(myValidator)
-//	srv.AddInterceptor(myMutator)
+//	// Create interceptor extension (registers interceptors as resources)
+//	ext := extension.New()
+//	ext.AddInterceptor(myValidator)
+//	ext.AddInterceptor(myMutator)
+//	ext.Install(mcpServer)
 //
 //	// Create chain via in-memory transport
-//	chain, err := srv.LocalChain(ctx)
+//	chain, err := ext.LocalChain(ctx, mcpServer)
 //
 //	// Install middleware for automatic execution
 //	mcpServer.AddReceivingMiddleware(

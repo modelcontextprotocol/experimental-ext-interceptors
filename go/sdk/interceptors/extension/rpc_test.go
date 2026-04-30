@@ -1,4 +1,4 @@
-package mcpserver_test
+package extension_test
 
 import (
 	"context"
