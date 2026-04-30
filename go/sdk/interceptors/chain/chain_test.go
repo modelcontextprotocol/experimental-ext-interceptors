@@ -57,20 +57,18 @@ func setupChainWithInterceptors(t *testing.T, is ...interceptors.Interceptor) *c
 // registerInterceptorMethods adds interceptors/list and interceptor/invoke
 // custom methods to the server, backed by the given interceptor list.
 func registerInterceptorMethods(server *mcp.Server, is []interceptors.Interceptor) {
-	server.AddReceivingCustomMethod(interceptors.MethodList,
-		func(_ context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
-			var params interceptors.ListParams
-			if len(raw) > 0 {
-				if err := json.Unmarshal(raw, &params); err != nil {
-					return nil, err
-				}
+	mcp.AddReceivingCustomMethod(server, interceptors.MethodList,
+		func(_ context.Context, req *mcp.ServerRequest[*interceptors.ListParams]) (*interceptors.ListResult, error) {
+			var event string
+			if req.Params != nil {
+				event = req.Params.Event
 			}
 			infos := make([]interceptors.InterceptorInfo, 0, len(is))
 			for _, i := range is {
-				if params.Event != "" {
+				if event != "" {
 					match := false
 					for _, e := range i.GetMetadata().Hook.Events {
-						if e == params.Event {
+						if e == event {
 							match = true
 							break
 						}
@@ -85,12 +83,12 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 		},
 	)
 
-	server.AddReceivingCustomMethod(interceptors.MethodInvoke,
-		func(ctx context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
-			var params interceptors.InvokeParams
-			if err := json.Unmarshal(raw, &params); err != nil {
-				return nil, err
+	mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke,
+		func(ctx context.Context, req *mcp.ServerRequest[*interceptors.InvokeParams]) (*interceptors.InvokeResult, error) {
+			if req.Params == nil {
+				return nil, fmt.Errorf("params required")
 			}
+			params := req.Params
 			var target interceptors.Interceptor
 			for _, i := range is {
 				if i.GetMetadata().Name == params.Name {

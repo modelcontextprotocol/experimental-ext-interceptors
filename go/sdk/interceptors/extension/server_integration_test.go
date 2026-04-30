@@ -610,3 +610,74 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 	assert.Equal(t, int32(3), respMutCount.Load(), "expected 3 response mutators to run")
 	assert.Equal(t, int32(3), respValCount.Load(), "expected 3 response validators to run")
 }
+
+// TestCustomMethodsFlowThroughMiddleware verifies that interceptors/list and
+// interceptor/invoke are routed through AddReceivingMiddleware, just like
+// standard MCP methods.
+func TestCustomMethodsFlowThroughMiddleware(t *testing.T) {
+	t.Parallel()
+
+	var count atomic.Int64
+	counting := func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			count.Add(1)
+			return next(ctx, method, req)
+		}
+	}
+
+	mcpServer := buildServer(t, allowAllValidator("v1"))
+	mcpServer.AddReceivingMiddleware(counting)
+	cs := connectHTTPClient(t, mcpServer)
+	count.Store(0) // reset after initialization handshake
+
+	_, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "echo",
+		Arguments: map[string]any{"text": "hello"},
+	})
+	require.NoError(t, err)
+	assert.Greater(t, count.Swap(0), int64(0), "middleware must fire for tools/call")
+
+	var listResult interceptors.ListResult
+	err = cs.CallCustom(context.Background(), interceptors.MethodList, nil, &listResult)
+	require.NoError(t, err)
+	assert.Len(t, listResult.Interceptors, 1)
+	assert.Greater(t, count.Swap(0), int64(0), "middleware must fire for interceptors/list")
+
+	payload, _ := json.Marshal(map[string]any{"name": "echo", "arguments": map[string]any{}})
+	var invokeResult interceptors.InvokeResult
+	err = cs.CallCustom(context.Background(), interceptors.MethodInvoke, &interceptors.InvokeParams{
+		Name:    "v1",
+		Event:   interceptors.EventToolsCall,
+		Phase:   interceptors.PhaseRequest,
+		Payload: payload,
+	}, &invokeResult)
+	require.NoError(t, err)
+	assert.Greater(t, count.Swap(0), int64(0), "middleware must fire for interceptor/invoke")
+}
+
+// TestMiddlewareCanRejectCustomMethods verifies that middleware installed via
+// AddReceivingMiddleware can block interceptors/list and interceptor/invoke,
+// enabling auth guards over the interceptor protocol.
+func TestMiddlewareCanRejectCustomMethods(t *testing.T) {
+	t.Parallel()
+
+	var rejected atomic.Bool
+	blockingMiddleware := func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			if method != "initialize" {
+				rejected.Store(true)
+				return nil, fmt.Errorf("unauthorized")
+			}
+			return next(ctx, method, req)
+		}
+	}
+
+	mcpServer := buildServer(t, allowAllValidator("v1"))
+	mcpServer.AddReceivingMiddleware(blockingMiddleware)
+	cs := connectHTTPClient(t, mcpServer)
+
+	var listResult interceptors.ListResult
+	err := cs.CallCustom(context.Background(), interceptors.MethodList, nil, &listResult)
+	assert.Error(t, err, "blockingMiddleware should reject interceptors/list")
+	assert.True(t, rejected.Load())
+}

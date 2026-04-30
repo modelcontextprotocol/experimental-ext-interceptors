@@ -61,11 +61,11 @@ func New(opts ...Option) *Extension {
 // server. It can be called on multiple servers.
 func (e *Extension) Install(server *mcp.Server) {
 	// Register JSON-RPC methods for interceptor discovery and invocation.
-	server.AddReceivingCustomMethod(interceptors.MethodList, s.handleList)
-	server.AddReceivingCustomMethod(interceptors.MethodInvoke, s.handleInvoke)
+	mcp.AddReceivingCustomMethod(server, interceptors.MethodList, e.handleList)
+	mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke, e.handleInvoke)
 
 	// Install lightweight middleware to enrich initialize responses.
-	server.AddReceivingMiddleware(s.initMiddleware())
+	server.AddReceivingMiddleware(e.initMiddleware())
 }
 
 // AddInterceptor registers an interceptor. It panics if the interceptor

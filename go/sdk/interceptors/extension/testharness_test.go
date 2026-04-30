@@ -133,51 +133,51 @@ func resultText(t *testing.T, result *mcp.CallToolResult) string {
 	return tc.Text
 }
 
-// --- RPC server setup ---
+// --- Low-level server primitives ---
 
-// setupRPCServer creates an interceptor extension with the given interceptors
-// and returns a connected client session. The client can call custom methods
-// via raw JSON-RPC.
-func setupRPCServer(t *testing.T, is ...interceptors.Interceptor) *mcp.ClientSession {
+// buildServer creates an interceptor server with the echo tool and the given
+// interceptors. It does not start serving or connect a client, so callers can
+// install middleware before calling connectHTTPClient.
+func buildServer(t *testing.T, is ...interceptors.Interceptor) *mcp.Server {
 	t.Helper()
-
-	mcpServer := mcp.NewServer(&mcp.Implementation{
-		Name:    "test-server",
-		Version: "0.1.0",
-	}, nil)
-
-	// A minimal tool so the server has something to initialize with.
-	mcpServer.AddTool(&mcp.Tool{
-		Name:        "echo",
-		Description: "echoes input",
-		InputSchema: map[string]any{"type": "object"},
-	}, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("echo: %s", req.Params.Arguments)}},
-		}, nil
-	})
-
+	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "0.1.0"}, nil)
+	for _, tt := range defaultTools() {
+		mcpServer.AddTool(tt.tool, tt.handler)
+	}
 	ext := extension.New()
 	for _, i := range is {
 		ext.AddInterceptor(i)
 	}
 	ext.Install(mcpServer)
 
+	return mcpServer
+}
+
+// connectHTTPClient starts an HTTP test server backed by srv and returns a
+// connected client session. Cleanup is registered via t.Cleanup.
+func connectHTTPClient(t *testing.T, srv *mcp.Server) *mcp.ClientSession {
+	t.Helper()
 	handler := mcp.NewStreamableHTTPHandler(
-		func(r *http.Request) *mcp.Server { return mcpServer },
+		func(r *http.Request) *mcp.Server { return srv },
 		nil,
 	)
 	httpServer := httptest.NewServer(handler)
 	t.Cleanup(httpServer.Close)
-
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"}, nil)
 	cs, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint: httpServer.URL,
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { cs.Close() })
-
 	return cs
+}
+
+// setupRPCServer creates an interceptor server with the given interceptors
+// and returns a connected client session for raw JSON-RPC method calls.
+func setupRPCServer(t *testing.T, is ...interceptors.Interceptor) *mcp.ClientSession {
+	t.Helper()
+	srv := buildServer(t, is...)
+	return connectHTTPClient(t, srv)
 }
 
 // --- Interceptor builders ---

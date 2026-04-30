@@ -57,86 +57,43 @@ type Server struct {
 	customMethods           map[string]methodInfo
 }
 
-// NOTE: CustomReceivingMethodParam, CustomReceivingMethodResult,
-// CustomMethodHandler, and newCustomMethodInfo are additions to the upstream
-// go-sdk to route custom JSON-RPC methods, as needed by the MCP interceptors
-// extension (SEP). This is a reference implementation with known
-// simplifications: params/result use raw json.RawMessage instead of typed
-// generics, and receivingMethodInfos() merges maps on every request instead of
+// NOTE: ParamsBase, ResultBase, and AddReceivingCustomMethod are additions to
+// the upstream go-sdk to route custom JSON-RPC methods through receiving
+// handler calls like any built-in MCP method, as needed by the MCP interceptors
+// extension (SEP). This is a reference implementation, so there's some
+// inefficiency; receivingMethodInfos() merges maps on every request instead of
 // caching.
 
-// CustomReceivingMethodParam satisfies the Params interface for custom methods.
-// UnmarshalJSON captures the full wire params as raw JSON so the handler
-// receives the original bytes unchanged.
-type CustomReceivingMethodParam struct {
-	Meta    `json:"_meta,omitempty"`
-	Content json.RawMessage `json:"content,omitempty"`
+// ParamsBase can be embedded by types outside this package to satisfy the
+// mcp.Params interface, including its unexported marker method.
+type ParamsBase struct {
+	Meta `json:"_meta,omitempty"`
 }
 
-func (x *CustomReceivingMethodParam) isParams()              {}
-func (x *CustomReceivingMethodParam) GetProgressToken() any  { return getProgressToken(x) }
-func (x *CustomReceivingMethodParam) SetProgressToken(t any) { setProgressToken(x, t) }
-func (x *CustomReceivingMethodParam) UnmarshalJSON(data []byte) error {
-	x.Content = json.RawMessage(data)
-	return nil
+func (x *ParamsBase) isParams()              {}
+func (x *ParamsBase) GetProgressToken() any  { return getProgressToken(x) }
+func (x *ParamsBase) SetProgressToken(t any) { setProgressToken(x, t) }
+
+// ResultBase can be embedded by types outside this package to satisfy the
+// mcp.Result interface, including its unexported marker method.
+type ResultBase struct {
+	Meta `json:"_meta,omitempty"`
 }
 
-// CustomReceivingMethodResult satisfies the Result interface for custom methods.
-// MarshalJSON passes the handler's return value through directly so the client
-// receives it without an extra wrapper object.
-type CustomReceivingMethodResult struct {
-	Meta    `json:"_meta,omitempty"`
-	Content any
-}
+func (x *ResultBase) isResult() {}
 
-func (x *CustomReceivingMethodResult) isResult() {}
-func (x *CustomReceivingMethodResult) MarshalJSON() ([]byte, error) {
-	if x.Content == nil {
-		return []byte("null"), nil
-	}
-	return json.Marshal(x.Content)
-}
-
-// CustomMethodHandler is the handler signature for custom JSON-RPC methods
-// registered via AddReceivingCustomMethod.
-type CustomMethodHandler func(ctx context.Context, ss *ServerSession, params json.RawMessage) (any, error)
-
-// newCustomMethodInfo builds a methodInfo that routes a CustomMethodHandler
-// through the standard receiving pipeline so it flows through middleware
-// like any built-in MCP method.
-func newCustomMethodInfo(handler CustomMethodHandler) methodInfo {
-	// missingParamsOK: custom methods may legally omit params (e.g. interceptors/list).
-	mi := newMethodInfo[*CustomReceivingMethodParam, *CustomReceivingMethodResult](missingParamsOK)
-	mi.newRequest = func(s Session, p Params, re *RequestExtra) Request {
-		r := &ServerRequest[*CustomReceivingMethodParam]{Session: s.(*ServerSession), Extra: re}
-		if p != nil {
-			r.Params = p.(*CustomReceivingMethodParam)
-		}
-		return r
-	}
-	mi.handleMethod = MethodHandler(func(ctx context.Context, _ string, req Request) (Result, error) {
-		sr := req.(*ServerRequest[*CustomReceivingMethodParam])
-		var raw json.RawMessage
-		if sr.Params != nil {
-			raw = sr.Params.Content
-		}
-		result, err := handler(ctx, sr.Session, raw)
-		if err != nil {
-			return nil, err
-		}
-		return &CustomReceivingMethodResult{Content: result}, nil
-	})
-	return mi
-}
-
-// AddReceivingCustomMethod registers a custom JSON-RPC method that flows
-// through the receiving middleware chain (AddReceivingMiddleware) like any
-// built-in MCP method. The handler receives the raw wire params as JSON.
-func (s *Server) AddReceivingCustomMethod(method string, handler CustomMethodHandler) {
+// AddReceivingCustomMethod registers a typed custom JSON-RPC method that flows
+// through receiving handler calls like any built-in MCP method. P must embed
+// ParamsBase and R must embed ResultBase to satisfy the interface constraints.
+// Go does not support generic methods, so this is a package-level function.
+func AddReceivingCustomMethod[P paramsPtr[T], R Result, T any](
+	s *Server, method string,
+	handler typedServerMethodHandler[P, R],
+) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	s.customMethods[method] = newCustomMethodInfo(handler)
+	// missingParamsOK: custom methods may legally omit params (e.g. interceptors/list).
+	s.customMethods[method] = newServerMethodInfo(handler, missingParamsOK)
 }
 
 // hasCustomMethod reports whether the given method is registered as a custom method.

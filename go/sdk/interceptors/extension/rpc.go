@@ -6,7 +6,6 @@ package extension
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -19,18 +18,16 @@ import (
 
 // handleList implements the "interceptors/list" JSON-RPC method.
 // It returns all registered interceptors, optionally filtered by event.
-func (e *Extension) handleList(_ context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
-	var params interceptors.ListParams
-	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &params); err != nil {
-			return nil, err
-		}
+func (e *Extension) handleList(_ context.Context, req *mcp.ServerRequest[*interceptors.ListParams]) (*interceptors.ListResult, error) {
+	var event string
+	if req.Params != nil {
+		event = req.Params.Event
 	}
 
 	all := e.getInterceptors()
 	infos := make([]interceptors.InterceptorInfo, 0, len(all))
 	for _, ri := range all {
-		if params.Event != "" && !slices.Contains(ri.GetMetadata().Hook.Events, params.Event) {
+		if event != "" && !slices.Contains(ri.GetMetadata().Hook.Events, event) {
 			continue
 		}
 		infos = append(infos, interceptors.InfoFromInterceptor(ri))
@@ -41,17 +38,14 @@ func (e *Extension) handleList(_ context.Context, _ *mcp.ServerSession, raw json
 
 // handleInvoke implements the "interceptor/invoke" JSON-RPC method.
 // It invokes a single interceptor by name and returns its result.
-func (e *Extension) handleInvoke(ctx context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
-	var params interceptors.InvokeParams
-	if err := json.Unmarshal(raw, &params); err != nil {
-		return nil, err
-	}
-	if params.Name == "" {
+func (e *Extension) handleInvoke(ctx context.Context, req *mcp.ServerRequest[*interceptors.InvokeParams]) (*interceptors.InvokeResult, error) {
+	if req.Params == nil || req.Params.Name == "" {
 		return nil, &jsonrpc.Error{
 			Code:    jsonrpc.CodeInvalidParams,
 			Message: "name is required",
 		}
 	}
+	params := req.Params
 
 	// Look up the interceptor by name.
 	i := e.findByName(params.Name)

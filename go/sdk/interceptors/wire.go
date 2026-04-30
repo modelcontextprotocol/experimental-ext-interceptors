@@ -4,7 +4,11 @@
 
 package interceptors
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
 
 // JSON-RPC method names for the interceptor protocol.
 const (
@@ -28,6 +32,7 @@ const (
 
 // ListParams are the optional parameters for the interceptors/list method.
 type ListParams struct {
+	mcp.ParamsBase
 	Event string `json:"event,omitempty"` // Filter by event name; empty = all
 }
 
@@ -64,6 +69,7 @@ func InfoFromInterceptor(i Interceptor) InterceptorInfo {
 
 // ListResult is the result of the interceptors/list method.
 type ListResult struct {
+	mcp.ResultBase
 	Interceptors []InterceptorInfo `json:"interceptors"`
 }
 
@@ -72,6 +78,7 @@ type ListResult struct {
 // InvokeParams are the parameters for the interceptor/invoke method.
 // The caller specifies which interceptor to invoke by name.
 type InvokeParams struct {
+	mcp.ParamsBase
 	Name      string             `json:"name"`
 	Event     string             `json:"event"`
 	Phase     InterceptionPhase  `json:"phase"`
@@ -84,6 +91,7 @@ type InvokeParams struct {
 // InvokeResult is the result of the interceptor/invoke method.
 // Fields are type-specific: validators populate Validation, mutators populate Mutation + Payload.
 type InvokeResult struct {
+	mcp.ResultBase
 	Interceptor string            `json:"interceptor"`
 	Type        InterceptorType   `json:"type"`
 	Phase       InterceptionPhase `json:"phase"`
