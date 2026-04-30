@@ -63,8 +63,6 @@ func (e *Extension) Install(server *mcp.Server) {
 	// Register JSON-RPC methods for interceptor discovery and invocation.
 	mcp.AddReceivingCustomMethod(server, interceptors.MethodList, e.handleList)
 	mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke, e.handleInvoke)
-
-	// Install lightweight middleware to enrich initialize responses.
 	server.AddReceivingMiddleware(e.initMiddleware())
 }
 
