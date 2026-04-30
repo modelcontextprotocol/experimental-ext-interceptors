@@ -57,7 +57,7 @@ func setupChainWithInterceptors(t *testing.T, is ...interceptors.Interceptor) *c
 // registerInterceptorMethods adds interceptors/list and interceptor/invoke
 // custom methods to the server, backed by the given interceptor list.
 func registerInterceptorMethods(server *mcp.Server, is []interceptors.Interceptor) {
-	server.AddCustomMethod(interceptors.MethodList,
+	server.AddReceivingCustomMethod(interceptors.MethodList,
 		func(_ context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
 			var params interceptors.ListParams
 			if len(raw) > 0 {
@@ -85,7 +85,7 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 		},
 	)
 
-	server.AddCustomMethod(interceptors.MethodInvoke,
+	server.AddReceivingCustomMethod(interceptors.MethodInvoke,
 		func(ctx context.Context, _ *mcp.ServerSession, raw json.RawMessage) (any, error) {
 			var params interceptors.InvokeParams
 			if err := json.Unmarshal(raw, &params); err != nil {

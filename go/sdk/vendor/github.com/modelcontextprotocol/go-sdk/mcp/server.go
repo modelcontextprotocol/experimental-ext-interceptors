@@ -54,27 +54,89 @@ type Server struct {
 	receivingMethodHandler_ MethodHandler
 	resourceSubscriptions   map[string]map[*ServerSession]bool // uri -> session -> bool
 	pendingNotifications    map[string]*time.Timer             // notification name -> timer for pending notification send
-	customMethods           map[string]CustomMethodHandler
+	customMethods           map[string]methodInfo
 }
 
-// CustomMethodHandler handles a custom JSON-RPC method registered via
-// [Server.AddCustomMethod]. It receives the raw JSON params and returns
-// a result that will be marshaled to JSON.
+// NOTE: CustomReceivingMethodParam, CustomReceivingMethodResult,
+// CustomMethodHandler, and newCustomMethodInfo are additions to the upstream
+// go-sdk to route custom JSON-RPC methods, as needed by the MCP interceptors
+// extension (SEP). This is a reference implementation with known
+// simplifications: params/result use raw json.RawMessage instead of typed
+// generics, and receivingMethodInfos() merges maps on every request instead of
+// caching.
+
+// CustomReceivingMethodParam satisfies the Params interface for custom methods.
+// UnmarshalJSON captures the full wire params as raw JSON so the handler
+// receives the original bytes unchanged.
+type CustomReceivingMethodParam struct {
+	Meta    `json:"_meta,omitempty"`
+	Content json.RawMessage `json:"content,omitempty"`
+}
+
+func (x *CustomReceivingMethodParam) isParams()              {}
+func (x *CustomReceivingMethodParam) GetProgressToken() any  { return getProgressToken(x) }
+func (x *CustomReceivingMethodParam) SetProgressToken(t any) { setProgressToken(x, t) }
+func (x *CustomReceivingMethodParam) UnmarshalJSON(data []byte) error {
+	x.Content = json.RawMessage(data)
+	return nil
+}
+
+// CustomReceivingMethodResult satisfies the Result interface for custom methods.
+// MarshalJSON passes the handler's return value through directly so the client
+// receives it without an extra wrapper object.
+type CustomReceivingMethodResult struct {
+	Meta    `json:"_meta,omitempty"`
+	Content any
+}
+
+func (x *CustomReceivingMethodResult) isResult() {}
+func (x *CustomReceivingMethodResult) MarshalJSON() ([]byte, error) {
+	if x.Content == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(x.Content)
+}
+
+// CustomMethodHandler is the handler signature for custom JSON-RPC methods
+// registered via AddReceivingCustomMethod.
 type CustomMethodHandler func(ctx context.Context, ss *ServerSession, params json.RawMessage) (any, error)
 
-// AddCustomMethod registers a custom JSON-RPC method on the server.
-// Custom methods bypass the typed Params/Result pipeline and operate
-// on raw JSON. They are dispatched before the standard method handlers.
-//
-// This is useful for extensions that define their own JSON-RPC methods
-// (e.g. interceptors/list, interceptor/executeChain).
-func (s *Server) AddCustomMethod(method string, handler CustomMethodHandler) {
+// newCustomMethodInfo builds a methodInfo that routes a CustomMethodHandler
+// through the standard receiving pipeline so it flows through middleware
+// like any built-in MCP method.
+func newCustomMethodInfo(handler CustomMethodHandler) methodInfo {
+	// missingParamsOK: custom methods may legally omit params (e.g. interceptors/list).
+	mi := newMethodInfo[*CustomReceivingMethodParam, *CustomReceivingMethodResult](missingParamsOK)
+	mi.newRequest = func(s Session, p Params, re *RequestExtra) Request {
+		r := &ServerRequest[*CustomReceivingMethodParam]{Session: s.(*ServerSession), Extra: re}
+		if p != nil {
+			r.Params = p.(*CustomReceivingMethodParam)
+		}
+		return r
+	}
+	mi.handleMethod = MethodHandler(func(ctx context.Context, _ string, req Request) (Result, error) {
+		sr := req.(*ServerRequest[*CustomReceivingMethodParam])
+		var raw json.RawMessage
+		if sr.Params != nil {
+			raw = sr.Params.Content
+		}
+		result, err := handler(ctx, sr.Session, raw)
+		if err != nil {
+			return nil, err
+		}
+		return &CustomReceivingMethodResult{Content: result}, nil
+	})
+	return mi
+}
+
+// AddReceivingCustomMethod registers a custom JSON-RPC method that flows
+// through the receiving middleware chain (AddReceivingMiddleware) like any
+// built-in MCP method. The handler receives the raw wire params as JSON.
+func (s *Server) AddReceivingCustomMethod(method string, handler CustomMethodHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.customMethods == nil {
-		s.customMethods = make(map[string]CustomMethodHandler)
-	}
-	s.customMethods[method] = handler
+
+	s.customMethods[method] = newCustomMethodInfo(handler)
 }
 
 // hasCustomMethod reports whether the given method is registered as a custom method.
@@ -83,17 +145,6 @@ func (s *Server) hasCustomMethod(method string) bool {
 	defer s.mu.Unlock()
 	_, ok := s.customMethods[method]
 	return ok
-}
-
-// callCustomMethod calls the custom method handler for the given method.
-func (s *Server) callCustomMethod(ctx context.Context, ss *ServerSession, method string, params json.RawMessage) (any, error) {
-	s.mu.Lock()
-	h := s.customMethods[method]
-	s.mu.Unlock()
-	if h == nil {
-		return nil, fmt.Errorf("unknown custom method %q", method)
-	}
-	return h(ctx, ss, params)
 }
 
 // ServerOptions is used to configure behavior of the server.
@@ -235,6 +286,7 @@ func NewServer(impl *Implementation, options *ServerOptions) *Server {
 		receivingMethodHandler_: defaultReceivingMethodHandler[*ServerSession],
 		resourceSubscriptions:   make(map[string]map[*ServerSession]bool),
 		pendingNotifications:    make(map[string]*time.Timer),
+		customMethods:           make(map[string]methodInfo),
 	}
 }
 
@@ -1426,7 +1478,12 @@ func initializeMethodInfo() methodInfo {
 
 func (ss *ServerSession) sendingMethodInfos() map[string]methodInfo { return clientMethodInfos }
 
-func (ss *ServerSession) receivingMethodInfos() map[string]methodInfo { return serverMethodInfos }
+func (ss *ServerSession) receivingMethodInfos() map[string]methodInfo {
+	infos := make(map[string]methodInfo)
+	maps.Copy(infos, serverMethodInfos)
+	maps.Copy(infos, ss.server.customMethods)
+	return infos
+}
 
 func (ss *ServerSession) sendingMethodHandler() MethodHandler {
 	s := ss.server
@@ -1474,12 +1531,6 @@ func (ss *ServerSession) handle(ctx context.Context, req *jsonrpc.Request) (any,
 	// server->client calls and notifications to the incoming request from which
 	// they originated. See [idContextKey] for details.
 	ctx = context.WithValue(ctx, idContextKey{}, req.ID)
-
-	// Dispatch custom methods before the standard typed pipeline.
-	if ss.server.hasCustomMethod(req.Method) {
-		return ss.server.callCustomMethod(ctx, ss, req.Method, req.Params)
-	}
-
 	return handleReceive(ctx, ss, req)
 }
 
