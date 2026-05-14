@@ -51,7 +51,7 @@ await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOpt
 {
     BackendClient = backendClient,
     InterceptorClients = [interceptorClient],
-    Events = [InterceptorEvents.ToolsCall], // Only intercept tools/call
+    Events = [InterceptionEvents.ToolsCall], // Only intercept tools/call
 });
 
 // 4. Configure server options and create the proxy server on stdio

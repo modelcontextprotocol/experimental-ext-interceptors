@@ -1,9 +1,15 @@
 namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// Defines the interceptable event names from the MCP interceptors extension.
+/// String constants for the lifecycle events defined by SEP-1763 (Interception Events).
 /// </summary>
-public static class InterceptorEvents
+/// <remarks>
+/// The SEP defines these as the <c>InterceptionEvent</c> type union; in C# the equivalent is
+/// a plain <see langword="string"/>, so this class just holds the well-known names.
+/// Implementations MAY define additional event names following the <c>namespace/operation</c>
+/// convention; namespace wildcards (e.g. <c>tools/*</c>) MAY be supported by individual SDKs.
+/// </remarks>
+public static class InterceptionEvents
 {
     // Server feature events
     public const string ToolsList = "tools/list";
@@ -22,8 +28,6 @@ public static class InterceptorEvents
     // LLM interaction events
     public const string LlmCompletion = "llm/completion";
 
-    // Wildcard patterns
-    public const string AllRequests = "*/request";
-    public const string AllResponses = "*/response";
+    /// <summary>Matches all lifecycle events on the phase specified by the enclosing hook entry.</summary>
     public const string All = "*";
 }

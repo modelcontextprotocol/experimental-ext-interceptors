@@ -43,7 +43,7 @@ await using var everythingClient = await McpClient.CreateAsync(
 var gateway = new InterceptingMcpClient(everythingClient, new InterceptingMcpClientOptions
 {
     InterceptorClient = interceptorClient,
-    Events = [InterceptorEvents.ToolsCall],
+    Events = [InterceptionEvents.ToolsCall],
 });
 
 // 4. List available interceptors

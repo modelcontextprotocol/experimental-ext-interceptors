@@ -29,7 +29,7 @@ public sealed class AvatarInterceptors
         Name = "avatar-mood",
         Description = "Classifies conversation mood via a secondary model and updates the avatar state.",
         Type = InterceptorType.Sink,
-        Events = [InterceptorEvents.LlmCompletion],
+        Events = [InterceptionEvents.LlmCompletion],
         Phase = InterceptorPhase.Response)]
     public SinkInterceptorResult OnLlmCompletion(
         JsonNode payload,

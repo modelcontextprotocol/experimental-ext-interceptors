@@ -32,7 +32,7 @@ await app.RunAsync();
 public class MyInterceptors
 {
     [McpServerInterceptor(Name = "pii-validator", Type = InterceptorType.Validation,
-        Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Request)]
+        Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Request)]
     public static ValidationInterceptorResult ValidatePii(JsonNode payload)
     {
         // Check for PII patterns
@@ -40,7 +40,7 @@ public class MyInterceptors
     }
 
     [McpServerInterceptor(Name = "email-redactor", Type = InterceptorType.Mutation,
-        Events = [InterceptorEvents.ToolsCall], PriorityHint = -1000)]
+        Events = [InterceptionEvents.ToolsCall], PriorityHint = -1000)]
     public static MutationInterceptorResult RedactEmails(JsonNode payload)
     {
         // Modify the payload
@@ -62,7 +62,7 @@ var interceptors = await interceptorClient.ListInterceptorsAsync();
 var result = await interceptorClient.InvokeInterceptorAsync(new InvokeInterceptorRequestParams
 {
     Name = "pii-validator",
-    Event = InterceptorEvents.ToolsCall,
+    Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
     Payload = JsonNode.Parse("""{"name":"call-tool","arguments":{"query":"test"}}""")!,
 });
@@ -71,7 +71,7 @@ var result = await interceptorClient.InvokeInterceptorAsync(new InvokeIntercepto
 // then dispatches each applicable interceptor via `interceptor/invoke`)
 var chainResult = await interceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
 {
-    Event = InterceptorEvents.ToolsCall,
+    Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
     Payload = myPayload,
 });
@@ -90,7 +90,7 @@ var mcpClient = await McpClient.CreateAsync(mcpTransport);
 var gateway = new InterceptingMcpClient(mcpClient, new InterceptingMcpClientOptions
 {
     InterceptorClient = interceptorClient,
-    Events = [InterceptorEvents.ToolsCall],
+    Events = [InterceptionEvents.ToolsCall],
 });
 
 // All tool calls now flow through interceptors automatically
@@ -118,7 +118,7 @@ await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOpt
 {
     BackendClient = backend,
     InterceptorClients = [interceptors],
-    Events = [InterceptorEvents.ToolsCall], // null = intercept all events
+    Events = [InterceptionEvents.ToolsCall], // null = intercept all events
     ExposeInterceptorProtocol = false,
 });
 
@@ -165,7 +165,7 @@ await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOpt
     InterceptorClients = [staticSecurityLayer], // optional: resolver-only mode is also supported
     InterceptorServerConnectionResolver = (context, @event, ct) =>
     {
-        if (@event == InterceptorEvents.ToolsCall && context.User?.Identity?.Name == "alice")
+        if (@event == InterceptionEvents.ToolsCall && context.User?.Identity?.Name == "alice")
         {
             return ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>(
             [

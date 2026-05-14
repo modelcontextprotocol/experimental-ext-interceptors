@@ -130,7 +130,7 @@ public class GatewayComponentsTests
             {
                 var userName = context.User?.Identity?.Name;
                 return ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>(
-                    @event == InterceptorEvents.ToolsCall && userName == "alice"
+                    @event == InterceptionEvents.ToolsCall && userName == "alice"
                         ?
                         [
                             new McpInterceptorServerConnectionOptions
@@ -154,7 +154,7 @@ public class GatewayComponentsTests
         };
         var context = new MessageContext(NullMcpServer.Instance, message);
 
-        await using var resolved = await provider.ResolveAsync(context, InterceptorEvents.ToolsCall, CancellationToken.None);
+        await using var resolved = await provider.ResolveAsync(context, InterceptionEvents.ToolsCall, CancellationToken.None);
 
         Assert.Single(resolved.Clients);
         await provider.DisposeAsync();
@@ -170,7 +170,7 @@ public class GatewayComponentsTests
             BackendClient = fixture.BackendClient,
             InterceptorServerConnectionResolver = (context, @event, ct) =>
                 ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>(
-                    @event == InterceptorEvents.ToolsCall
+                    @event == InterceptionEvents.ToolsCall
                         ?
                         [
                             new McpInterceptorServerConnectionOptions
@@ -253,8 +253,8 @@ public class GatewayComponentsTests
                                 Type = InterceptorType.Validation,
                                 Hooks =
                                 [
-                                    new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Request },
-                                    new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Response },
+                                    new InterceptorHook { Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Request },
+                                    new InterceptorHook { Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Response },
                                 ],
                             },
                             (_, _, _, _) => new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success())));
@@ -265,7 +265,7 @@ public class GatewayComponentsTests
 #pragma warning disable MCPEXP001
                         options.Capabilities.Extensions ??= new Dictionary<string, object>();
                         options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
-                            new InterceptorsCapability { SupportedEvents = [InterceptorEvents.ToolsCall] },
+                            new InterceptorsCapability { SupportedEvents = [InterceptionEvents.ToolsCall] },
                             InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
                     });
@@ -292,8 +292,8 @@ public class GatewayComponentsTests
                             Type = InterceptorType.Validation,
                             Hooks =
                             [
-                                new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Request },
-                                new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Response },
+                                new InterceptorHook { Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Request },
+                                new InterceptorHook { Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Response },
                             ],
                         },
                         (_, _, _, _) => new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success())));
@@ -304,7 +304,7 @@ public class GatewayComponentsTests
 #pragma warning disable MCPEXP001
                     serverOptions.Capabilities.Extensions ??= new Dictionary<string, object>();
                     serverOptions.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
-                        new InterceptorsCapability { SupportedEvents = [InterceptorEvents.ToolsCall] },
+                        new InterceptorsCapability { SupportedEvents = [InterceptionEvents.ToolsCall] },
                         InterceptorJsonUtilities.DefaultOptions);
 #pragma warning restore MCPEXP001
 

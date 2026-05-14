@@ -63,7 +63,7 @@ await using var everythingClient = await McpClient.CreateAsync(
 var loggingGateway = new InterceptingMcpClient(everythingClient, new InterceptingMcpClientOptions
 {
     InterceptorClient = loggingInterceptorClient,
-    Events = [InterceptorEvents.ToolsCall, InterceptorEvents.ToolsList],
+    Events = [InterceptionEvents.ToolsCall, InterceptionEvents.ToolsList],
 });
 
 // Outer layer: security interceptors → logging gateway
@@ -104,7 +104,7 @@ Console.WriteLine("── Demo 1: Clean echo through both layers ──");
     // Security layer (request phase)
     var securityResult = await securityInterceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
     {
-        Event = InterceptorEvents.ToolsCall,
+        Event = InterceptionEvents.ToolsCall,
         Phase = InterceptorPhase.Request,
         Payload = payload,
     });
@@ -127,7 +127,7 @@ Console.WriteLine("── Demo 2: Email payload through both layers ──");
     // Security layer redacts the email
     var securityResult = await securityInterceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
     {
-        Event = InterceptorEvents.ToolsCall,
+        Event = InterceptionEvents.ToolsCall,
         Phase = InterceptorPhase.Request,
         Payload = payload,
     });
@@ -154,7 +154,7 @@ Console.WriteLine("── Demo 3: PII payload — blocked by security layer ─�
 
     var securityResult = await securityInterceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
     {
-        Event = InterceptorEvents.ToolsCall,
+        Event = InterceptionEvents.ToolsCall,
         Phase = InterceptorPhase.Request,
         Payload = payload,
     });

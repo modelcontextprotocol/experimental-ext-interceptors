@@ -15,7 +15,7 @@ public class SampleInterceptors
         Name = "pii-validator",
         Description = "Checks tool call arguments for PII patterns",
         Type = InterceptorType.Validation,
-        Events = [InterceptorEvents.ToolsCall],
+        Events = [InterceptionEvents.ToolsCall],
         Phase = InterceptorPhase.Request)]
     public static ValidationInterceptorResult ValidatePii(JsonNode payload)
     {
@@ -44,7 +44,7 @@ public class SampleInterceptors
         Name = "email-redactor",
         Description = "Redacts email addresses from payloads",
         Type = InterceptorType.Mutation,
-        Events = [InterceptorEvents.ToolsCall],
+        Events = [InterceptionEvents.ToolsCall],
         Phase = InterceptorPhase.Request,
         PriorityHint = -1000)]
     public static MutationInterceptorResult RedactEmails(JsonNode payload)
@@ -74,7 +74,7 @@ public class SampleInterceptors
         Name = "request-logger",
         Description = "Logs all requests",
         Type = InterceptorType.Sink,
-        Events = [InterceptorEvents.All])]
+        Events = [InterceptionEvents.All])]
     public static SinkInterceptorResult LogRequest(
         JsonNode payload,
         string @event,

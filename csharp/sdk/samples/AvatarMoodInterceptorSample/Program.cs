@@ -110,7 +110,7 @@ while (true)
     var payload = BuildCompletionPayload(SonnetModelId, input, replyText, response);
     _ = interceptors.OnLlmCompletion(
         payload,
-        InterceptorEvents.LlmCompletion,
+        InterceptionEvents.LlmCompletion,
         InterceptorPhase.Response,
         new InvokeInterceptorContext { TraceId = Guid.NewGuid().ToString("N") },
         cancellationToken: default);

@@ -306,7 +306,7 @@ internal static class InterceptorChainOrchestrator
     {
         foreach (var ev in hookEvents)
         {
-            if (ev == InterceptorEvents.All) return true;
+            if (ev == InterceptionEvents.All) return true;
             if (ev == requestEvent) return true;
         }
         return false;

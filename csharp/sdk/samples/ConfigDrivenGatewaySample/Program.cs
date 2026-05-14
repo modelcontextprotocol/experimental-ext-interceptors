@@ -44,7 +44,7 @@ var gatewayOptions = new McpInterceptorGatewayOptions
     ServerInfo = config.ServerInfo,
     InterceptorServerConnectionResolver = (context, @event, ct) =>
     {
-        if (@event != InterceptorEvents.ToolsCall)
+        if (@event != InterceptionEvents.ToolsCall)
         {
             return ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>([]);
         }

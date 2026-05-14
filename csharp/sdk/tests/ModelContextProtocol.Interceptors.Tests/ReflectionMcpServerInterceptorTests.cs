@@ -69,7 +69,7 @@ public class ReflectionMcpServerInterceptorTests
         var request = new InvokeInterceptorRequestParams
         {
             Name = "bool-validator",
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"valid":true}""")!,
         };
@@ -88,7 +88,7 @@ public class ReflectionMcpServerInterceptorTests
         var request = new InvokeInterceptorRequestParams
         {
             Name = "bool-validator",
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"valid":false}""")!,
         };
@@ -107,7 +107,7 @@ public class ReflectionMcpServerInterceptorTests
         var request = new InvokeInterceptorRequestParams
         {
             Name = "result-validator",
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Response,
             Payload = JsonNode.Parse("""{"test":true}""")!,
         };
@@ -132,7 +132,7 @@ public class ReflectionMcpServerInterceptorTests
         var request = new InvokeInterceptorRequestParams
         {
             Name = "mutator",
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"original":true}""")!,
         };
@@ -152,7 +152,7 @@ public class ReflectionMcpServerInterceptorTests
         var request = new InvokeInterceptorRequestParams
         {
             Name = "sink",
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"data":"test"}""")!,
             Context = new InvokeInterceptorContext { TraceId = "trace-123" },
@@ -173,7 +173,7 @@ public class ReflectionMcpServerInterceptorTests
         var request = new InvokeInterceptorRequestParams
         {
             Name = "async-validator",
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{}""")!,
         };

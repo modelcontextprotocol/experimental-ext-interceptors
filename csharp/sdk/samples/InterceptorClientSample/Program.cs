@@ -53,7 +53,7 @@ var cleanPayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Cont
 var invokeResult = await client.InvokeInterceptorAsync(new InvokeInterceptorRequestParams
 {
     Name = "email-redactor",
-    Event = InterceptorEvents.ToolsCall,
+    Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
     Payload = cleanPayload,
 });
@@ -72,7 +72,7 @@ var safePayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Hello
 var validationResult = await client.InvokeInterceptorAsync(new InvokeInterceptorRequestParams
 {
     Name = "pii-validator",
-    Event = InterceptorEvents.ToolsCall,
+    Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
     Payload = safePayload,
 });
@@ -90,7 +90,7 @@ var piiPayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"My SSN
 var piiResult = await client.InvokeInterceptorAsync(new InvokeInterceptorRequestParams
 {
     Name = "pii-validator",
-    Event = InterceptorEvents.ToolsCall,
+    Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
     Payload = piiPayload,
 });
@@ -112,7 +112,7 @@ Console.WriteLine("── Demo 5: Execute chain (email + PII check) ──");
 var chainPayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Email bob@corp.com about SSN"}}""")!;
 var chainResult = await client.ExecuteChainAsync(new ExecuteChainRequestParams
 {
-    Event = InterceptorEvents.ToolsCall,
+    Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
     Payload = chainPayload,
     Context = new InvokeInterceptorContext
@@ -149,7 +149,7 @@ Console.WriteLine("── Demo 6: Execute chain (clean data, should pass) ──
 var cleanChainPayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Contact bob@corp.com please"}}""")!;
 var cleanChainResult = await client.ExecuteChainAsync(new ExecuteChainRequestParams
 {
-    Event = InterceptorEvents.ToolsCall,
+    Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
     Payload = cleanChainPayload,
 });

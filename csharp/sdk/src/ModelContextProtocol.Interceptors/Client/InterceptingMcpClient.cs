@@ -61,7 +61,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         IReadOnlyDictionary<string, object?>? arguments = null,
         CancellationToken cancellationToken = default)
     {
-        if (!_chainRunner.ShouldIntercept(InterceptorEvents.ToolsCall))
+        if (!_chainRunner.ShouldIntercept(InterceptionEvents.ToolsCall))
         {
             return await _inner.CallToolAsync(name, arguments, cancellationToken: cancellationToken);
         }
@@ -79,7 +79,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
 
         // Request phase
         var (processedPayload, requestStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ToolsCall, InterceptorPhase.Request, requestPayload, cancellationToken);
+            InterceptionEvents.ToolsCall, InterceptorPhase.Request, requestPayload, cancellationToken);
 
         if (requestStatus != InterceptorChainStatus.Success)
         {
@@ -92,14 +92,14 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         var result = await _inner.CallToolAsync(mutatedParams, cancellationToken);
 
         // Response phase
-        if (!_chainRunner.ShouldIntercept(InterceptorEvents.ToolsCall))
+        if (!_chainRunner.ShouldIntercept(InterceptionEvents.ToolsCall))
         {
             return result;
         }
 
         var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
         var (processedResponse, responseStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ToolsCall, InterceptorPhase.Response, responsePayload, cancellationToken);
+            InterceptionEvents.ToolsCall, InterceptorPhase.Response, responsePayload, cancellationToken);
 
         if (responseStatus != InterceptorChainStatus.Success)
         {
@@ -115,7 +115,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     public async ValueTask<IList<McpClientTool>> ListToolsAsync(
         CancellationToken cancellationToken = default)
     {
-        if (!_chainRunner.ShouldIntercept(InterceptorEvents.ToolsList))
+        if (!_chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
         {
             return await _inner.ListToolsAsync(cancellationToken: cancellationToken);
         }
@@ -124,7 +124,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         var requestPayload = JsonSerializer.SerializeToNode(
             new ListToolsRequestParams(), _jsonOptions)!;
         var (_, requestStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ToolsList, InterceptorPhase.Request, requestPayload, cancellationToken);
+            InterceptionEvents.ToolsList, InterceptorPhase.Request, requestPayload, cancellationToken);
 
         if (requestStatus != InterceptorChainStatus.Success)
         {
@@ -137,7 +137,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         var responsePayload = JsonSerializer.SerializeToNode(
             new ListToolsResult { Tools = tools.Select(t => t.ProtocolTool).ToList() }, _jsonOptions)!;
         var (_, responseStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ToolsList, InterceptorPhase.Response, responsePayload, cancellationToken);
+            InterceptionEvents.ToolsList, InterceptorPhase.Response, responsePayload, cancellationToken);
 
         if (responseStatus != InterceptorChainStatus.Success)
         {
@@ -153,7 +153,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     public async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
         CancellationToken cancellationToken = default)
     {
-        if (!_chainRunner.ShouldIntercept(InterceptorEvents.PromptsList))
+        if (!_chainRunner.ShouldIntercept(InterceptionEvents.PromptsList))
         {
             return await _inner.ListPromptsAsync(cancellationToken: cancellationToken);
         }
@@ -162,7 +162,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         var requestPayload = JsonSerializer.SerializeToNode(
             new ListPromptsRequestParams(), _jsonOptions)!;
         var (_, requestStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.PromptsList, InterceptorPhase.Request, requestPayload, cancellationToken);
+            InterceptionEvents.PromptsList, InterceptorPhase.Request, requestPayload, cancellationToken);
 
         if (requestStatus != InterceptorChainStatus.Success)
         {
@@ -175,7 +175,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         var responsePayload = JsonSerializer.SerializeToNode(
             new ListPromptsResult { Prompts = prompts.Select(p => p.ProtocolPrompt).ToList() }, _jsonOptions)!;
         var (_, responseStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.PromptsList, InterceptorPhase.Response, responsePayload, cancellationToken);
+            InterceptionEvents.PromptsList, InterceptorPhase.Response, responsePayload, cancellationToken);
 
         if (responseStatus != InterceptorChainStatus.Success)
         {
@@ -195,7 +195,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(name);
 
-        if (!_chainRunner.ShouldIntercept(InterceptorEvents.PromptsGet))
+        if (!_chainRunner.ShouldIntercept(InterceptionEvents.PromptsGet))
         {
             return await _inner.GetPromptAsync(name, arguments, cancellationToken: cancellationToken);
         }
@@ -213,7 +213,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
 
         // Request phase
         var (processedPayload, requestStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.PromptsGet, InterceptorPhase.Request, requestPayload, cancellationToken);
+            InterceptionEvents.PromptsGet, InterceptorPhase.Request, requestPayload, cancellationToken);
 
         if (requestStatus != InterceptorChainStatus.Success)
         {
@@ -227,7 +227,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         // Response phase
         var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
         var (processedResponse, responseStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.PromptsGet, InterceptorPhase.Response, responsePayload, cancellationToken);
+            InterceptionEvents.PromptsGet, InterceptorPhase.Response, responsePayload, cancellationToken);
 
         if (responseStatus != InterceptorChainStatus.Success)
         {
@@ -243,7 +243,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     public async ValueTask<IList<McpClientResource>> ListResourcesAsync(
         CancellationToken cancellationToken = default)
     {
-        if (!_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesList))
+        if (!_chainRunner.ShouldIntercept(InterceptionEvents.ResourcesList))
         {
             return await _inner.ListResourcesAsync(cancellationToken: cancellationToken);
         }
@@ -252,7 +252,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         var requestPayload = JsonSerializer.SerializeToNode(
             new ListResourcesRequestParams(), _jsonOptions)!;
         var (_, requestStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ResourcesList, InterceptorPhase.Request, requestPayload, cancellationToken);
+            InterceptionEvents.ResourcesList, InterceptorPhase.Request, requestPayload, cancellationToken);
 
         if (requestStatus != InterceptorChainStatus.Success)
         {
@@ -265,7 +265,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         var responsePayload = JsonSerializer.SerializeToNode(
             new ListResourcesResult { Resources = resources.Select(r => r.ProtocolResource).ToList() }, _jsonOptions)!;
         var (_, responseStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ResourcesList, InterceptorPhase.Response, responsePayload, cancellationToken);
+            InterceptionEvents.ResourcesList, InterceptorPhase.Response, responsePayload, cancellationToken);
 
         if (responseStatus != InterceptorChainStatus.Success)
         {
@@ -284,7 +284,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(uri);
 
-        if (!_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesRead))
+        if (!_chainRunner.ShouldIntercept(InterceptionEvents.ResourcesRead))
         {
             return await _inner.ReadResourceAsync(uri, cancellationToken: cancellationToken);
         }
@@ -295,7 +295,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
 
         // Request phase
         var (processedPayload, requestStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, cancellationToken);
+            InterceptionEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, cancellationToken);
 
         if (requestStatus != InterceptorChainStatus.Success)
         {
@@ -309,7 +309,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
         // Response phase
         var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
         var (processedResponse, responseStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, cancellationToken);
+            InterceptionEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, cancellationToken);
 
         if (responseStatus != InterceptorChainStatus.Success)
         {
@@ -329,7 +329,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(uri);
 
-        if (!_chainRunner.ShouldIntercept(InterceptorEvents.ResourcesSubscribe))
+        if (!_chainRunner.ShouldIntercept(InterceptionEvents.ResourcesSubscribe))
         {
             await _inner.SubscribeToResourceAsync(uri, cancellationToken: cancellationToken);
             return;
@@ -341,7 +341,7 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
 
         // Request phase
         var (processedPayload, requestStatus) = await _chainRunner.RunChainPhaseAsync(
-            InterceptorEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, cancellationToken);
+            InterceptionEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, cancellationToken);
 
         if (requestStatus != InterceptorChainStatus.Success)
         {

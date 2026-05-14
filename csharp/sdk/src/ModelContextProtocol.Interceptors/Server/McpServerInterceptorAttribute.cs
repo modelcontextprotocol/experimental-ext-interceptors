@@ -16,7 +16,7 @@ public sealed class McpServerInterceptorAttribute : Attribute
     public string? Description { get; set; }
 
     /// <summary>Gets or sets the event types this interceptor handles.</summary>
-    public string[] Events { get; set; } = [InterceptorEvents.All];
+    public string[] Events { get; set; } = [InterceptionEvents.All];
 
     /// <summary>Gets or sets the interceptor type.</summary>
     public InterceptorType Type { get; set; }

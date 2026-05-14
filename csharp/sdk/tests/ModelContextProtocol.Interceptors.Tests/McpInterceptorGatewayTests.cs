@@ -475,7 +475,7 @@ public class McpInterceptorGatewayTests
                     Modified = true,
                     Payload = JsonNode.Parse(payloadStr),
                 });
-            }, events: [InterceptorEvents.ResourcesSubscribe])]);
+            }, events: [InterceptionEvents.ResourcesSubscribe])]);
 
         await fixture.ProxyClient.SubscribeToResourceAsync("resource://original");
 
@@ -507,7 +507,7 @@ public class McpInterceptorGatewayTests
             await fixture.ProxyClient.ExecuteChainAsync(
                 new ExecuteChainRequestParams
                 {
-                    Event = InterceptorEvents.ToolsCall,
+                    Event = InterceptionEvents.ToolsCall,
                     Phase = InterceptorPhase.Request,
                     Payload = JsonNode.Parse("""{"original":true}""")!,
                 });
@@ -559,7 +559,7 @@ public class McpInterceptorGatewayTests
         var chainResult = await fixture.ProxyClient.ExecuteChainAsync(
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{"original":true}""")!,
             });
@@ -776,7 +776,7 @@ public class McpInterceptorGatewayTests
                     Modified = false,
                     Payload = req.Payload,
                 });
-            }, events: [InterceptorEvents.PromptsGet])]);
+            }, events: [InterceptionEvents.PromptsGet])]);
 
         var result = await fixture.ProxyClient.GetPromptAsync("my-prompt");
         Assert.Single(result.Messages);
@@ -837,7 +837,7 @@ public class McpInterceptorGatewayTests
                     Modified = true,
                     Payload = JsonNode.Parse(payloadStr),
                 });
-            }, events: [InterceptorEvents.ResourcesRead])]);
+            }, events: [InterceptionEvents.ResourcesRead])]);
 
         var result = await fixture.ProxyClient.ReadResourceAsync("resource://original");
         Assert.Single(result.Contents);
@@ -902,7 +902,7 @@ public class McpInterceptorGatewayTests
         Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler,
         string[]? events = null)
     {
-        var ev = events ?? [InterceptorEvents.All];
+        var ev = events ?? [InterceptionEvents.All];
         return new TestInterceptor(
             new Interceptor
             {
@@ -928,8 +928,8 @@ public class McpInterceptorGatewayTests
                 Type = InterceptorType.Validation,
                 Hooks =
                 [
-                    new InterceptorHook { Events = [InterceptorEvents.All], Phase = InterceptorPhase.Request },
-                    new InterceptorHook { Events = [InterceptorEvents.All], Phase = InterceptorPhase.Response },
+                    new InterceptorHook { Events = [InterceptionEvents.All], Phase = InterceptorPhase.Request },
+                    new InterceptorHook { Events = [InterceptionEvents.All], Phase = InterceptorPhase.Response },
                 ],
             },
             handler);

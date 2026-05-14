@@ -71,13 +71,13 @@ internal sealed class GatewayProxyConfigurator
         serverOptions.Handlers.ListToolsHandler = async (request, ct) =>
         {
             var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptorEvents.ToolsList, ct);
+            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ToolsList, ct);
             var chainRunner = CreateChainRunner(resolvedClients.Clients);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.ToolsList))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
             {
                 var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.ToolsList, InterceptorPhase.Request, requestPayload, ct);
+                    InterceptionEvents.ToolsList, InterceptorPhase.Request, requestPayload, ct);
                 if (requestStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
@@ -87,11 +87,11 @@ internal sealed class GatewayProxyConfigurator
                 ?? request.Params!;
             var result = await _backend.ListToolsAsync(mutatedParams, ct);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.ToolsList))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
                 var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.ToolsList, InterceptorPhase.Response, responsePayload, ct);
+                    InterceptionEvents.ToolsList, InterceptorPhase.Response, responsePayload, ct);
                 if (responseStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<ListToolsResult>(processed, _jsonOptions) ?? result;
@@ -103,13 +103,13 @@ internal sealed class GatewayProxyConfigurator
         serverOptions.Handlers.CallToolHandler = async (request, ct) =>
         {
             var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptorEvents.ToolsCall, ct);
+            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ToolsCall, ct);
             var chainRunner = CreateChainRunner(resolvedClients.Clients);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.ToolsCall))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsCall))
             {
                 var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.ToolsCall, InterceptorPhase.Request, requestPayload, ct);
+                    InterceptionEvents.ToolsCall, InterceptorPhase.Request, requestPayload, ct);
                 if (requestStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("tools/call", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
@@ -119,11 +119,11 @@ internal sealed class GatewayProxyConfigurator
                 ?? request.Params!;
             var result = await _backend.CallToolAsync(mutatedParams, ct);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.ToolsCall))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsCall))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
                 var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.ToolsCall, InterceptorPhase.Response, responsePayload, ct);
+                    InterceptionEvents.ToolsCall, InterceptorPhase.Response, responsePayload, ct);
                 if (responseStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("tools/call", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<CallToolResult>(processed, _jsonOptions) ?? result;
@@ -143,13 +143,13 @@ internal sealed class GatewayProxyConfigurator
         serverOptions.Handlers.ListPromptsHandler = async (request, ct) =>
         {
             var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptorEvents.PromptsList, ct);
+            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.PromptsList, ct);
             var chainRunner = CreateChainRunner(resolvedClients.Clients);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.PromptsList))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsList))
             {
                 var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.PromptsList, InterceptorPhase.Request, requestPayload, ct);
+                    InterceptionEvents.PromptsList, InterceptorPhase.Request, requestPayload, ct);
                 if (requestStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("prompts/list", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
@@ -159,11 +159,11 @@ internal sealed class GatewayProxyConfigurator
                 ?? request.Params!;
             var result = await _backend.ListPromptsAsync(mutatedParams, ct);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.PromptsList))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsList))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
                 var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.PromptsList, InterceptorPhase.Response, responsePayload, ct);
+                    InterceptionEvents.PromptsList, InterceptorPhase.Response, responsePayload, ct);
                 if (responseStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("prompts/list", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<ListPromptsResult>(processed, _jsonOptions) ?? result;
@@ -175,13 +175,13 @@ internal sealed class GatewayProxyConfigurator
         serverOptions.Handlers.GetPromptHandler = async (request, ct) =>
         {
             var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptorEvents.PromptsGet, ct);
+            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.PromptsGet, ct);
             var chainRunner = CreateChainRunner(resolvedClients.Clients);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.PromptsGet))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsGet))
             {
                 var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.PromptsGet, InterceptorPhase.Request, requestPayload, ct);
+                    InterceptionEvents.PromptsGet, InterceptorPhase.Request, requestPayload, ct);
                 if (requestStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("prompts/get", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
@@ -191,11 +191,11 @@ internal sealed class GatewayProxyConfigurator
                 ?? request.Params!;
             var result = await _backend.GetPromptAsync(mutatedParams, ct);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.PromptsGet))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsGet))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
                 var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.PromptsGet, InterceptorPhase.Response, responsePayload, ct);
+                    InterceptionEvents.PromptsGet, InterceptorPhase.Response, responsePayload, ct);
                 if (responseStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("prompts/get", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<GetPromptResult>(processed, _jsonOptions) ?? result;
@@ -215,13 +215,13 @@ internal sealed class GatewayProxyConfigurator
         serverOptions.Handlers.ListResourcesHandler = async (request, ct) =>
         {
             var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptorEvents.ResourcesList, ct);
+            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ResourcesList, ct);
             var chainRunner = CreateChainRunner(resolvedClients.Clients);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.ResourcesList))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesList))
             {
                 var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.ResourcesList, InterceptorPhase.Request, requestPayload, ct);
+                    InterceptionEvents.ResourcesList, InterceptorPhase.Request, requestPayload, ct);
                 if (requestStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("resources/list", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
@@ -231,11 +231,11 @@ internal sealed class GatewayProxyConfigurator
                 ?? request.Params!;
             var result = await _backend.ListResourcesAsync(mutatedParams, ct);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.ResourcesList))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesList))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
                 var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.ResourcesList, InterceptorPhase.Response, responsePayload, ct);
+                    InterceptionEvents.ResourcesList, InterceptorPhase.Response, responsePayload, ct);
                 if (responseStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("resources/list", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<ListResourcesResult>(processed, _jsonOptions) ?? result;
@@ -247,13 +247,13 @@ internal sealed class GatewayProxyConfigurator
         serverOptions.Handlers.ReadResourceHandler = async (request, ct) =>
         {
             var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptorEvents.ResourcesRead, ct);
+            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ResourcesRead, ct);
             var chainRunner = CreateChainRunner(resolvedClients.Clients);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.ResourcesRead))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesRead))
             {
                 var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, ct);
+                    InterceptionEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, ct);
                 if (requestStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("resources/read", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
@@ -263,11 +263,11 @@ internal sealed class GatewayProxyConfigurator
                 ?? request.Params!;
             var result = await _backend.ReadResourceAsync(mutatedParams, ct);
 
-            if (chainRunner.ShouldIntercept(InterceptorEvents.ResourcesRead))
+            if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesRead))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
                 var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptorEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, ct);
+                    InterceptionEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, ct);
                 if (responseStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("resources/read", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<ReadResourceResult>(processed, _jsonOptions) ?? result;
@@ -284,13 +284,13 @@ internal sealed class GatewayProxyConfigurator
             serverOptions.Handlers.SubscribeToResourcesHandler = async (request, ct) =>
             {
                 var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-                await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptorEvents.ResourcesSubscribe, ct);
+                await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ResourcesSubscribe, ct);
                 var chainRunner = CreateChainRunner(resolvedClients.Clients);
 
-                if (chainRunner.ShouldIntercept(InterceptorEvents.ResourcesSubscribe))
+                if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesSubscribe))
                 {
                     var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                        InterceptorEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, ct);
+                        InterceptionEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, ct);
                     if (requestStatus != InterceptorChainStatus.Success)
                         InterceptorChainRunner.ThrowChainFailure("resources/subscribe", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;

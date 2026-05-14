@@ -62,8 +62,8 @@ public class ProtocolTypesSerializationTests
             Type = InterceptorType.Validation,
             Hooks =
             [
-                new InterceptorHook { Events = [InterceptorEvents.ToolsCall, InterceptorEvents.PromptsGet], Phase = InterceptorPhase.Request },
-                new InterceptorHook { Events = [InterceptorEvents.ToolsCall, InterceptorEvents.PromptsGet], Phase = InterceptorPhase.Response },
+                new InterceptorHook { Events = [InterceptionEvents.ToolsCall, InterceptionEvents.PromptsGet], Phase = InterceptorPhase.Request },
+                new InterceptorHook { Events = [InterceptionEvents.ToolsCall, InterceptionEvents.PromptsGet], Phase = InterceptorPhase.Response },
             ],
             PriorityHint = -1000,
             Compat = new InterceptorCompatibility { MinProtocol = "2024-11-05" },
@@ -92,7 +92,7 @@ public class ProtocolTypesSerializationTests
         {
             Name = "test",
             Type = InterceptorType.Sink,
-            Hooks = [new InterceptorHook { Events = [InterceptorEvents.All], Phase = InterceptorPhase.Request }],
+            Hooks = [new InterceptorHook { Events = [InterceptionEvents.All], Phase = InterceptorPhase.Request }],
         };
 
         var json = JsonSerializer.Serialize(interceptor, Options);
@@ -122,7 +122,7 @@ public class ProtocolTypesSerializationTests
         {
             Name = "audit-validator",
             Type = InterceptorType.Validation,
-            Hooks = [new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Request }],
+            Hooks = [new InterceptorHook { Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Request }],
             Mode = InterceptorMode.Audit,
             FailOpen = true,
         };
@@ -254,7 +254,7 @@ public class ProtocolTypesSerializationTests
         var request = new InvokeInterceptorRequestParams
         {
             Name = "pii-validator",
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"name":"call-tool","arguments":{"query":"test"}}""")!,
             TimeoutMs = 5000,
@@ -271,7 +271,7 @@ public class ProtocolTypesSerializationTests
         var deserialized = JsonSerializer.Deserialize<InvokeInterceptorRequestParams>(json, Options)!;
 
         Assert.Equal("pii-validator", deserialized.Name);
-        Assert.Equal(InterceptorEvents.ToolsCall, deserialized.Event);
+        Assert.Equal(InterceptionEvents.ToolsCall, deserialized.Event);
         Assert.Equal(InterceptorPhase.Request, deserialized.Phase);
         Assert.Equal(5000, deserialized.TimeoutMs);
         Assert.NotNull(deserialized.Context);
@@ -284,7 +284,7 @@ public class ProtocolTypesSerializationTests
     {
         var request = new ExecuteChainRequestParams
         {
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"test":true}""")!,
             InterceptorNames = ["pii-validator", "content-filter"],
@@ -294,7 +294,7 @@ public class ProtocolTypesSerializationTests
         var json = JsonSerializer.Serialize(request, Options);
         var deserialized = JsonSerializer.Deserialize<ExecuteChainRequestParams>(json, Options)!;
 
-        Assert.Equal(InterceptorEvents.ToolsCall, deserialized.Event);
+        Assert.Equal(InterceptionEvents.ToolsCall, deserialized.Event);
         Assert.Equal(2, deserialized.InterceptorNames!.Count);
         Assert.Equal(10000, deserialized.TimeoutMs);
     }
@@ -305,7 +305,7 @@ public class ProtocolTypesSerializationTests
         var chainResult = new InterceptorChainResult
         {
             Status = InterceptorChainStatus.Success,
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Results =
             [
@@ -346,7 +346,7 @@ public class ProtocolTypesSerializationTests
         var chainResult = new InterceptorChainResult
         {
             Status = InterceptorChainStatus.ValidationFailed,
-            Event = InterceptorEvents.ToolsCall,
+            Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Results = [],
             TotalDurationMs = 50,
@@ -371,13 +371,13 @@ public class ProtocolTypesSerializationTests
     {
         var capability = new InterceptorsCapability
         {
-            SupportedEvents = [InterceptorEvents.ToolsCall, InterceptorEvents.ToolsList, InterceptorEvents.PromptsGet],
+            SupportedEvents = [InterceptionEvents.ToolsCall, InterceptionEvents.ToolsList, InterceptionEvents.PromptsGet],
         };
 
         var json = JsonSerializer.Serialize(capability, Options);
         var deserialized = JsonSerializer.Deserialize<InterceptorsCapability>(json, Options)!;
 
         Assert.Equal(3, deserialized.SupportedEvents.Count);
-        Assert.Contains(InterceptorEvents.ToolsCall, deserialized.SupportedEvents);
+        Assert.Contains(InterceptionEvents.ToolsCall, deserialized.SupportedEvents);
     }
 }

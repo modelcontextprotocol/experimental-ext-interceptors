@@ -38,7 +38,7 @@ public class InterceptorChainOrchestratorTests
             [mutation, validation, sink],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{"original":true}""")!,
             },
@@ -76,7 +76,7 @@ public class InterceptorChainOrchestratorTests
             [mutation, validation, sink],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Response,
                 Payload = JsonNode.Parse("""{"test":true}""")!,
             },
@@ -113,7 +113,7 @@ public class InterceptorChainOrchestratorTests
             [mutHigh, mutLow, mutDefault],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -145,7 +145,7 @@ public class InterceptorChainOrchestratorTests
             [mut1, mut2],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{"original":true}""")!,
             },
@@ -170,7 +170,7 @@ public class InterceptorChainOrchestratorTests
             [validation],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -195,7 +195,7 @@ public class InterceptorChainOrchestratorTests
             [shadowMutation],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{"original":true}""")!,
             },
@@ -223,7 +223,7 @@ public class InterceptorChainOrchestratorTests
             [auditor],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -253,7 +253,7 @@ public class InterceptorChainOrchestratorTests
             [crashing, following],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -275,7 +275,7 @@ public class InterceptorChainOrchestratorTests
             [crashing],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -297,7 +297,7 @@ public class InterceptorChainOrchestratorTests
             [crashing],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -318,7 +318,7 @@ public class InterceptorChainOrchestratorTests
             [crashing],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -340,7 +340,7 @@ public class InterceptorChainOrchestratorTests
             [sink],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -358,18 +358,18 @@ public class InterceptorChainOrchestratorTests
         var toolsInterceptor = CreateInterceptor("tools-only", InterceptorType.Validation, (req, _) =>
         {
             return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
-        }, events: [InterceptorEvents.ToolsCall]);
+        }, events: [InterceptionEvents.ToolsCall]);
 
         var promptsInterceptor = CreateInterceptor("prompts-only", InterceptorType.Validation, (req, _) =>
         {
             return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
-        }, events: [InterceptorEvents.PromptsGet]);
+        }, events: [InterceptionEvents.PromptsGet]);
 
         var result = await RunAsync(
             [toolsInterceptor, promptsInterceptor],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -396,7 +396,7 @@ public class InterceptorChainOrchestratorTests
             [requestOnly, responseOnly],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -428,7 +428,7 @@ public class InterceptorChainOrchestratorTests
             [val],
             new ExecuteChainRequestParams
             {
-                Event = InterceptorEvents.ToolsCall,
+                Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             },
@@ -465,7 +465,7 @@ public class InterceptorChainOrchestratorTests
         InterceptorMode? mode = null,
         bool? failOpen = null)
     {
-        var ev = events ?? [InterceptorEvents.All];
+        var ev = events ?? [InterceptionEvents.All];
         var hooks = phase switch
         {
             InterceptorPhase.Both =>
