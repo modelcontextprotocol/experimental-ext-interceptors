@@ -900,13 +900,17 @@ public class McpInterceptorGatewayTests
         Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler,
         string[]? events = null)
     {
+        var ev = events ?? [InterceptorEvents.All];
         return new TestInterceptor(
             new Interceptor
             {
                 Name = name,
                 Type = InterceptorType.Mutation,
-                Phase = InterceptorPhase.Both,
-                Events = events ?? [InterceptorEvents.All],
+                Hooks =
+                [
+                    new InterceptorHook { Events = ev.ToList(), Phase = InterceptorPhase.Request },
+                    new InterceptorHook { Events = ev.ToList(), Phase = InterceptorPhase.Response },
+                ],
             },
             handler);
     }
@@ -920,8 +924,11 @@ public class McpInterceptorGatewayTests
             {
                 Name = name,
                 Type = InterceptorType.Validation,
-                Phase = InterceptorPhase.Both,
-                Events = [InterceptorEvents.All],
+                Hooks =
+                [
+                    new InterceptorHook { Events = [InterceptorEvents.All], Phase = InterceptorPhase.Request },
+                    new InterceptorHook { Events = [InterceptorEvents.All], Phase = InterceptorPhase.Response },
+                ],
             },
             handler);
     }
@@ -994,9 +1001,12 @@ public class McpInterceptorGatewayTests
                         foreach (var interceptor in interceptors ?? [])
                         {
                             collection.Add(interceptor);
-                            foreach (var ev in interceptor.ProtocolInterceptor.Events)
+                            foreach (var hook in interceptor.ProtocolInterceptor.Hooks)
                             {
-                                allEvents.Add(ev);
+                                foreach (var ev in hook.Events)
+                                {
+                                    allEvents.Add(ev);
+                                }
                             }
                         }
 
@@ -1076,8 +1086,9 @@ public class McpInterceptorGatewayTests
                             foreach (var interceptor in interceptors)
                             {
                                 collection.Add(interceptor);
-                                foreach (var ev in interceptor.ProtocolInterceptor.Events)
-                                    allEvents.Add(ev);
+                                foreach (var hook in interceptor.ProtocolInterceptor.Hooks)
+                                    foreach (var ev in hook.Events)
+                                        allEvents.Add(ev);
                             }
 
                             var filter = new InterceptorMessageFilter(collection);

@@ -59,9 +59,12 @@ public class ProtocolTypesSerializationTests
             Name = "pii-validator",
             Version = "1.0.0",
             Description = "Validates PII in payloads",
-            Events = [InterceptorEvents.ToolsCall, InterceptorEvents.PromptsGet],
             Type = InterceptorType.Validation,
-            Phase = InterceptorPhase.Both,
+            Hooks =
+            [
+                new InterceptorHook { Events = [InterceptorEvents.ToolsCall, InterceptorEvents.PromptsGet], Phase = InterceptorPhase.Request },
+                new InterceptorHook { Events = [InterceptorEvents.ToolsCall, InterceptorEvents.PromptsGet], Phase = InterceptorPhase.Response },
+            ],
             PriorityHint = -1000,
             Compat = new InterceptorCompatibility { MinProtocol = "2024-11-05" },
         };
@@ -72,9 +75,11 @@ public class ProtocolTypesSerializationTests
         Assert.Equal("pii-validator", deserialized.Name);
         Assert.Equal("1.0.0", deserialized.Version);
         Assert.Equal("Validates PII in payloads", deserialized.Description);
-        Assert.Equal(2, deserialized.Events.Count);
+        Assert.Equal(2, deserialized.Hooks.Count);
+        Assert.Equal(2, deserialized.Hooks[0].Events.Count);
+        Assert.Equal(InterceptorPhase.Request, deserialized.Hooks[0].Phase);
+        Assert.Equal(InterceptorPhase.Response, deserialized.Hooks[1].Phase);
         Assert.Equal(InterceptorType.Validation, deserialized.Type);
-        Assert.Equal(InterceptorPhase.Both, deserialized.Phase);
         Assert.Equal(-1000, deserialized.PriorityHint);
         Assert.NotNull(deserialized.Compat);
         Assert.Equal("2024-11-05", deserialized.Compat.MinProtocol);
@@ -86,9 +91,8 @@ public class ProtocolTypesSerializationTests
         var interceptor = new Interceptor
         {
             Name = "test",
-            Events = [InterceptorEvents.All],
             Type = InterceptorType.Sink,
-            Phase = InterceptorPhase.Both,
+            Hooks = [new InterceptorHook { Events = [InterceptorEvents.All], Phase = InterceptorPhase.Request }],
         };
 
         var json = JsonSerializer.Serialize(interceptor, Options);
@@ -187,8 +191,22 @@ public class ProtocolTypesSerializationTests
         {
             Interceptors =
             [
-                new Interceptor { Name = "a", Events = ["tools/call"], Type = InterceptorType.Validation, Phase = InterceptorPhase.Both },
-                new Interceptor { Name = "b", Events = ["*"], Type = InterceptorType.Sink, Phase = InterceptorPhase.Both },
+                new Interceptor
+                {
+                    Name = "a",
+                    Type = InterceptorType.Validation,
+                    Hooks = [new InterceptorHook { Events = ["tools/call"], Phase = InterceptorPhase.Request }],
+                },
+                new Interceptor
+                {
+                    Name = "b",
+                    Type = InterceptorType.Sink,
+                    Hooks =
+                    [
+                        new InterceptorHook { Events = ["*"], Phase = InterceptorPhase.Request },
+                        new InterceptorHook { Events = ["*"], Phase = InterceptorPhase.Response },
+                    ],
+                },
             ],
             NextCursor = "abc123",
         };

@@ -37,7 +37,8 @@ Console.WriteLine("── Demo 1: List interceptors ──");
 var listResult = await client.ListInterceptorsAsync();
 foreach (var interceptor in listResult.Interceptors)
 {
-    Console.WriteLine($"  {interceptor.Name,-20} type={interceptor.Type,-15} phase={interceptor.Phase,-10} events=[{string.Join(", ", interceptor.Events)}]");
+    var hookSummary = string.Join("; ", interceptor.Hooks.Select(h => $"{h.Phase}:[{string.Join(",", h.Events)}]"));
+    Console.WriteLine($"  {interceptor.Name,-20} type={interceptor.Type,-15} hooks={hookSummary}");
     if (interceptor.Description is not null)
     {
         Console.WriteLine($"  {"",20} {interceptor.Description}");

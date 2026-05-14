@@ -80,12 +80,14 @@ var loggingInterceptors = await loggingInterceptorClient.ListInterceptorsAsync()
 Console.WriteLine("[security layer] interceptors:");
 foreach (var i in securityInterceptors.Interceptors)
 {
-    Console.WriteLine($"  {i.Name,-20} type={i.Type,-15} events=[{string.Join(", ", i.Events)}]");
+    var events = string.Join(", ", i.Hooks.SelectMany(h => h.Events).Distinct());
+    Console.WriteLine($"  {i.Name,-20} type={i.Type,-15} events=[{events}]");
 }
 Console.WriteLine("[logging layer] interceptors:");
 foreach (var i in loggingInterceptors.Interceptors)
 {
-    Console.WriteLine($"  {i.Name,-20} type={i.Type,-15} events=[{string.Join(", ", i.Events)}]");
+    var events = string.Join(", ", i.Hooks.SelectMany(h => h.Events).Distinct());
+    Console.WriteLine($"  {i.Name,-20} type={i.Type,-15} events=[{events}]");
 }
 
 // 5. List tools (flows through logging gateway)

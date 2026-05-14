@@ -56,10 +56,20 @@ internal sealed class InterceptorMessageFilter
         var interceptors = new List<Interceptor>();
         foreach (var serverInterceptor in _interceptors)
         {
-            // Apply event filter if specified
+            // Apply event filter if specified: include the interceptor if any hook matches the event
             if (requestParams?.Event is string eventFilter)
             {
-                if (!InterceptorChainExecutor.MatchesEvent(serverInterceptor.ProtocolInterceptor.Events, eventFilter))
+                var matchesAnyHook = false;
+                foreach (var hook in serverInterceptor.ProtocolInterceptor.Hooks)
+                {
+                    if (InterceptorChainExecutor.MatchesEvent(hook.Events, eventFilter))
+                    {
+                        matchesAnyHook = true;
+                        break;
+                    }
+                }
+
+                if (!matchesAnyHook)
                 {
                     continue;
                 }

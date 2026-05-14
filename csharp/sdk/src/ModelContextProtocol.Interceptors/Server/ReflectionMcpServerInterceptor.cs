@@ -94,13 +94,23 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
         var attr = method.GetCustomAttribute<McpServerInterceptorAttribute>()
             ?? throw new InvalidOperationException($"Method '{method.Name}' does not have [{nameof(McpServerInterceptorAttribute)}].");
 
+        var events = attr.Events?.ToList() ?? [InterceptorEvents.All];
+        var hooks = attr.Phase switch
+        {
+            InterceptorPhase.Both =>
+            [
+                new InterceptorHook { Events = events, Phase = InterceptorPhase.Request },
+                new InterceptorHook { Events = events.ToList(), Phase = InterceptorPhase.Response },
+            ],
+            _ => new List<InterceptorHook> { new() { Events = events, Phase = attr.Phase } },
+        };
+
         var interceptor = new Interceptor
         {
             Name = attr.Name ?? method.Name,
             Description = attr.Description,
-            Events = attr.Events?.ToList() ?? [InterceptorEvents.All],
             Type = attr.Type,
-            Phase = attr.Phase,
+            Hooks = hooks,
             PriorityHint = attr.PriorityHint,
         };
 

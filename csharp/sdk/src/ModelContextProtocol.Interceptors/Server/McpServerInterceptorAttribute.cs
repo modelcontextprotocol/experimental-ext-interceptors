@@ -21,7 +21,11 @@ public sealed class McpServerInterceptorAttribute : Attribute
     /// <summary>Gets or sets the interceptor type.</summary>
     public InterceptorType Type { get; set; }
 
-    /// <summary>Gets or sets the phase(s) in which this interceptor executes.</summary>
+    /// <summary>
+    /// Gets or sets the phase(s) in which this interceptor executes.
+    /// Defaults to <see cref="InterceptorPhase.Both"/>, which expands to two hook entries
+    /// (one for request, one for response) in the protocol-level <see cref="Interceptor"/>.
+    /// </summary>
     public InterceptorPhase Phase { get; set; } = InterceptorPhase.Both;
 
     /// <summary>Gets or sets the priority hint for mutation ordering. Lower values execute first.</summary>

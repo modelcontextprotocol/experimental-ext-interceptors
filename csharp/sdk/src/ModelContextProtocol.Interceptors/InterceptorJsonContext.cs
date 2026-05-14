@@ -7,6 +7,7 @@ namespace ModelContextProtocol.Interceptors;
 /// Source-generated JSON serialization context for all interceptor protocol types.
 /// </summary>
 [JsonSerializable(typeof(Interceptor))]
+[JsonSerializable(typeof(InterceptorHook))]
 [JsonSerializable(typeof(InterceptorType))]
 [JsonSerializable(typeof(InterceptorPhase))]
 [JsonSerializable(typeof(InterceptorCompatibility))]

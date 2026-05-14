@@ -21,17 +21,16 @@ public sealed class Interceptor
     [JsonPropertyName("description")]
     public string? Description { get; set; }
 
-    /// <summary>Gets or sets the list of event types this interceptor subscribes to.</summary>
-    [JsonPropertyName("events")]
-    public IList<string> Events { get; set; } = [];
-
     /// <summary>Gets or sets the interceptor type (validation, mutation, or sink).</summary>
     [JsonPropertyName("type")]
     public InterceptorType Type { get; set; }
 
-    /// <summary>Gets or sets the phase(s) in which this interceptor executes.</summary>
-    [JsonPropertyName("phase")]
-    public InterceptorPhase Phase { get; set; }
+    /// <summary>
+    /// Gets or sets the hook entries declaring which lifecycle events and phases this interceptor fires on.
+    /// Each entry pairs an event set with a single phase; supply two entries to subscribe to both phases.
+    /// </summary>
+    [JsonPropertyName("hooks")]
+    public IList<InterceptorHook> Hooks { get; set; } = [];
 
     /// <summary>Gets or sets the priority hint for ordering mutation interceptors. Lower values execute first.</summary>
     [JsonPropertyName("priorityHint")]

@@ -240,15 +240,23 @@ internal static class InterceptorChainExecutor
                 continue;
             }
 
-            // Filter by event
-            if (!MatchesEvent(interceptor.ProtocolInterceptor.Events, chainParams.Event))
+            // Filter by hooks: match if any hook entry covers this phase and includes the event
+            var matchesHook = false;
+            foreach (var hook in interceptor.ProtocolInterceptor.Hooks)
             {
-                continue;
+                if (hook.Phase != chainParams.Phase)
+                {
+                    continue;
+                }
+
+                if (MatchesEvent(hook.Events, chainParams.Event))
+                {
+                    matchesHook = true;
+                    break;
+                }
             }
 
-            // Filter by phase
-            var phase = interceptor.ProtocolInterceptor.Phase;
-            if (phase != InterceptorPhase.Both && phase != chainParams.Phase)
+            if (!matchesHook)
             {
                 continue;
             }

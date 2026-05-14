@@ -57,7 +57,7 @@ public class ReflectionMcpServerInterceptorTests
 
         Assert.Equal("bool-validator", interceptor.ProtocolInterceptor.Name);
         Assert.Equal(InterceptorType.Validation, interceptor.ProtocolInterceptor.Type);
-        Assert.Contains("tools/call", interceptor.ProtocolInterceptor.Events);
+        Assert.Contains(interceptor.ProtocolInterceptor.Hooks, h => h.Events.Contains("tools/call"));
     }
 
     [Fact]

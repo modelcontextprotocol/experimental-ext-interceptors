@@ -251,8 +251,11 @@ public class GatewayComponentsTests
                             {
                                 Name = "validator",
                                 Type = InterceptorType.Validation,
-                                Phase = InterceptorPhase.Both,
-                                Events = [InterceptorEvents.ToolsCall],
+                                Hooks =
+                                [
+                                    new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Request },
+                                    new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Response },
+                                ],
                             },
                             (_, _, _, _) => new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success())));
 
@@ -287,8 +290,11 @@ public class GatewayComponentsTests
                         {
                             Name = "validator",
                             Type = InterceptorType.Validation,
-                            Phase = InterceptorPhase.Both,
-                            Events = [InterceptorEvents.ToolsCall],
+                            Hooks =
+                            [
+                                new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Request },
+                                new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Response },
+                            ],
                         },
                         (_, _, _, _) => new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success())));
 

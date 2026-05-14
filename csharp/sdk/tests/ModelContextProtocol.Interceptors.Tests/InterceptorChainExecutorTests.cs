@@ -306,13 +306,23 @@ public class InterceptorChainExecutorTests
         string[]? events = null,
         InterceptorPhase phase = InterceptorPhase.Both)
     {
+        var ev = events ?? [InterceptorEvents.All];
+        var hooks = phase switch
+        {
+            InterceptorPhase.Both =>
+            [
+                new InterceptorHook { Events = ev.ToList(), Phase = InterceptorPhase.Request },
+                new InterceptorHook { Events = ev.ToList(), Phase = InterceptorPhase.Response },
+            ],
+            _ => new List<InterceptorHook> { new() { Events = ev.ToList(), Phase = phase } },
+        };
+
         return new TestInterceptor(
             new Interceptor
             {
                 Name = name,
                 Type = type,
-                Phase = phase,
-                Events = events ?? [InterceptorEvents.All],
+                Hooks = hooks,
                 PriorityHint = priorityHint,
             },
             handler);

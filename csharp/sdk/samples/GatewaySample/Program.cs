@@ -52,7 +52,8 @@ var interceptors = await gateway.ListInterceptorsAsync();
 Console.WriteLine();
 foreach (var i in interceptors.Interceptors)
 {
-    Console.WriteLine($"  interceptor: {i.Name,-20} type={i.Type,-15} events=[{string.Join(", ", i.Events)}]");
+    var events = string.Join(", ", i.Hooks.SelectMany(h => h.Events).Distinct());
+    Console.WriteLine($"  interceptor: {i.Name,-20} type={i.Type,-15} events=[{events}]");
 }
 
 // 5. List tools from the everything server (passes through gateway)

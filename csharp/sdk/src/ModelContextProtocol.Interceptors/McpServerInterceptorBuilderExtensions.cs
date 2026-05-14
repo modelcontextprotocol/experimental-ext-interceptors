@@ -169,9 +169,12 @@ internal sealed class InterceptorServerOptionsSetup : IConfigureOptions<McpServe
         foreach (var interceptor in _interceptors)
         {
             collection.Add(interceptor);
-            foreach (var ev in interceptor.ProtocolInterceptor.Events)
+            foreach (var hook in interceptor.ProtocolInterceptor.Hooks)
             {
-                allEvents.Add(ev);
+                foreach (var ev in hook.Events)
+                {
+                    allEvents.Add(ev);
+                }
             }
         }
 
