@@ -10,7 +10,4 @@ public static class InterceptorRequestMethods
 
     /// <summary>Invokes a single interceptor by name.</summary>
     public const string InterceptorInvoke = "interceptor/invoke";
-
-    /// <summary>Executes a chain of interceptors for a given event and phase.</summary>
-    public const string InterceptorExecuteChain = "interceptor/executeChain";
 }

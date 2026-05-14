@@ -49,7 +49,7 @@ public sealed class McpInterceptorGatewayOptions
 
     /// <summary>
     /// Gets or sets whether the gateway should expose the SEP interceptor protocol
-    /// (`interceptors/list`, `interceptor/invoke`, `interceptor/executeChain`) to connecting clients.
+    /// (`interceptors/list`, `interceptor/invoke`) to connecting clients.
     /// When <see langword="false"/>, the gateway is transparent by default and only proxies the backend surface.
     /// </summary>
     public bool ExposeInterceptorProtocol { get; set; }

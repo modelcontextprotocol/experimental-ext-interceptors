@@ -4,7 +4,10 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// Parameters for the <c>interceptor/executeChain</c> request.
+/// Parameters for SDK-level chain execution (see
+/// <see cref="Client.McpClientInterceptorExtensions.ExecuteChainAsync"/>). Per SEP-1763 the chain
+/// is orchestrated client-side via <c>interceptors/list</c> + <c>interceptor/invoke</c>; there is
+/// no <c>interceptor/executeChain</c> wire method.
 /// </summary>
 public sealed class ExecuteChainRequestParams
 {

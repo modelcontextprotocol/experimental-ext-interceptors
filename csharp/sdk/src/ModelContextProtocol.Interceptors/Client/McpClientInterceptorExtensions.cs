@@ -41,19 +41,29 @@ public static class McpClientInterceptorExtensions
     }
 
     /// <summary>
-    /// Executes a chain of interceptors on the remote server.
+    /// Executes a chain of interceptors against the remote server using the SEP execution model.
     /// </summary>
-    public static ValueTask<InterceptorChainResult> ExecuteChainAsync(
+    /// <remarks>
+    /// Per the SEP, chain execution is a convenience utility provided by SDKs — not a wire JSON-RPC
+    /// method. This call discovers applicable interceptors via <c>interceptors/list</c> and then
+    /// dispatches each one via <c>interceptor/invoke</c>, orchestrating ordering, parallelism,
+    /// audit-mode, and fail-open semantics locally.
+    /// </remarks>
+    public static async ValueTask<InterceptorChainResult> ExecuteChainAsync(
         this McpClient client,
         ExecuteChainRequestParams requestParams,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(requestParams);
 
-        return client.SendRequestAsync<ExecuteChainRequestParams, InterceptorChainResult>(
-            InterceptorRequestMethods.InterceptorExecuteChain,
+        var listed = await client.ListInterceptorsAsync(
+            new ListInterceptorsRequestParams { Event = requestParams.Event },
+            cancellationToken).ConfigureAwait(false);
+
+        return await InterceptorChainOrchestrator.ExecuteAsync(
+            listed.Interceptors,
+            (invokeParams, ct) => client.InvokeInterceptorAsync(invokeParams, ct),
             requestParams,
-            InterceptorJsonUtilities.DefaultOptions,
-            cancellationToken: cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 }

@@ -92,9 +92,6 @@ internal sealed class GatewayInterceptorProtocolBridge
                         case InterceptorRequestMethods.InterceptorInvoke:
                             await HandleInvokePassthrough(context, request, ct);
                             return;
-                        case InterceptorRequestMethods.InterceptorExecuteChain:
-                            await HandleExecuteChainPassthrough(context, request, ct);
-                            return;
                     }
                 }
 
@@ -155,83 +152,6 @@ internal sealed class GatewayInterceptorProtocolBridge
             }
 
             var resultNode = JsonSerializer.SerializeToNode<InterceptorResult>(invokeResult, _jsonOptions);
-            await context.Server.SendMessageAsync(
-                new JsonRpcResponse { Id = request.Id, Result = resultNode },
-                ct);
-        }
-        catch (Exception ex)
-        {
-            await SendErrorFromException(context, request.Id, ex, ct);
-        }
-    }
-
-    private async Task HandleExecuteChainPassthrough(MessageContext context, JsonRpcRequest request, CancellationToken ct)
-    {
-        try
-        {
-            var chainParams = JsonSerializer.Deserialize<ExecuteChainRequestParams>(request.Params!, _jsonOptions)!;
-
-            var allResults = new List<InterceptorResult>();
-            long totalDurationMs = 0;
-            int validationErrors = 0, validationWarnings = 0, validationInfos = 0;
-            var aggregateStatus = InterceptorChainStatus.Success;
-            ChainAbortInfo? abortedAt = null;
-            var currentPayload = chainParams.Payload;
-
-            foreach (var client in _interceptorClients)
-            {
-                var clientParams = new ExecuteChainRequestParams
-                {
-                    Event = chainParams.Event,
-                    Phase = chainParams.Phase,
-                    Payload = currentPayload,
-                    InterceptorNames = chainParams.InterceptorNames,
-                    Config = chainParams.Config,
-                    TimeoutMs = chainParams.TimeoutMs,
-                    Context = chainParams.Context,
-                };
-
-                var clientResult = await client.ExecuteChainAsync(clientParams, ct);
-
-                allResults.AddRange(clientResult.Results);
-                totalDurationMs += clientResult.TotalDurationMs;
-
-                if (clientResult.ValidationSummary is { } vs)
-                {
-                    validationErrors += vs.Errors;
-                    validationWarnings += vs.Warnings;
-                    validationInfos += vs.Infos;
-                }
-
-                if (clientResult.Status != InterceptorChainStatus.Success)
-                {
-                    aggregateStatus = clientResult.Status;
-                    abortedAt = clientResult.AbortedAt;
-                    currentPayload = clientResult.FinalPayload ?? currentPayload;
-                    break;
-                }
-
-                currentPayload = clientResult.FinalPayload ?? currentPayload;
-            }
-
-            var aggregatedResult = new InterceptorChainResult
-            {
-                Status = aggregateStatus,
-                Event = chainParams.Event,
-                Phase = chainParams.Phase,
-                Results = allResults,
-                FinalPayload = currentPayload,
-                TotalDurationMs = totalDurationMs,
-                AbortedAt = abortedAt,
-                ValidationSummary = new ChainValidationSummary
-                {
-                    Errors = validationErrors,
-                    Warnings = validationWarnings,
-                    Infos = validationInfos,
-                },
-            };
-
-            var resultNode = JsonSerializer.SerializeToNode(aggregatedResult, _jsonOptions);
             await context.Server.SendMessageAsync(
                 new JsonRpcResponse { Id = request.Id, Result = resultNode },
                 ct);

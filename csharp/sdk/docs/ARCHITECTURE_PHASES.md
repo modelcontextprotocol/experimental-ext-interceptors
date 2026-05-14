@@ -13,7 +13,7 @@ The package should expose two distinct surfaces:
 
 This lets the package support both:
 
-1. SEP-aware clients that explicitly use `interceptors/list`, `interceptor/invoke`, and `interceptor/executeChain`
+1. SEP-aware clients that explicitly use `interceptors/list` and `interceptor/invoke` (chain execution is SDK-side orchestration over those two)
 2. Transparent infrastructure deployments where clients do not need any code changes
 
 ## Phase 1: Split Gateway Modes
@@ -24,7 +24,7 @@ Changes:
 
 1. Add `ExposeInterceptorProtocol` to `McpInterceptorGatewayOptions`, defaulting to `false`
 2. In transparent mode, do not advertise interceptor extension capability
-3. In transparent mode, do not expose `interceptors/list`, `interceptor/invoke`, or `interceptor/executeChain`
+3. In transparent mode, do not expose `interceptors/list` or `interceptor/invoke`
 4. In opt-in SEP mode, preserve the current passthrough behavior
 
 Expected result:

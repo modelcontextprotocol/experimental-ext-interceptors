@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol.Interceptors.Client;
 using ModelContextProtocol.Interceptors.Protocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -8,7 +9,9 @@ namespace ModelContextProtocol.Interceptors.Server;
 
 /// <summary>
 /// An incoming message filter that handles the interceptor extension's JSON-RPC methods:
-/// <c>interceptors/list</c>, <c>interceptor/invoke</c>, and <c>interceptor/executeChain</c>.
+/// <c>interceptors/list</c> and <c>interceptor/invoke</c>. Chain execution is performed
+/// client-side via <see cref="McpClientInterceptorExtensions.ExecuteChainAsync"/>; per the SEP
+/// it is no longer a wire method.
 /// </summary>
 internal sealed class InterceptorMessageFilter
 {
@@ -32,9 +35,6 @@ internal sealed class InterceptorMessageFilter
                         return;
                     case InterceptorRequestMethods.InterceptorInvoke:
                         await HandleInvokeInterceptor(context, request, ct);
-                        return;
-                    case InterceptorRequestMethods.InterceptorExecuteChain:
-                        await HandleExecuteChain(context, request, ct);
                         return;
                 }
             }
@@ -62,7 +62,7 @@ internal sealed class InterceptorMessageFilter
                 var matchesAnyHook = false;
                 foreach (var hook in serverInterceptor.ProtocolInterceptor.Hooks)
                 {
-                    if (InterceptorChainExecutor.MatchesEvent(hook.Events, eventFilter))
+                    if (InterceptorChainOrchestrator.MatchesEvent(hook.Events, eventFilter))
                     {
                         matchesAnyHook = true;
                         break;
@@ -149,41 +149,6 @@ internal sealed class InterceptorMessageFilter
         catch (Exception ex)
         {
             await SendError(context, request.Id, -32603, $"Interceptor invocation failed: {ex.Message}", ct);
-        }
-    }
-
-    private async Task HandleExecuteChain(MessageContext context, JsonRpcRequest request, CancellationToken ct)
-    {
-        var options = InterceptorJsonUtilities.DefaultOptions;
-
-        if (request.Params is null)
-        {
-            await SendError(context, request.Id, -32602, "Missing params", ct);
-            return;
-        }
-
-        var chainParams = JsonSerializer.Deserialize<ExecuteChainRequestParams>(request.Params, options);
-        if (chainParams is null)
-        {
-            await SendError(context, request.Id, -32602, "Invalid params", ct);
-            return;
-        }
-
-        try
-        {
-            var allInterceptors = _interceptors.ToList();
-            var result = await InterceptorChainExecutor.ExecuteAsync(
-                allInterceptors, chainParams, context.Server, context.Services, ct);
-
-            var resultNode = JsonSerializer.SerializeToNode(result, options);
-
-            await context.Server.SendMessageAsync(
-                new JsonRpcResponse { Id = request.Id, Result = resultNode },
-                ct);
-        }
-        catch (Exception ex)
-        {
-            await SendError(context, request.Id, -32603, $"Chain execution failed: {ex.Message}", ct);
         }
     }
 

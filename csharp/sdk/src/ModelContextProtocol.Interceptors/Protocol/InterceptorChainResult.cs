@@ -4,7 +4,9 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// Result of an <c>interceptor/executeChain</c> request.
+/// Aggregate result of an SDK-orchestrated interceptor chain (see
+/// <see cref="Client.McpClientInterceptorExtensions.ExecuteChainAsync"/>). Carries the aggregated
+/// per-interceptor results, the final payload after mutations, a validation summary, and any abort info.
 /// </summary>
 public sealed class InterceptorChainResult
 {

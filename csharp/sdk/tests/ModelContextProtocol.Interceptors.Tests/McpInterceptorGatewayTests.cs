@@ -484,7 +484,7 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task ExecuteChainPassthrough_IsNotExposedByDefault()
+    public async Task ExecuteChain_FailsWhenInterceptorProtocolNotExposed()
     {
         await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
             backendConfigure: (options) =>
@@ -515,7 +515,7 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task ExecuteChainPassthrough_AggregatesResultsFromAllClientsWhenEnabled()
+    public async Task ExecuteChain_AggregatesResultsAcrossInterceptorClientsViaGateway()
     {
         // Two interceptor servers, each with one mutation interceptor
         await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
@@ -553,7 +553,9 @@ public class McpInterceptorGatewayTests
             ],
             exposeInterceptorProtocol: true);
 
-        // Execute chain directly through the proxy (interceptor protocol passthrough)
+        // Client-side ExecuteChainAsync does list+invoke against the proxy; with
+        // ExposeInterceptorProtocol enabled, the proxy aggregates list and routes invoke
+        // to the appropriate interceptor client behind it.
         var chainResult = await fixture.ProxyClient.ExecuteChainAsync(
             new ExecuteChainRequestParams
             {

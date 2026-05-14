@@ -11,7 +11,7 @@ dotnet test    # 66 tests across the interceptor test project
 
 ## Key architectural constraints
 
-**Why message filter, not handlers**: `McpServerHandlers` and `McpServerImpl` are `internal` in the SDK. We can't register handlers for new JSON-RPC methods from outside. Instead we use `McpServerOptions.Filters.Message.IncomingFilters` to intercept `interceptors/list`, `interceptor/invoke`, `interceptor/executeChain`, handle them, send `JsonRpcResponse` via `context.Server.SendMessageAsync()`, and skip calling `next`. See `InterceptorMessageFilter.cs`.
+**Why message filter, not handlers**: `McpServerHandlers` and `McpServerImpl` are `internal` in the SDK. We can't register handlers for new JSON-RPC methods from outside. Instead we use `McpServerOptions.Filters.Message.IncomingFilters` to intercept `interceptors/list` and `interceptor/invoke`, handle them, send `JsonRpcResponse` via `context.Server.SendMessageAsync()`, and skip calling `next`. See `InterceptorMessageFilter.cs`. Chain execution is no longer a wire method — it's SDK orchestration in `Client/InterceptorChainOrchestrator.cs`.
 
 **Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions. Requires `#pragma warning disable MCPEXP001`. We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["interceptors"]`.
 
@@ -29,7 +29,6 @@ dotnet test    # 66 tests across the interceptor test project
 |--------|----------------|
 | `interceptors/list` | `ListInterceptorsRequestParams` → `ListInterceptorsResult` |
 | `interceptor/invoke` | `InvokeInterceptorRequestParams` → `InterceptorResult` (polymorphic) |
-| `interceptor/executeChain` | `ExecuteChainRequestParams` → `InterceptorChainResult` |
 
 ## `InterceptorResult` polymorphism
 Uses `[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]` with `"validation"`, `"mutation"`, `"sink"` discriminators. Serialization/deserialization handles this automatically via STJ source-gen in `InterceptorJsonContext`.
@@ -56,7 +55,7 @@ Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
 
 **`McpInterceptorGateway`**: Configures an `McpServer` as a transparent proxy. Reads backend `ServerCapabilities`, registers handler delegates (`CallToolHandler`, `ListToolsHandler`, etc.) that route through interceptor chains before forwarding to the backend. By default the gateway is transparent-only; SEP passthrough is opt-in via `ExposeInterceptorProtocol = true`. To connecting clients, the proxy appears to be the backend server.
 
-**`InterceptorChainRunner`** (internal): Shared interception logic used by both `InterceptingMcpClient` and `McpInterceptorGateway`. Supports multiple interceptor clients executed sequentially — each client's `ExecuteChainAsync` receives the mutated payload from the previous one.
+**`InterceptorChainRunner`** (internal): Shared interception logic used by both `InterceptingMcpClient` and `McpInterceptorGateway`. Supports multiple interceptor clients executed sequentially — each client's `ExecuteChainAsync` (SDK-level orchestration via list + invoke) receives the mutated payload from the previous one.
 
 **Gateway split**: `GatewayProxyConfigurator` owns transparent MCP proxy wiring, `GatewayInterceptorProtocolBridge` owns optional SEP passthrough wiring, and `GatewayConnectionForwardingRegistrar` owns connection-bound notification forwarding registration.
 
@@ -68,7 +67,7 @@ Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
 
 **Notification forwarding**: `gateway.RegisterNotificationForwarding(proxyServer)` subscribes to backend `tools/list_changed`, `prompts/list_changed`, `resources/list_changed` and re-sends through the proxy.
 
-**Why handler delegates (not message filters) for the proxy**: The SDK's `With*Handler` methods automatically set `ServerCapabilities`, are type-safe, and are the intended extension point. Message filters are still used for interceptor protocol passthrough (`interceptors/list`, `interceptor/invoke`, `interceptor/executeChain`).
+**Why handler delegates (not message filters) for the proxy**: The SDK's `With*Handler` methods automatically set `ServerCapabilities`, are type-safe, and are the intended extension point. Message filters are still used for interceptor protocol passthrough (`interceptors/list`, `interceptor/invoke`).
 
 **Tool call error handling note**: When an interceptor validation aborts a `tools/call`, the gateway throws `McpInterceptorValidationException`. The SDK catches this and returns `CallToolResult { IsError = true }` (not a JSON-RPC error), since tool execution errors are returned as results by design.
 

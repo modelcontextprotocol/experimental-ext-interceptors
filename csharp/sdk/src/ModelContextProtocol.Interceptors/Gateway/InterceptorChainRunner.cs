@@ -44,8 +44,9 @@ internal sealed class InterceptorChainRunner
 
     /// <summary>
     /// Runs the interceptor chain across all configured interceptor clients sequentially.
-    /// Each client's <c>interceptor/executeChain</c> receives the original or last successful payload
-    /// from the previous one. Any non-success result stops the chain immediately.
+    /// Each client's <see cref="McpClientInterceptorExtensions.ExecuteChainAsync"/> (SDK-level chain
+    /// orchestration via list + invoke) receives the original or last successful payload from the
+    /// previous one. Any non-success result stops the chain immediately.
     /// </summary>
     /// <returns>The payload after the last successful client and the final chain status.</returns>
     internal async ValueTask<(JsonNode payload, InterceptorChainStatus status)> RunChainPhaseAsync(

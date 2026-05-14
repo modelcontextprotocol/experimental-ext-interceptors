@@ -67,7 +67,8 @@ var result = await interceptorClient.InvokeInterceptorAsync(new InvokeIntercepto
     Payload = JsonNode.Parse("""{"name":"call-tool","arguments":{"query":"test"}}""")!,
 });
 
-// Execute a full chain
+// Execute a full chain (SDK-level orchestration: discovers via `interceptors/list`,
+// then dispatches each applicable interceptor via `interceptor/invoke`)
 var chainResult = await interceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
 {
     Event = InterceptorEvents.ToolsCall,
@@ -100,7 +101,7 @@ var result = await gateway.CallToolAsync("my-tool", new Dictionary<string, objec
 
 Use `McpInterceptorGateway` to create an MCP server that transparently proxies requests through interceptors to a backend server. Connecting clients see the proxy as the backend itself — no client-side changes needed.
 
-By default, the gateway is transparent-only: it does not advertise or expose the SEP interceptor protocol to connecting clients. If you want the gateway to also expose `interceptors/list`, `interceptor/invoke`, and `interceptor/executeChain`, enable that explicitly with `ExposeInterceptorProtocol = true`.
+By default, the gateway is transparent-only: it does not advertise or expose the SEP interceptor protocol to connecting clients. If you want the gateway to also expose `interceptors/list` and `interceptor/invoke`, enable that explicitly with `ExposeInterceptorProtocol = true`.
 
 ```
 Client  ──▶  Proxy Server  ──▶  Interceptor Server  ──▶  Backend Server
