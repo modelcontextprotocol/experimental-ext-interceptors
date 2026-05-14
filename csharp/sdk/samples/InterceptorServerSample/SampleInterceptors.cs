@@ -3,7 +3,7 @@ using ModelContextProtocol.Interceptors.Protocol;
 using ModelContextProtocol.Interceptors.Server;
 
 /// <summary>
-/// Sample interceptors demonstrating validation, mutation, and observability.
+/// Sample interceptors demonstrating validation, mutation, and sink types.
 /// </summary>
 [McpServerInterceptorType]
 public class SampleInterceptors
@@ -68,14 +68,14 @@ public class SampleInterceptors
     }
 
     /// <summary>
-    /// Logs all intercepted events for observability.
+    /// Logs all intercepted events.
     /// </summary>
     [McpServerInterceptor(
         Name = "request-logger",
-        Description = "Logs all requests for observability",
-        Type = InterceptorType.Observability,
+        Description = "Logs all requests",
+        Type = InterceptorType.Sink,
         Events = [InterceptorEvents.All])]
-    public static ObservabilityInterceptorResult LogRequest(
+    public static SinkInterceptorResult LogRequest(
         JsonNode payload,
         string @event,
         InterceptorPhase phase,
@@ -83,9 +83,9 @@ public class SampleInterceptors
     {
         Console.Error.WriteLine($"[interceptor] event={@event} phase={phase} traceId={context?.TraceId ?? "none"} payloadSize={payload.ToJsonString().Length}");
 
-        return new ObservabilityInterceptorResult
+        return new SinkInterceptorResult
         {
-            Observed = true,
+            Recorded = true,
             Metrics = new Dictionary<string, double>
             {
                 ["payloadBytes"] = payload.ToJsonString().Length,

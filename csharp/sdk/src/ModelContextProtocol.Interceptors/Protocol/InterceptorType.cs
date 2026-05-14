@@ -23,9 +23,10 @@ public enum InterceptorType
     Mutation,
 
     /// <summary>
-    /// Fire-and-forget logging/metrics collection.
-    /// Observability interceptors run in parallel and failures are swallowed.
+    /// Fire-and-forget, non-blocking, non-mutating interceptor type for reacting to context
+    /// (logging, telemetry, avatar animation, voice-mode triggers, etc.) without affecting
+    /// the interaction. Sink interceptors run in parallel and failures are swallowed.
     /// </summary>
-    [JsonStringEnumMemberName("observability")]
-    Observability,
+    [JsonStringEnumMemberName("sink")]
+    Sink,
 }

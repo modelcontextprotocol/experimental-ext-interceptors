@@ -56,7 +56,7 @@ await using var everythingClient = await McpClient.CreateAsync(
 
 // 3. Chain: wrap everything server with logging, then wrap that with security
 //    Security layer intercepts tools/call (validation + mutation)
-//    Logging layer intercepts all events (observability only, since that's
+//    Logging layer intercepts all events (sink only, since that's
 //    what request-logger is configured for — it won't block anything)
 
 // Inner layer: logging interceptors → everything server

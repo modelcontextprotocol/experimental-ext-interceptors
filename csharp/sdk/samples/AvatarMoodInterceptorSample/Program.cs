@@ -1,22 +1,22 @@
 // ──────────────────────────────────────────────────────────────────────
 // Avatar Mood Interceptor Sample
 //
-// Demonstrates observability interceptors as PARALLEL CONTEXT-ANALYSIS
+// Demonstrates sink interceptors as PARALLEL CONTEXT-ANALYSIS
 // PIPELINES — not the usual "guardrail" framing (PII, validation, audit).
 //
 // The primary conversation runs against Claude Sonnet. After each reply,
 // we fire an `llm/completion` response-phase event into the avatar-mood
-// observability interceptor. The interceptor calls a smaller, faster
+// sink interceptor. The interceptor calls a smaller, faster
 // model (Haiku) in the background to classify the user's mood, then
 // updates a console avatar. The main conversation is never blocked:
-// the observability contract is fire-and-forget with exceptions swallowed.
+// the sink contract is fire-and-forget with exceptions swallowed.
 //
 // For clarity, this sample runs the driver and the interceptor in the
 // same process, invoking the interceptor method directly. In a real
 // deployment the interceptor would be hosted by an MCP interceptor
 // server (see InterceptorServerSample) and dispatched by a gateway
 // (see TransparentProxySample / ConfigDrivenGatewaySample) — the
-// observability semantics are identical either way. We skip that
+// sink semantics are identical either way. We skip that
 // plumbing here to keep the pattern center-stage.
 // ──────────────────────────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ while (true)
     Console.WriteLine(replyText);
 
     // Synthesize an llm/completion response-phase payload and dispatch it
-    // to the observability interceptor. The method returns immediately;
+    // to the sink interceptor. The method returns immediately;
     // the Haiku call and avatar update happen on a background task.
     var payload = BuildCompletionPayload(SonnetModelId, input, replyText, response);
     _ = interceptors.OnLlmCompletion(

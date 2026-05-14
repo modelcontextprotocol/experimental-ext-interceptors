@@ -25,7 +25,7 @@ public sealed class Interceptor
     [JsonPropertyName("events")]
     public IList<string> Events { get; set; } = [];
 
-    /// <summary>Gets or sets the interceptor type (validation, mutation, or observability).</summary>
+    /// <summary>Gets or sets the interceptor type (validation, mutation, or sink).</summary>
     [JsonPropertyName("type")]
     public InterceptorType Type { get; set; }
 

@@ -135,7 +135,7 @@ foreach (var r in chainResult.Results ?? [])
     {
         ValidationInterceptorResult => "validation",
         MutationInterceptorResult => "mutation",
-        ObservabilityInterceptorResult => "observability",
+        SinkInterceptorResult => "sink",
         _ => "unknown",
     };
     Console.WriteLine($"    {r.InterceptorName,-20} type={typeName,-15} duration={r.DurationMs:F1}ms");

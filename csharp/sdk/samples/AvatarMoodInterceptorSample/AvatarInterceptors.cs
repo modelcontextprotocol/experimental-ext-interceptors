@@ -6,9 +6,9 @@ using ModelContextProtocol.Interceptors.Server;
 namespace AvatarMoodInterceptorSample;
 
 /// <summary>
-/// An observability interceptor that classifies conversational mood from each
+/// A sink interceptor that classifies conversational mood from each
 /// <c>llm/completion</c> response using a smaller, secondary model (Haiku) and
-/// updates a console avatar. Demonstrates that observability interceptors can do
+/// updates a console avatar. Demonstrates that sink interceptors can do
 /// real work — driving downstream state — without gating the main conversation.
 /// </summary>
 [McpServerInterceptorType]
@@ -28,17 +28,17 @@ public sealed class AvatarInterceptors
     [McpServerInterceptor(
         Name = "avatar-mood",
         Description = "Classifies conversation mood via a secondary model and updates the avatar state.",
-        Type = InterceptorType.Observability,
+        Type = InterceptorType.Sink,
         Events = [InterceptorEvents.LlmCompletion],
         Phase = InterceptorPhase.Response)]
-    public ObservabilityInterceptorResult OnLlmCompletion(
+    public SinkInterceptorResult OnLlmCompletion(
         JsonNode payload,
         string @event,
         InterceptorPhase phase,
         InvokeInterceptorContext? context,
         CancellationToken cancellationToken)
     {
-        // Observability contract: parallel, fire-and-forget, failures swallowed.
+        // Sink contract: parallel, fire-and-forget, failures swallowed.
         // We return immediately so the main conversation never waits on Haiku.
         _ = Task.Run(async () =>
         {
@@ -47,6 +47,6 @@ public sealed class AvatarInterceptors
             AvatarRenderer.Render(_state);
         }, cancellationToken);
 
-        return new ObservabilityInterceptorResult { Observed = true };
+        return new SinkInterceptorResult { Recorded = true };
     }
 }

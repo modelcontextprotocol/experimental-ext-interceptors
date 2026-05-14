@@ -30,10 +30,10 @@ public class InterceptorChainExecutorTests
             return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
         });
 
-        var observability = CreateInterceptor("obs-1", InterceptorType.Observability, (req, _, _, _) =>
+        var sink = CreateInterceptor("sink-1", InterceptorType.Sink, (req, _, _, _) =>
         {
-            executionOrder.Add("observability");
-            return new ValueTask<InterceptorResult>(new ObservabilityInterceptorResult { Observed = true });
+            executionOrder.Add("sink");
+            return new ValueTask<InterceptorResult>(new SinkInterceptorResult { Recorded = true });
         });
 
         var chainParams = new ExecuteChainRequestParams
@@ -44,10 +44,10 @@ public class InterceptorChainExecutorTests
         };
 
         var result = await InterceptorChainExecutor.ExecuteAsync(
-            [mutation, validation, observability], chainParams, null!, null, CancellationToken.None);
+            [mutation, validation, sink], chainParams, null!, null, CancellationToken.None);
 
         Assert.Equal(InterceptorChainStatus.Success, result.Status);
-        Assert.Equal(["mutation", "validation", "observability"], executionOrder);
+        Assert.Equal(["mutation", "validation", "sink"], executionOrder);
         Assert.True(result.FinalPayload!["mutated"]!.GetValue<bool>());
     }
 
@@ -68,10 +68,10 @@ public class InterceptorChainExecutorTests
             return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
         });
 
-        var observability = CreateInterceptor("obs-1", InterceptorType.Observability, (req, _, _, _) =>
+        var sink = CreateInterceptor("sink-1", InterceptorType.Sink, (req, _, _, _) =>
         {
-            executionOrder.Add("observability");
-            return new ValueTask<InterceptorResult>(new ObservabilityInterceptorResult { Observed = true });
+            executionOrder.Add("sink");
+            return new ValueTask<InterceptorResult>(new SinkInterceptorResult { Recorded = true });
         });
 
         var chainParams = new ExecuteChainRequestParams
@@ -82,10 +82,10 @@ public class InterceptorChainExecutorTests
         };
 
         var result = await InterceptorChainExecutor.ExecuteAsync(
-            [mutation, validation, observability], chainParams, null!, null, CancellationToken.None);
+            [mutation, validation, sink], chainParams, null!, null, CancellationToken.None);
 
         Assert.Equal(InterceptorChainStatus.Success, result.Status);
-        Assert.Equal(["validation", "observability", "mutation"], executionOrder);
+        Assert.Equal(["validation", "sink", "mutation"], executionOrder);
     }
 
     [Fact]
@@ -187,11 +187,11 @@ public class InterceptorChainExecutorTests
     }
 
     [Fact]
-    public async Task ObservabilityFailuresAreSwallowed()
+    public async Task SinkFailuresAreSwallowed()
     {
-        var obs = CreateInterceptor("failing-obs", InterceptorType.Observability, (req, _, _, _) =>
+        var sink = CreateInterceptor("failing-sink", InterceptorType.Sink, (req, _, _, _) =>
         {
-            throw new InvalidOperationException("Observability failure");
+            throw new InvalidOperationException("Sink failure");
         });
 
         var chainParams = new ExecuteChainRequestParams
@@ -202,12 +202,12 @@ public class InterceptorChainExecutorTests
         };
 
         var result = await InterceptorChainExecutor.ExecuteAsync(
-            [obs], chainParams, null!, null, CancellationToken.None);
+            [sink], chainParams, null!, null, CancellationToken.None);
 
         Assert.Equal(InterceptorChainStatus.Success, result.Status);
         Assert.Single(result.Results);
-        var obsResult = Assert.IsType<ObservabilityInterceptorResult>(result.Results[0]);
-        Assert.False(obsResult.Observed);
+        var sinkResult = Assert.IsType<SinkInterceptorResult>(result.Results[0]);
+        Assert.False(sinkResult.Recorded);
     }
 
     [Fact]

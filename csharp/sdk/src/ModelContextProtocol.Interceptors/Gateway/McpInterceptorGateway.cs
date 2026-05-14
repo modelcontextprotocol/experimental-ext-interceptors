@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Interceptors.Gateway;
 /// <para>
 /// This class configures an <see cref="McpServer"/> to act as a transparent proxy. To connecting
 /// clients, it appears to be the backend server itself, but all requests are routed through
-/// configured interceptor servers for validation, mutation, and observability.
+/// configured interceptor servers for validation, mutation, and sink interceptors.
 /// </para>
 /// <para>
 /// Usage:

@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Interceptors;
 [JsonSerializable(typeof(InterceptorResult))]
 [JsonSerializable(typeof(ValidationInterceptorResult))]
 [JsonSerializable(typeof(MutationInterceptorResult))]
-[JsonSerializable(typeof(ObservabilityInterceptorResult))]
+[JsonSerializable(typeof(SinkInterceptorResult))]
 [JsonSerializable(typeof(ValidationMessage))]
 [JsonSerializable(typeof(ValidationSeverity))]
 [JsonSerializable(typeof(ValidationSuggestion))]

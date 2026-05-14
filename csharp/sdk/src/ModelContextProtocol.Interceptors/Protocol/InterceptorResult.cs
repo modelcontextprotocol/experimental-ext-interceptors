@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(ValidationInterceptorResult), "validation")]
 [JsonDerivedType(typeof(MutationInterceptorResult), "mutation")]
-[JsonDerivedType(typeof(ObservabilityInterceptorResult), "observability")]
+[JsonDerivedType(typeof(SinkInterceptorResult), "sink")]
 public abstract class InterceptorResult
 {
     /// <summary>Gets or sets the name of the interceptor that produced this result.</summary>

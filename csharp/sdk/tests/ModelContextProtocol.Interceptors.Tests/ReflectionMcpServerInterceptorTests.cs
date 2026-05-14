@@ -29,12 +29,12 @@ public class TestInterceptors
         return new MutationInterceptorResult { Modified = true, Payload = obj };
     }
 
-    [McpServerInterceptor(Name = "observer", Type = InterceptorType.Observability, Events = ["*"])]
-    public static ObservabilityInterceptorResult Observe(JsonNode payload, InvokeInterceptorContext? context)
+    [McpServerInterceptor(Name = "sink", Type = InterceptorType.Sink, Events = ["*"])]
+    public static SinkInterceptorResult Sink(JsonNode payload, InvokeInterceptorContext? context)
     {
-        return new ObservabilityInterceptorResult
+        return new SinkInterceptorResult
         {
-            Observed = true,
+            Recorded = true,
             Metrics = new Dictionary<string, double> { ["payloadSize"] = payload.ToJsonString().Length },
         };
     }
@@ -144,14 +144,14 @@ public class ReflectionMcpServerInterceptorTests
     }
 
     [Fact]
-    public async Task Invoke_ObservabilityBindsContext()
+    public async Task Invoke_SinkBindsContext()
     {
-        var method = typeof(TestInterceptors).GetMethod(nameof(TestInterceptors.Observe))!;
+        var method = typeof(TestInterceptors).GetMethod(nameof(TestInterceptors.Sink))!;
         var interceptor = ReflectionMcpServerInterceptor.Create(method, target: null);
 
         var request = new InvokeInterceptorRequestParams
         {
-            Name = "observer",
+            Name = "sink",
             Event = InterceptorEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"data":"test"}""")!,
@@ -159,9 +159,9 @@ public class ReflectionMcpServerInterceptorTests
         };
 
         var result = await interceptor.InvokeAsync(request, null!, null, CancellationToken.None);
-        var obs = Assert.IsType<ObservabilityInterceptorResult>(result);
-        Assert.True(obs.Observed);
-        Assert.True(obs.Metrics!["payloadSize"] > 0);
+        var sink = Assert.IsType<SinkInterceptorResult>(result);
+        Assert.True(sink.Recorded);
+        Assert.True(sink.Metrics!["payloadSize"] > 0);
     }
 
     [Fact]

@@ -14,7 +14,7 @@ using ModelContextProtocol.Server;
 //
 // To connecting clients (e.g. Claude Desktop), this proxy appears to be
 // the everything server — but all requests flow through the interceptor
-// chain first (validation, mutation, observability).
+// chain first (validation, mutation, sink).
 //
 // Claude Desktop config example:
 //   {

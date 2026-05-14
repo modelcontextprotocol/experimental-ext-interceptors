@@ -9,8 +9,8 @@ namespace ModelContextProtocol.Interceptors.Server;
 /// Executes a chain of interceptors according to the SEP-1763 execution model.
 /// </summary>
 /// <remarks>
-/// Sending (request phase): Mutations (sequential by priority) -> Validations (parallel) -> Observability (fire-and-forget)
-/// Receiving (response phase): Validations (parallel) -> Observability (fire-and-forget) -> Mutations (sequential by priority)
+/// Sending (request phase): Mutations (sequential by priority) -> Validations (parallel) -> Sinks (fire-and-forget)
+/// Receiving (response phase): Validations (parallel) -> Sinks (fire-and-forget) -> Mutations (sequential by priority)
 /// </remarks>
 internal static class InterceptorChainExecutor
 {
@@ -37,7 +37,7 @@ internal static class InterceptorChainExecutor
             .ToList();
 
         var validations = applicable.Where(i => i.ProtocolInterceptor.Type == InterceptorType.Validation).ToList();
-        var observability = applicable.Where(i => i.ProtocolInterceptor.Type == InterceptorType.Observability).ToList();
+        var sinks = applicable.Where(i => i.ProtocolInterceptor.Type == InterceptorType.Sink).ToList();
 
         using var timeoutCts = chainParams.TimeoutMs.HasValue
             ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
@@ -52,22 +52,22 @@ internal static class InterceptorChainExecutor
         {
             if (chainParams.Phase == InterceptorPhase.Request)
             {
-                // Sending: Mutations -> Validations -> Observability
+                // Sending: Mutations -> Validations -> Sinks
                 (currentPayload, status, abortInfo) = await ExecuteMutationsAsync(mutations, chainParams, currentPayload, server, services, results, ct);
                 if (status != InterceptorChainStatus.Success) goto Done;
 
                 (status, abortInfo) = await ExecuteValidationsAsync(validations, chainParams, currentPayload, server, services, results, summary, ct);
                 if (status != InterceptorChainStatus.Success) goto Done;
 
-                await ExecuteObservabilityAsync(observability, chainParams, currentPayload, server, services, results, ct);
+                await ExecuteSinksAsync(sinks, chainParams, currentPayload, server, services, results, ct);
             }
             else
             {
-                // Receiving: Validations -> Observability -> Mutations
+                // Receiving: Validations -> Sinks -> Mutations
                 (status, abortInfo) = await ExecuteValidationsAsync(validations, chainParams, currentPayload, server, services, results, summary, ct);
                 if (status != InterceptorChainStatus.Success) goto Done;
 
-                await ExecuteObservabilityAsync(observability, chainParams, currentPayload, server, services, results, ct);
+                await ExecuteSinksAsync(sinks, chainParams, currentPayload, server, services, results, ct);
 
                 (currentPayload, status, abortInfo) = await ExecuteMutationsAsync(mutations, chainParams, currentPayload, server, services, results, ct);
             }
@@ -189,8 +189,8 @@ internal static class InterceptorChainExecutor
         return (InterceptorChainStatus.Success, null);
     }
 
-    private static async ValueTask ExecuteObservabilityAsync(
-        List<McpServerInterceptor> observability,
+    private static async ValueTask ExecuteSinksAsync(
+        List<McpServerInterceptor> sinks,
         ExecuteChainRequestParams chainParams,
         JsonNode currentPayload,
         McpServer server,
@@ -198,8 +198,8 @@ internal static class InterceptorChainExecutor
         List<InterceptorResult> results,
         CancellationToken ct)
     {
-        // Observability runs in parallel, fire-and-forget (failures swallowed)
-        var tasks = observability.Select(async interceptor =>
+        // Sinks run in parallel, fire-and-forget (failures swallowed)
+        var tasks = sinks.Select(async interceptor =>
         {
             try
             {
@@ -213,10 +213,10 @@ internal static class InterceptorChainExecutor
             }
             catch
             {
-                return new ObservabilityInterceptorResult
+                return new SinkInterceptorResult
                 {
                     InterceptorName = interceptor.ProtocolInterceptor.Name,
-                    Observed = false,
+                    Recorded = false,
                 };
             }
         });

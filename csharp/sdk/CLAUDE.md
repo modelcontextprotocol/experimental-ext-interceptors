@@ -20,8 +20,8 @@ dotnet test    # 66 tests across the interceptor test project
 **`InterceptingMcpClient` is composition**: `McpClient` has an internal constructor; subclassing is `[Experimental]`. We wrap it as a concrete class exposing `.Inner` for direct access.
 
 ## Chain execution order (SEP-1763)
-- **Request phase (sending)**: Mutations (sequential by priority ↑) → Validations (parallel) → Observability (fire-and-forget)
-- **Response phase (receiving)**: Validations (parallel) → Observability (fire-and-forget) → Mutations (sequential by priority ↑)
+- **Request phase (sending)**: Mutations (sequential by priority ↑) → Validations (parallel) → Sinks (fire-and-forget)
+- **Response phase (receiving)**: Validations (parallel) → Sinks (fire-and-forget) → Mutations (sequential by priority ↑)
 - Lower `PriorityHint` executes first; ties broken alphabetically by name
 
 ## JSON-RPC methods
@@ -32,7 +32,7 @@ dotnet test    # 66 tests across the interceptor test project
 | `interceptor/executeChain` | `ExecuteChainRequestParams` → `InterceptorChainResult` |
 
 ## `InterceptorResult` polymorphism
-Uses `[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]` with `"validation"`, `"mutation"`, `"observability"` discriminators. Serialization/deserialization handles this automatically via STJ source-gen in `InterceptorJsonContext`.
+Uses `[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]` with `"validation"`, `"mutation"`, `"sink"` discriminators. Serialization/deserialization handles this automatically via STJ source-gen in `InterceptorJsonContext`.
 
 ## Parameter binding (ReflectionMcpServerInterceptor)
 Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:

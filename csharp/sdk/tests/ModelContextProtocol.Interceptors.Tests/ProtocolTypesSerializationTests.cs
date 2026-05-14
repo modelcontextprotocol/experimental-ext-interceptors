@@ -15,7 +15,7 @@ public class ProtocolTypesSerializationTests
     {
         Assert.Equal("\"validation\"", JsonSerializer.Serialize(InterceptorType.Validation, Options));
         Assert.Equal("\"mutation\"", JsonSerializer.Serialize(InterceptorType.Mutation, Options));
-        Assert.Equal("\"observability\"", JsonSerializer.Serialize(InterceptorType.Observability, Options));
+        Assert.Equal("\"sink\"", JsonSerializer.Serialize(InterceptorType.Sink, Options));
     }
 
     [Fact]
@@ -23,7 +23,7 @@ public class ProtocolTypesSerializationTests
     {
         Assert.Equal(InterceptorType.Validation, JsonSerializer.Deserialize<InterceptorType>("\"validation\"", Options));
         Assert.Equal(InterceptorType.Mutation, JsonSerializer.Deserialize<InterceptorType>("\"mutation\"", Options));
-        Assert.Equal(InterceptorType.Observability, JsonSerializer.Deserialize<InterceptorType>("\"observability\"", Options));
+        Assert.Equal(InterceptorType.Sink, JsonSerializer.Deserialize<InterceptorType>("\"sink\"", Options));
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class ProtocolTypesSerializationTests
         {
             Name = "test",
             Events = [InterceptorEvents.All],
-            Type = InterceptorType.Observability,
+            Type = InterceptorType.Sink,
             Phase = InterceptorPhase.Both,
         };
 
@@ -159,25 +159,25 @@ public class ProtocolTypesSerializationTests
     }
 
     [Fact]
-    public void ObservabilityInterceptorResult_RoundTrips()
+    public void SinkInterceptorResult_RoundTrips()
     {
-        var result = new ObservabilityInterceptorResult
+        var result = new SinkInterceptorResult
         {
             InterceptorName = "logger",
             Phase = InterceptorPhase.Request,
-            Observed = true,
+            Recorded = true,
             Metrics = new Dictionary<string, double> { ["latencyMs"] = 12.5, ["payloadBytes"] = 256 },
         };
 
         var json = JsonSerializer.Serialize<InterceptorResult>(result, Options);
-        Assert.Contains("\"type\":\"observability\"", json);
+        Assert.Contains("\"type\":\"sink\"", json);
 
         var deserialized = JsonSerializer.Deserialize<InterceptorResult>(json, Options);
-        var obs = Assert.IsType<ObservabilityInterceptorResult>(deserialized);
+        var sink = Assert.IsType<SinkInterceptorResult>(deserialized);
 
-        Assert.True(obs.Observed);
-        Assert.Equal(2, obs.Metrics!.Count);
-        Assert.Equal(12.5, obs.Metrics["latencyMs"]);
+        Assert.True(sink.Recorded);
+        Assert.Equal(2, sink.Metrics!.Count);
+        Assert.Equal(12.5, sink.Metrics["latencyMs"]);
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public class ProtocolTypesSerializationTests
             Interceptors =
             [
                 new Interceptor { Name = "a", Events = ["tools/call"], Type = InterceptorType.Validation, Phase = InterceptorPhase.Both },
-                new Interceptor { Name = "b", Events = ["*"], Type = InterceptorType.Observability, Phase = InterceptorPhase.Both },
+                new Interceptor { Name = "b", Events = ["*"], Type = InterceptorType.Sink, Phase = InterceptorPhase.Both },
             ],
             NextCursor = "abc123",
         };

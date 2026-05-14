@@ -12,7 +12,7 @@ using ModelContextProtocol.Interceptors.Protocol;
 // The interceptor server hosts three interceptors:
 //   1. pii-validator    (validation)  – blocks payloads containing SSN-like data
 //   2. email-redactor   (mutation)    – replaces email addresses with [EMAIL_REDACTED]
-//   3. request-logger   (observability) – logs all events to stderr
+//   3. request-logger   (sink) – logs all events to stderr
 // ──────────────────────────────────────────────────────────────────────
 
 Console.WriteLine("=== MCP Interceptors Gateway Sample ===");

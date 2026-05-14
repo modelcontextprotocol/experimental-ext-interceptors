@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Interceptors.Client;
 /// <para>
 /// This class orchestrates the gateway pattern: for each intercepted operation, it first sends the
 /// request payload to the interceptor server for request-phase processing (validation, mutation,
-/// observability), then forwards the (possibly mutated) payload to the actual server, then sends
+/// sinks), then forwards the (possibly mutated) payload to the actual server, then sends
 /// the response payload to the interceptor server for response-phase processing.
 /// </para>
 /// <para>

@@ -7,7 +7,7 @@ SEP follow-up notes from the implementation are captured in [`docs/SEP_PROPOSAL_
 
 ## Overview
 
-This package enables creating interceptor servers that sit between MCP clients and servers, providing validation, mutation, and observability capabilities without modifying either the client or server.
+This package enables creating interceptor servers that sit between MCP clients and servers, providing validation, mutation, and sink (non-blocking observational) capabilities without modifying either the client or server.
 
 ```
 Client  ──▶  Interceptor Server  ──▶  Server
@@ -246,12 +246,12 @@ ExposeInterceptorProtocol = true
 |------|-----------|---------|
 | **Validation** | Parallel | Validates payloads. Error severity aborts the chain. |
 | **Mutation** | Sequential (by priority) | Transforms payloads. Output chains to next mutation. |
-| **Observability** | Parallel (fire-and-forget) | Logging/metrics. Failures are swallowed. |
+| **Sink** | Parallel (fire-and-forget) | Non-blocking, non-mutating reactions to context (logging, telemetry, avatar/voice triggers). Failures are swallowed. |
 
 ## Chain Execution Order
 
-**Request phase (sending):** Mutations → Validations → Observability → send
-**Response phase (receiving):** Validations → Observability → Mutations → process
+**Request phase (sending):** Mutations → Validations → Sinks → send
+**Response phase (receiving):** Validations → Sinks → Mutations → process
 
 ## Parameter Binding
 

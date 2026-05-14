@@ -74,9 +74,9 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
         {
             return await vtMutation.ConfigureAwait(false);
         }
-        else if (result is ValueTask<ObservabilityInterceptorResult> vtObs)
+        else if (result is ValueTask<SinkInterceptorResult> vtSink)
         {
-            return await vtObs.ConfigureAwait(false);
+            return await vtSink.ConfigureAwait(false);
         }
 
         return await _resultConverter(result).ConfigureAwait(false);
@@ -212,7 +212,7 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
             InterceptorResult interceptorResult = interceptorType switch
             {
                 InterceptorType.Validation => new ValidationInterceptorResult { Valid = true },
-                InterceptorType.Observability => new ObservabilityInterceptorResult { Observed = true },
+                InterceptorType.Sink => new SinkInterceptorResult { Recorded = true },
                 _ => throw new InvalidOperationException($"Cannot auto-convert return type '{result?.GetType().Name ?? "null"}' for interceptor type '{interceptorType}'."),
             };
             return new ValueTask<InterceptorResult>(interceptorResult);

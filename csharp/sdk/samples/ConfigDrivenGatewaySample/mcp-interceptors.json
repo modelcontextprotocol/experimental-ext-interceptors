@@ -18,7 +18,7 @@
   "dynamicInterceptors": {
     "alice": [
       {
-        "connectionId": "alice-observability",
+        "connectionId": "alice-sink",
         "transport": "http",
         "name": "AliceInterceptorServer",
         "endpoint": "http://localhost:3003/mcp"
