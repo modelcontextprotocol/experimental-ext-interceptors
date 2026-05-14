@@ -187,6 +187,158 @@ public class InterceptorChainExecutorTests
     }
 
     [Fact]
+    public async Task AuditMutation_RecordsResultButDoesNotApplyPayload()
+    {
+        // Build the proposed payload separately so we test the executor's shadow-mutation
+        // behavior, not an in-place mutation of the input JsonObject.
+        var shadowMutation = CreateInterceptor("shadow", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            var proposed = JsonNode.Parse("""{"shadowed":true}""")!;
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = proposed });
+        }, mode: InterceptorMode.Audit);
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{"original":true}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [shadowMutation], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Single(result.Results);
+        // The mutation was recorded but its payload change was NOT applied to the chain payload.
+        Assert.True(result.FinalPayload!["original"]!.GetValue<bool>());
+        Assert.Null(result.FinalPayload["shadowed"]);
+        // But the result itself still carries the proposed payload (shadow record).
+        var recorded = Assert.IsType<MutationInterceptorResult>(result.Results[0]);
+        Assert.True(recorded.Modified);
+        Assert.True(recorded.Payload!["shadowed"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task AuditValidation_DoesNotBlockOnError()
+    {
+        var auditor = CreateInterceptor("auditor", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Failure(
+                new ValidationMessage { Message = "Audit-only violation", Severity = ValidationSeverity.Error }));
+        }, mode: InterceptorMode.Audit);
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [auditor], chainParams, null!, null, CancellationToken.None);
+
+        // Error severity in audit mode still records, but never aborts.
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(1, result.ValidationSummary!.Errors);
+        Assert.Null(result.AbortedAt);
+    }
+
+    [Fact]
+    public async Task FailOpenMutation_AllowsChainToContinueOnCrash()
+    {
+        var crashing = CreateInterceptor("crashing", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            throw new InvalidOperationException("boom");
+        }, failOpen: true);
+
+        var following = CreateInterceptor("following", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            var payload = req.Payload.AsObject();
+            payload["reached"] = true;
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = payload });
+        }, priorityHint: 1);
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [crashing, following], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.True(result.FinalPayload!["reached"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task FailClosedMutation_HaltsChainOnCrash()
+    {
+        var crashing = CreateInterceptor("crashing", InterceptorType.Mutation, (req, _, _, _) =>
+        {
+            throw new InvalidOperationException("boom");
+        });
+        // failOpen omitted → fail-closed (default)
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [crashing], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.MutationFailed, result.Status);
+        Assert.Equal("crashing", result.AbortedAt!.Interceptor);
+    }
+
+    [Fact]
+    public async Task FailOpenValidation_AllowsChainToContinueOnCrash()
+    {
+        var crashing = CreateInterceptor("crashing-validator", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            throw new InvalidOperationException("validator boom");
+        }, failOpen: true);
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [crashing], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+    }
+
+    [Fact]
+    public async Task FailClosedValidation_HaltsChainOnCrash()
+    {
+        var crashing = CreateInterceptor("crashing-validator", InterceptorType.Validation, (req, _, _, _) =>
+        {
+            throw new InvalidOperationException("validator boom");
+        });
+
+        var chainParams = new ExecuteChainRequestParams
+        {
+            Event = InterceptorEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = JsonNode.Parse("""{}""")!,
+        };
+
+        var result = await InterceptorChainExecutor.ExecuteAsync(
+            [crashing], chainParams, null!, null, CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.ValidationFailed, result.Status);
+        Assert.Equal("crashing-validator", result.AbortedAt!.Interceptor);
+    }
+
+    [Fact]
     public async Task SinkFailuresAreSwallowed()
     {
         var sink = CreateInterceptor("failing-sink", InterceptorType.Sink, (req, _, _, _) =>
@@ -304,7 +456,9 @@ public class InterceptorChainExecutorTests
         Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, ValueTask<InterceptorResult>> handler,
         int priorityHint = 0,
         string[]? events = null,
-        InterceptorPhase phase = InterceptorPhase.Both)
+        InterceptorPhase phase = InterceptorPhase.Both,
+        InterceptorMode? mode = null,
+        bool? failOpen = null)
     {
         var ev = events ?? [InterceptorEvents.All];
         var hooks = phase switch
@@ -323,6 +477,8 @@ public class InterceptorChainExecutorTests
                 Name = name,
                 Type = type,
                 Hooks = hooks,
+                Mode = mode,
+                FailOpen = failOpen,
                 PriorityHint = priorityHint,
             },
             handler);

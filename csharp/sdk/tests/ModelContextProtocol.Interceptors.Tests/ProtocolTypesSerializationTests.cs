@@ -104,6 +104,36 @@ public class ProtocolTypesSerializationTests
         Assert.False(doc.RootElement.TryGetProperty("compat", out _));
         Assert.False(doc.RootElement.TryGetProperty("configSchema", out _));
         Assert.False(doc.RootElement.TryGetProperty("_meta", out _));
+        Assert.False(doc.RootElement.TryGetProperty("mode", out _));
+        Assert.False(doc.RootElement.TryGetProperty("failOpen", out _));
+    }
+
+    [Fact]
+    public void InterceptorMode_SerializesAsString()
+    {
+        Assert.Equal("\"active\"", JsonSerializer.Serialize(InterceptorMode.Active, Options));
+        Assert.Equal("\"audit\"", JsonSerializer.Serialize(InterceptorMode.Audit, Options));
+    }
+
+    [Fact]
+    public void Interceptor_RoundTripsModeAndFailOpen()
+    {
+        var interceptor = new Interceptor
+        {
+            Name = "audit-validator",
+            Type = InterceptorType.Validation,
+            Hooks = [new InterceptorHook { Events = [InterceptorEvents.ToolsCall], Phase = InterceptorPhase.Request }],
+            Mode = InterceptorMode.Audit,
+            FailOpen = true,
+        };
+
+        var json = JsonSerializer.Serialize(interceptor, Options);
+        Assert.Contains("\"mode\":\"audit\"", json);
+        Assert.Contains("\"failOpen\":true", json);
+
+        var deserialized = JsonSerializer.Deserialize<Interceptor>(json, Options)!;
+        Assert.Equal(InterceptorMode.Audit, deserialized.Mode);
+        Assert.True(deserialized.FailOpen);
     }
 
     [Fact]

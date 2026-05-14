@@ -32,6 +32,21 @@ public sealed class Interceptor
     [JsonPropertyName("hooks")]
     public IList<InterceptorHook> Hooks { get; set; } = [];
 
+    /// <summary>
+    /// Gets or sets the execution mode. <see cref="InterceptorMode.Active"/> (default) applies effects
+    /// normally; <see cref="InterceptorMode.Audit"/> records results without blocking or applying.
+    /// </summary>
+    [JsonPropertyName("mode")]
+    public InterceptorMode? Mode { get; set; }
+
+    /// <summary>
+    /// Gets or sets the failure-routing policy. <c>false</c> (default, fail-closed) blocks the message
+    /// when the interceptor crashes or times out; <c>true</c> (fail-open) allows it to proceed.
+    /// Note: this only governs crash/timeout — validation results with error severity always block in active mode.
+    /// </summary>
+    [JsonPropertyName("failOpen")]
+    public bool? FailOpen { get; set; }
+
     /// <summary>Gets or sets the priority hint for ordering mutation interceptors. Lower values execute first.</summary>
     [JsonPropertyName("priorityHint")]
     public int? PriorityHint { get; set; }

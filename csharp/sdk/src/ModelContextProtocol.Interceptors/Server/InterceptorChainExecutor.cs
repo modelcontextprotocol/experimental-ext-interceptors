@@ -103,26 +103,37 @@ internal static class InterceptorChainExecutor
     {
         foreach (var interceptor in mutations)
         {
+            var protocol = interceptor.ProtocolInterceptor;
+            var isAudit = protocol.Mode == InterceptorMode.Audit;
+            var failOpen = protocol.FailOpen == true;
+
             try
             {
                 var invokeParams = CreateInvokeParams(interceptor, chainParams, currentPayload);
                 var sw = Stopwatch.StartNew();
                 var result = await interceptor.InvokeAsync(invokeParams, server, services, ct);
                 sw.Stop();
-                result.InterceptorName = interceptor.ProtocolInterceptor.Name;
+                result.InterceptorName = protocol.Name;
                 result.DurationMs = sw.ElapsedMilliseconds;
                 results.Add(result);
 
-                if (result is MutationInterceptorResult mutation && mutation.Modified && mutation.Payload is not null)
+                // Audit mode = shadow mutation: record the result but don't apply payload changes.
+                if (!isAudit && result is MutationInterceptorResult mutation && mutation.Modified && mutation.Payload is not null)
                 {
                     currentPayload = mutation.Payload;
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                // Audit never blocks; fail-open allows the message to proceed on crash/timeout.
+                if (isAudit || failOpen)
+                {
+                    continue;
+                }
+
                 return (currentPayload, InterceptorChainStatus.MutationFailed, new ChainAbortInfo
                 {
-                    Interceptor = interceptor.ProtocolInterceptor.Name,
+                    Interceptor = protocol.Name,
                     Reason = ex.Message,
                     Type = "mutation",
                 });
@@ -141,23 +152,51 @@ internal static class InterceptorChainExecutor
         ChainValidationSummary summary,
         CancellationToken ct)
     {
-        // Validations run in parallel
+        // Validations run in parallel. Each task captures its own crash as a per-interceptor error
+        // so the executor can apply per-interceptor fail-open/audit semantics rather than blowing up.
         var tasks = validations.Select(async interceptor =>
         {
-            var invokeParams = CreateInvokeParams(interceptor, chainParams, currentPayload);
-            var sw = Stopwatch.StartNew();
-            var result = await interceptor.InvokeAsync(invokeParams, server, services, ct);
-            sw.Stop();
-            result.InterceptorName = interceptor.ProtocolInterceptor.Name;
-            result.DurationMs = sw.ElapsedMilliseconds;
-            return (interceptor, result);
+            try
+            {
+                var invokeParams = CreateInvokeParams(interceptor, chainParams, currentPayload);
+                var sw = Stopwatch.StartNew();
+                var result = await interceptor.InvokeAsync(invokeParams, server, services, ct);
+                sw.Stop();
+                result.InterceptorName = interceptor.ProtocolInterceptor.Name;
+                result.DurationMs = sw.ElapsedMilliseconds;
+                return (interceptor, result, error: (Exception?)null);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return (interceptor, (InterceptorResult?)null, error: ex);
+            }
         });
 
         var completedResults = await Task.WhenAll(tasks);
 
-        foreach (var (interceptor, result) in completedResults)
+        foreach (var (interceptor, result, error) in completedResults)
         {
-            results.Add(result);
+            var protocol = interceptor.ProtocolInterceptor;
+            var isAudit = protocol.Mode == InterceptorMode.Audit;
+            var failOpen = protocol.FailOpen == true;
+
+            if (error is not null)
+            {
+                // Crash/timeout: audit never blocks; fail-open allows the message to proceed.
+                if (isAudit || failOpen)
+                {
+                    continue;
+                }
+
+                return (InterceptorChainStatus.ValidationFailed, new ChainAbortInfo
+                {
+                    Interceptor = protocol.Name,
+                    Reason = error.Message,
+                    Type = "validation",
+                });
+            }
+
+            results.Add(result!);
 
             if (result is ValidationInterceptorResult validation)
             {
@@ -174,11 +213,12 @@ internal static class InterceptorChainExecutor
                     }
                 }
 
-                if (!validation.Valid && validation.Severity == ValidationSeverity.Error)
+                // Audit mode never blocks regardless of validation outcome.
+                if (!isAudit && !validation.Valid && validation.Severity == ValidationSeverity.Error)
                 {
                     return (InterceptorChainStatus.ValidationFailed, new ChainAbortInfo
                     {
-                        Interceptor = interceptor.ProtocolInterceptor.Name,
+                        Interceptor = protocol.Name,
                         Reason = validation.Messages?.FirstOrDefault()?.Message ?? "Validation failed",
                         Type = "validation",
                     });

@@ -10,6 +10,7 @@ namespace ModelContextProtocol.Interceptors;
 [JsonSerializable(typeof(InterceptorHook))]
 [JsonSerializable(typeof(InterceptorType))]
 [JsonSerializable(typeof(InterceptorPhase))]
+[JsonSerializable(typeof(InterceptorMode))]
 [JsonSerializable(typeof(InterceptorCompatibility))]
 [JsonSerializable(typeof(InterceptorsCapability))]
 [JsonSerializable(typeof(InterceptorResult))]
