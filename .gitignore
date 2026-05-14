@@ -4,6 +4,9 @@
 *.dll
 *.so
 *.dylib
+# Go example binaries (compiled output only, not source directories)
+/go/sdk/examples/mutator/mutator
+/go/sdk/examples/validator/validator
 
 # Build results
 [Bb]in/
