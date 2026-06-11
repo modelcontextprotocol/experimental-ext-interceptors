@@ -512,6 +512,27 @@ public class InterceptorChainOrchestratorTests
     }
 
     [Fact]
+    public async Task NonWirePhase_Throws()
+    {
+        var validation = CreateInterceptor("val", InterceptorType.Validation, (req, _) =>
+        {
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => RunAsync(
+            [validation],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Both,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None).AsTask());
+
+        Assert.Contains("Both", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ValidationSummaryCountsCorrectly()
     {
         var val = CreateInterceptor("val", InterceptorType.Validation, (req, _) =>
