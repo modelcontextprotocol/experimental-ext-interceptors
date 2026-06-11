@@ -6,7 +6,7 @@ C# implementation of gateway-level interceptors from [SEP-1763](https://github.c
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 66 tests across the interceptor test project
+dotnet test    # 87 tests across the interceptor test project
 ```
 
 ## Key architectural constraints
@@ -22,7 +22,7 @@ dotnet test    # 66 tests across the interceptor test project
 ## Chain execution order (SEP-1763)
 - **Request phase (sending)**: Mutations (sequential by priority ↑) → Validations (parallel) → Sinks (fire-and-forget)
 - **Response phase (receiving)**: Validations (parallel) → Sinks (fire-and-forget) → Mutations (sequential by priority ↑)
-- Lower `PriorityHint` executes first; ties broken alphabetically by name
+- Lower `PriorityHint` executes first; scalar (both phases) or per-phase `{request, response}` form, unset phase resolves to 0; ties broken alphabetically by name
 
 ## JSON-RPC methods
 | Method | Params → Result |

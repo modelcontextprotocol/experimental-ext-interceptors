@@ -47,9 +47,13 @@ public sealed class Interceptor
     [JsonPropertyName("failOpen")]
     public bool? FailOpen { get; set; }
 
-    /// <summary>Gets or sets the priority hint for ordering mutation interceptors. Lower values execute first.</summary>
+    /// <summary>
+    /// Gets or sets the priority hint for ordering mutation interceptors. Lower values execute first.
+    /// Either a single number applying to both phases or per-phase <c>request</c>/<c>response</c>
+    /// values; unset resolves to 0.
+    /// </summary>
     [JsonPropertyName("priorityHint")]
-    public int? PriorityHint { get; set; }
+    public PriorityHint? PriorityHint { get; set; }
 
     /// <summary>Gets or sets protocol version compatibility constraints.</summary>
     [JsonPropertyName("compat")]

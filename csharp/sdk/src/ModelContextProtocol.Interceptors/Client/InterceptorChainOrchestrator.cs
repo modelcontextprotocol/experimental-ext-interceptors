@@ -40,7 +40,7 @@ internal static class InterceptorChainOrchestrator
         var applicable = FilterInterceptors(interceptors, chainParams);
 
         var mutations = applicable.Where(i => i.Type == InterceptorType.Mutation)
-            .OrderBy(i => i.PriorityHint ?? 0)
+            .OrderBy(i => i.PriorityHint?.GetEffective(chainParams.Phase) ?? 0)
             .ThenBy(i => i.Name, StringComparer.Ordinal)
             .ToList();
 
