@@ -78,6 +78,18 @@ var chainResult = await interceptorClient.ExecuteChainAsync(new ExecuteChainRequ
     Phase = InterceptorPhase.Request,
     Payload = myPayload,
 });
+
+// Or span multiple interceptor servers: interceptors are discovered from every server,
+// merged into one chain sorted globally by priority hint, and each is invoked on the
+// server that hosts it
+var multiResult = await InterceptorChain.ExecuteAsync(
+    [interceptorClientA, interceptorClientB],
+    new ExecuteChainRequestParams
+    {
+        Event = InterceptionEvents.ToolsCall,
+        Phase = InterceptorPhase.Request,
+        Payload = myPayload,
+    });
 ```
 
 ### Gateway Pattern (Client-Side)
@@ -135,7 +147,7 @@ gateway.RegisterNotificationForwarding(server);
 await server.RunAsync();
 ```
 
-The proxy mirrors the backend's advertised capability graph and forwards `*_list_changed` notifications for the supported list surfaces. Multiple interceptor clients can be chained — they execute in order, each receiving the previous client's mutated payload.
+The proxy mirrors the backend's advertised capability graph and forwards `*_list_changed` notifications for the supported list surfaces. Multiple interceptor clients form a single merged chain per the SEP — interceptors from all servers are sorted globally by priority hint (alphabetical tie-break) and each is invoked on the server that hosts it.
 
 If you want the gateway to connect to external SEP-exposing interceptor servers itself, use the async factory and provide standard MCP client transports:
 
