@@ -111,8 +111,15 @@ public class ProtocolTypesSerializationTests
     [Fact]
     public void InterceptorMode_SerializesAsString()
     {
-        Assert.Equal("\"active\"", JsonSerializer.Serialize(InterceptorMode.Active, Options));
+        Assert.Equal("\"enforce\"", JsonSerializer.Serialize(InterceptorMode.Enforce, Options));
         Assert.Equal("\"audit\"", JsonSerializer.Serialize(InterceptorMode.Audit, Options));
+    }
+
+    [Fact]
+    public void InterceptorMode_DeserializesFromString()
+    {
+        Assert.Equal(InterceptorMode.Enforce, JsonSerializer.Deserialize<InterceptorMode>("\"enforce\"", Options));
+        Assert.Equal(InterceptorMode.Audit, JsonSerializer.Deserialize<InterceptorMode>("\"audit\"", Options));
     }
 
     [Fact]

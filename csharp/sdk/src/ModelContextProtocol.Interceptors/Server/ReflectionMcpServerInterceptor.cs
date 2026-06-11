@@ -111,7 +111,7 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
             Description = attr.Description,
             Type = attr.Type,
             Hooks = hooks,
-            Mode = attr.Mode == InterceptorMode.Active ? null : attr.Mode,
+            Mode = attr.Mode == InterceptorMode.Enforce ? null : attr.Mode,
             FailOpen = attr.FailOpen ? true : null,
             PriorityHint = attr.PriorityHint,
         };

@@ -12,8 +12,8 @@ public enum InterceptorMode
     /// Normal blocking / transforming behavior. Validators block on error severity;
     /// mutators apply their payload changes.
     /// </summary>
-    [JsonStringEnumMemberName("active")]
-    Active,
+    [JsonStringEnumMemberName("enforce")]
+    Enforce,
 
     /// <summary>
     /// Non-blocking operation. Validators log violations without blocking execution;
