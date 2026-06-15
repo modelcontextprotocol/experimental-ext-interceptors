@@ -1,6 +1,6 @@
 # ModelContextProtocol.Interceptors
 
-C# implementation of the [MCP Interceptors Extension (SEP-1763)](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763) — gateway-level interceptors for the Model Context Protocol.
+C# implementation of the [MCP Interceptors Extension (SEP-2624)](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624) — gateway-level interceptors for the Model Context Protocol.
 
 Architecture work is tracked in [`docs/ARCHITECTURE_PHASES.md`](docs/ARCHITECTURE_PHASES.md).
 SEP follow-up notes from the implementation are captured in [`docs/SEP_PROPOSAL_NOTES.md`](docs/SEP_PROPOSAL_NOTES.md).

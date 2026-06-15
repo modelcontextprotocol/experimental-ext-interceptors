@@ -5,8 +5,8 @@
 /**
  * Core interceptor functionality for MCP
  *
- * Based on SEP-1763:
- * https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763
+ * Based on SEP-2624:
+ * https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624
  */
 
 // Placeholder for interceptor implementation

@@ -1,7 +1,7 @@
 # MCP Interceptors - C# SDK
 
 ## What this is
-C# implementation of gateway-level interceptors from [SEP-1763](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763). NuGet package additive to the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (v1.1.0). Focus is on the protocol-level extension (client → interceptor server → server), NOT in-process middleware.
+C# implementation of gateway-level interceptors from [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624). NuGet package additive to the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (v1.1.0). Focus is on the protocol-level extension (client → interceptor server → server), NOT in-process middleware.
 
 ## Build & test
 ```
@@ -19,7 +19,7 @@ dotnet test    # 66 tests across the interceptor test project
 
 **`InterceptingMcpClient` is composition**: `McpClient` has an internal constructor; subclassing is `[Experimental]`. We wrap it as a concrete class exposing `.Inner` for direct access.
 
-## Chain execution order (SEP-1763)
+## Chain execution order (SEP-2624)
 - **Request phase (sending)**: Mutations (sequential by priority ↑) → Validations (parallel) → Sinks (fire-and-forget)
 - **Response phase (receiving)**: Validations (parallel) → Sinks (fire-and-forget) → Mutations (sequential by priority ↑)
 - Lower `PriorityHint` executes first; ties broken alphabetically by name
