@@ -181,8 +181,10 @@ func (e *Extension) enrichInitResult(result mcp.Result) (mcp.Result, error) {
 	all := e.getInterceptors()
 	supportedEvents := map[string]bool{}
 	for _, ri := range all {
-		for _, ev := range ri.GetMetadata().Hook.Events {
-			supportedEvents[ev] = true
+		for _, h := range ri.GetMetadata().Hooks {
+			for _, ev := range h.Events {
+				supportedEvents[ev] = true
+			}
 		}
 	}
 

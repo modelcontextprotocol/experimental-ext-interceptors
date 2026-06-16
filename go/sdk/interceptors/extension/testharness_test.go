@@ -190,10 +190,10 @@ func prefixMutator(name, tag string, phase interceptors.InterceptionPhase, prior
 	return &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: name,
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  phase,
-			},
+			}},
 			Mode:         mode,
 			PriorityHint: interceptors.NewPriority(priority),
 		},
@@ -225,10 +225,10 @@ func failMutator(name string, phase interceptors.InterceptionPhase, priority int
 	return &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: name,
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  phase,
-			},
+			}},
 			Mode:         interceptors.ModeEnforce,
 			PriorityHint: interceptors.NewPriority(priority),
 		},
@@ -243,10 +243,10 @@ func blockToolValidator(toolName string) *interceptors.Validator {
 	return &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "block-" + toolName,
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -278,10 +278,10 @@ func allowAllValidator(name string) *interceptors.Validator {
 	return &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: name,
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {

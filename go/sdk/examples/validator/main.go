@@ -37,10 +37,10 @@ func main() {
 	v := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "block-dangerous-tool",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {

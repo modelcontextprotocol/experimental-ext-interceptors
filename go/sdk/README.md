@@ -20,10 +20,10 @@ ext := extension.New()
 ext.AddInterceptor(&interceptors.Validator{
     Metadata: interceptors.Metadata{
         Name: "block-dangerous",
-        Hook: interceptors.Hook{
+        Hooks: []interceptors.Hook{{
             Events: []string{interceptors.EventToolsCall},
             Phase:  interceptors.PhaseRequest,
-        },
+        }},
         Mode: interceptors.ModeEnforce,
     },
     Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
