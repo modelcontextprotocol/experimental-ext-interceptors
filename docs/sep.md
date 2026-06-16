@@ -1,20 +1,13 @@
-title:	SEP-1763: Interceptors for Model Context Protocol
-state:	OPEN
-author:	sambhav
-labels:	proposal, SEP
-number:	1763
---
-# Interceptor Framework for Model Context Protocol
+# SEP-2624: Interceptors for Model Context Protocol
 
-## Preamble
+- **Status**: Draft
+- **Type**: Standards Track
+- **Created**: 2025-11-04
+- **Author(s)**: Sambhav Kothari (@sambhav), Kurt Degiorgio (@Degiorgio), Peder Holdgaard Pedersen (@PederHP)
+- **Sponsor**: Sambhav Kothari (@sambhav)
+- **PR**: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624
 
-**Title:** Interceptor Framework for Model Context Protocol
-
-**Status:** Draft
-
-**Created:** 2025-11-04
-
-**Authors:** @sambhav
+> **NOTE:** This SEP has been submitted to the main MCP repository as [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624); future review and comments happen there. This repo-local copy is the working draft maintained by the [Interceptors Working Group](https://github.com/modelcontextprotocol/experimental-ext-interceptors) and may be revised as upstream review feedback is incorporated. Additional discussion welcome via [GitHub Issues](https://github.com/modelcontextprotocol/experimental-ext-interceptros/issues) or [Discord #interceptors-wg](https://discord.com/channels/1358869848138059966/1474446054291279933).
 
 ## Abstract
 
@@ -68,6 +61,7 @@ While traditional library-based middleware requires code integration, intercepto
 - **Hybrid approaches**: Mix local and remote interceptors based on security, performance, and organizational requirements
 
 This flexibility is critical for:
+
 - **Security**: Sensitive validation logic can run in isolated, hardened services
 - **Compliance**: Audit logging can be centralized and immutable
 - **Performance**: High-throughput operations can use in-process interceptors while complex policies use dedicated services
@@ -82,7 +76,6 @@ Interceptors provide a standardized execution model with clear semantics for:
 - Validation severity levels (info, warn, error)
 - Error handling and propagation
 
-
 ### Technical Gaps Addressed
 
 The current MCP specification lacks a standardized mechanism for:
@@ -96,6 +89,7 @@ The current MCP specification lacks a standardized mechanism for:
 7. **Client Feature Protection**: No way to prevent servers from requesting excessive sampling tokens, asking for sensitive information through elicitation, or accessing unauthorized filesystem roots
 
 These limitations become critical in enterprise deployments where:
+
 - Multiple MCP servers with varying trust levels need coordination
 - Compliance requirements mandate audit trails and content filtering
 - Security policies require validation of inputs and outputs
@@ -137,24 +131,23 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 > **Definition:** a **Context Operation** is any operation that shapes, accesses, or modifies agentic context, such as tool invocations (which add results to context), resource access (which add content to context), prompt handling (which provide context templates), and skills (which orchestrate context).
 
-> **Definition**: a **Lifecycle Event** is an occurrence during a Context Operation, a specific moment when a context operation is initiated (request phase) or completed (response phase). 
-> 
-> Example of MCP Lifecycle Events include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.  
-
+> **Definition**: a **Lifecycle Event** is an occurrence during a Context Operation, a specific moment when a context operation is initiated (request phase) or completed (response phase).
+>
+> Example of MCP Lifecycle Events include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.
 
 An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable, and hosted on MCP servers.
 
-Interceptors come in two types: **Validators** (see [Validator](#validator)) and **Mutators** (see [Mutator](#mutator)). 
+Interceptors come in two types: **Validators** (see [Validator](#validator)) and **Mutators** (see [Mutator](#mutator)).
 
 > **Important: How do Interceptors Differ from Tools?**
 >
 > Tools and interceptors have fundamentally different invocation models:
 >
-> | | **Tools** | **Interceptors** |
-> |---|---|---|
-> | **Invoked by** | LLM (non-deterministic) | Invoked on specific Lifecycle Events (deterministic) |
+> |                     | **Tools**                          | **Interceptors**                                                                            |
+> | ------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------- |
+> | **Invoked by**      | LLM (non-deterministic)            | Invoked on specific Lifecycle Events (deterministic)                                        |
 > | **Result handling** | Automatically added to LLM context | Returned to invoker (client, server, or agent harness) who then decides what to do with it. |
-> | **Purpose** | Extend agent capabilities | Govern context operations |
+> | **Purpose**         | Extend agent capabilities          | Govern context operations                                                                   |
 
 #### Interface
 
@@ -164,26 +157,27 @@ interface Interceptor {
    * Unique identifier for the interceptor
    */
   name: string;
-  
+
   /**
    * Semantic version of this interceptor
    */
   version?: string;
-  
+
   /**
    * Human-readable description
    */
   description?: string;
-  
+
   /**
    * Interceptor operation type
    */
   type: "validation" | "mutation";
 
   /**
-   * Hook: defines which Lifecycle Events and phase trigger this interceptor
+   * Hooks: defines which Lifecycle Events and phases trigger this interceptor.
+   * Each entry specifies a set of events and a single phase.
    */
-  hook: {
+  hooks: Array<{
     /**
      * List of Lifecycle Events this interceptor hooks into
      */
@@ -192,17 +186,17 @@ interface Interceptor {
     /**
      * Execution phase
      */
-    phase: InterceptionPhase;
-  };
+    phase: "request" | "response";
+  }>;
 
   /**
-   * Execution mode (default: "enforce")
-   * - "enforce": Normal blocking / transforming behavior
+   * Execution mode (default: "active")
+   * - "active": Normal blocking / transforming behavior
    * - "audit": Non-blocking operation
    *   - For validators: logs violations without blocking execution
    *   - For mutators: computes transformations without applying them (shadow mutations)
    */
-  mode?: "enforce" | "audit";
+  mode?: "active" | "audit";
 
   /**
    * Failure routing policy (default: false - fail-closed)
@@ -215,31 +209,33 @@ interface Interceptor {
    * failOpen controls whether audit failures are treated as errors or warnings.
    */
   failOpen?: boolean;
-  
+
   /**
    * Priority hint for mutation interceptor ordering (lower executes first).
-   * 
+   *
    * Can be specified as:
    * - A single number: applies to both request and response phases
    * - An object: specify different priorities per phase
-   * 
+   *
    * Range: 32-bit signed integer (-2,147,483,648 to 2,147,483,647)
    * Default: 0 if omitted
-   * 
+   *
    * Tie-breaker: Interceptors with equal priorityHint are ordered alphabetically by name.
    * For validation interceptors, this field is ignored.
-   * 
+   *
    * Examples:
    *   priorityHint: -1000                           // Same priority for both phases
    *   priorityHint: { request: -1000 }              // Request: -1000, Response: 0 (default)
    *   priorityHint: { response: 1000 }              // Request: 0 (default), Response: 1000
    *   priorityHint: { request: -1000, response: 1000 }  // Different per phase
    */
-  priorityHint?: number | {
-    request?: number;
-    response?: number;
-  };
-  
+  priorityHint?:
+    | number
+    | {
+        request?: number;
+        response?: number;
+      };
+
   /**
    * Protocol version compatibility
    */
@@ -253,7 +249,7 @@ interface Interceptor {
      */
     maxProtocol?: string;
   };
-  
+
   /**
    * Optional JSON Schema for interceptor configuration
    * Documents the expected configuration format
@@ -269,11 +265,9 @@ interface Interceptor {
 
 #### Hooks
 
+**Hooks** define which Lifecycle Events trigger an interceptor's invocation. The `hooks` array in the interceptor definition contains one or more entries, each declaring a set of Lifecycle Events (`events`, e.g., `tools/call`, `resources/read`) and a phase (`phase`: `"request"` or `"response"`) where this interceptor will be invoked. Interceptors that run on both phases use two entries — one per phase.
 
-**Hooks** define which Lifecycle Events trigger an interceptor's invocation. The `hook` object in the interceptor definition declares the  set of Lifecycle Events (`hook.events`, e.g., `tools/call`, `resources/read`) and the phase (`hook.phase`: request, response, or both) where this interceptor will be invoked. 
-
-
-The following interception events are defined by this specification. This list is NOT  exhaustive, implementations MAY define additional interception events for custom or non-MCP context operations.
+The following interception events are defined by this specification. This list is NOT exhaustive, implementations MAY define additional interception events for custom or non-MCP context operations.
 
 ```typescript
 type InterceptionEvent =
@@ -295,23 +289,15 @@ type InterceptionEvent =
   | "llm/completion"
 
   // Wildcards
-  | "*/request"
-  | "*/response"
   | "*" // Matches all events
 
   // Implementations MAY define additional events
   | string;
-
-type InterceptionPhase = "request" | "response" | "both";
 ```
 
 **Wildcards:**
-- `"*"`:  Matches all Lifecycle Events on all phases. Interceptors that hook into `"*"` MUST be invoked for every event.
-- `"*/request"`:  Matches all Lifecycle Events on the request phase only.
-- `"*/response"`: Matches all Lifecycle Events on the response phase only.
 
-When a wildcard is used in `hook.events`, the `hook.phase` field is still respected. For example, `hook: { events: ["*"], phase: "request" }` is equivalent to `hook: { events: ["*/request"], phase: "request" }`.
-
+- `"*"`: Matches all Lifecycle Events. Interceptors that hook into `"*"` MUST be invoked for every event on the phase specified by the enclosing hook entry.
 
 Implementations MAY support additional wildcard patterns, such as namespace wildcards (e.g., `"tools/*"` to match all tool events, `"resources/*"` to match all resource events). Custom wildcard patterns SHOULD follow glob-style conventions.
 
@@ -319,18 +305,17 @@ Implementations MAY extend the set of interceptable Lifecycle Events beyond thos
 
 #### Validator
 
-A **Validator** is defined as strictly non-mutating interceptor that inspects a context operation and returns a structured decision. Validators MUST NOT modify the payload. 
-
+A **Validator** is defined as strictly non-mutating interceptor that inspects a context operation and returns a structured decision. Validators MUST NOT modify the payload.
 
 Common use cases of Validators include:
 
-- **As Governance Checks (guardrails)**: 
-    - PII detection, 
-    - Prompt injection scanning
-    - Credential detection
+- **As Governance Checks (guardrails)**:
+  - PII detection,
+  - Prompt injection scanning
+  - Credential detection
 - **As Generic Context decision procedures**
-    - JSON schema validation, 
-    - Code compilation checks, 
+  - JSON schema validation,
+  - Code compilation checks,
 
 When invoked a validator receives the event payload and MUST return a `ValidationResult`.
 
@@ -339,25 +324,27 @@ When invoked a validator receives the event payload and MUST return a `Validatio
 ```typescript
 interface ValidationResult {
   // Common Interceptor fields
-  interceptor: string;                    // Name of the interceptor
-  type: "validation";                     // Interceptor type
-  phase: "request" | "response";          // Execution phase
-  durationMs?: number;                    // Execution time in ms
-  info?: Record<string, unknown>;         // Additional interceptor-specific data
+  interceptor: string; // Name of the interceptor
+  type: "validation"; // Interceptor type
+  phase: "request" | "response"; // Execution phase
+  durationMs?: number; // Execution time in ms
+  info?: Record<string, unknown>; // Additional interceptor-specific data
 
   // Validation-specific fields
-  valid: boolean;                         // Overall validation outcome
-  severity?: "info" | "warn" | "error";  
+  valid: boolean; // Overall validation outcome
+  severity?: "info" | "warn" | "error";
   messages?: Array<{
-    path?: string;                        // JSON path to the offending field
-    message: string;                      // Human-readable explanation
+    path?: string; // JSON path to the offending field
+    message: string; // Human-readable explanation
     severity: "info" | "warn" | "error";
   }>;
-  suggestions?: Array<{                   // Optional corrections
+  suggestions?: Array<{
+    // Optional corrections
     path: string;
     value: unknown;
   }>;
-  signature?: {                           // Future: cryptographic proof of validation
+  signature?: {
+    // Future: cryptographic proof of validation
     algorithm: "ed25519";
     publicKey: string;
     value: string;
@@ -373,31 +360,31 @@ A **Mutator** is a transformation interceptor that modifies context as it flows 
 
 Common use cases include:
 
-- **As Governance Enforcers**: 
-  - PII redaction, 
-  - Credential scrubbing, 
+- **As Governance Enforcers**:
+  - PII redaction,
+  - Credential scrubbing,
   - Toxicity filtering
-- **As Generic Context Transformers**: 
+- **As Generic Context Transformers**:
   - Response formatting
   - Context Augmentation
   - Prompt template injection
 
-When invoked a mutator receives the event payload and MUST return a `MutationResult` 
+When invoked a mutator receives the event payload and MUST return a `MutationResult`
 
 **MutationResult:**
 
 ```typescript
 interface MutationResult {
   // Common Interceptor fields
-  interceptor: string;                    // Name of the interceptor
-  type: "mutation";                       // Interceptor type
-  phase: "request" | "response";         // Execution phase
-  durationMs?: number;                    // Execution time in ms
-  info?: Record<string, unknown>;         // Additional interceptor-specific data
+  interceptor: string; // Name of the interceptor
+  type: "mutation"; // Interceptor type
+  phase: "request" | "response"; // Execution phase
+  durationMs?: number; // Execution time in ms
+  info?: Record<string, unknown>; // Additional interceptor-specific data
 
   // Mutation-specific fields
-  modified: boolean;                      // Whether the payload was changed
-  payload: unknown;                       // Transformed payload (or original if not modified)
+  modified: boolean; // Whether the payload was changed
+  payload: unknown; // Transformed payload (or original if not modified)
 }
 ```
 
@@ -408,19 +395,21 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 #### Interceptor Discovery
 
 **Request:**
+
 ```typescript
 {
   jsonrpc: "2.0",
   id: 1,
   method: "interceptors/list",
   params?: {
-    // Optional filter by event 
+    // Optional filter by event
     event?: InterceptionEvent;
   }
 }
 ```
 
 **Response:**
+
 ```typescript
 {
   jsonrpc: "2.0",
@@ -432,10 +421,10 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "1.2.0",
         description: "Filters sensitive content from prompts and responses",
         type: "mutation",
-        hook: {
-          events: ["llm/completion", "prompts/get"],
-          phase: "both"
-        },
+        hooks: [
+          { events: ["llm/completion", "prompts/get"], phase: "request" },
+          { events: ["llm/completion", "prompts/get"], phase: "response" }
+        ],
         priorityHint: -500,  // Same priority for both request and response
         compat: {
           minProtocol: "2024-11-05"
@@ -459,10 +448,9 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "2.0.1",
         description: "Validates tool call parameters",
         type: "validation",
-        hook: {
-          events: ["tools/call"],
-          phase: "request"
-        },
+        hooks: [
+          { events: ["tools/call"], phase: "request" }
+        ],
         compat: {
           minProtocol: "2024-11-05",
           maxProtocol: "2025-12-31"
@@ -479,10 +467,10 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "2.1.0",
         description: "Redacts PII from requests and responses",
         type: "mutation",
-        hook: {
-          events: ["tools/call", "llm/completion"],
-          phase: "both"
-        },
+        hooks: [
+          { events: ["tools/call", "llm/completion"], phase: "request" },
+          { events: ["tools/call", "llm/completion"], phase: "response" }
+        ],
         failOpen: false,  // Fail-closed: block if interceptor fails (security-critical)
         // Different priorities for request vs response
         priorityHint: {
@@ -507,10 +495,9 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "1.0.0",
         description: "Enforces token limits and model policies for sampling requests",
         type: "validation",
-        hook: {
-          events: ["sampling/createMessage"],
-          phase: "request"
-        },
+        hooks: [
+          { events: ["sampling/createMessage"], phase: "request" }
+        ],
         compat: {
           minProtocol: "2025-06-18"
         },
@@ -530,10 +517,9 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "1.0.0",
         description: "Prevents elicitation requests from asking for sensitive information",
         type: "validation",
-        hook: {
-          events: ["elicitation/create"],
-          phase: "request"
-        },
+        hooks: [
+          { events: ["elicitation/create"], phase: "request" }
+        ],
         compat: {
           minProtocol: "2025-06-18"
         },
@@ -556,10 +542,10 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         version: "1.0.0",
         description: "Logs all MCP operations for compliance",
         type: "validation",
-        hook: {
-          events: ["*"],
-          phase: "both"
-        },
+        hooks: [
+          { events: ["*"], phase: "request" },
+          { events: ["*"], phase: "response" }
+        ],
         mode: "audit",
         failOpen: true,
         configSchema: {
@@ -582,6 +568,7 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 #### Interceptor Invocation
 
 **Request for Validation:**
+
 ```typescript
 {
   jsonrpc: "2.0",
@@ -609,6 +596,7 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 ```
 
 **Response for Validation:**
+
 ```typescript
 {
   jsonrpc: "2.0",
@@ -644,6 +632,7 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 > **Note**: The `signature` field is reserved for future use to enable cryptographic verification of validation results at trust boundaries. This will allow recipients to verify that validations were performed by authorized interceptor before accepting data.
 
 **Request for Mutation:**
+
 ```typescript
 {
   jsonrpc: "2.0",
@@ -668,6 +657,7 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 ```
 
 **Response for Mutation:**
+
 ```typescript
 {
   jsonrpc: "2.0",
@@ -692,7 +682,7 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 }
 ```
 
-##### Invocation Configuration and Context 
+##### Invocation Configuration and Context
 
 Interceptors MAY receive configuration and context:
 
@@ -724,7 +714,7 @@ interface InterceptorInvocationParams {
     spanId?: string;
 
     // Timing information
-    timestamp: string;  // ISO 8601
+    timestamp: string; // ISO 8601
 
     // Session information
     sessionId?: string;
@@ -736,9 +726,11 @@ interface InterceptorInvocationParams {
   };
 }
 ```
+
 **Timeout and Cancellation:**
 
 When an interceptor is invoked with `timeoutMs` specified:
+
 - The interceptor execution MUST be cancelled if it exceeds the timeout
 - A timeout error MUST be returned with code `-32000` (Server error)
 - Interceptors in audit mode that timeout MUST be logged but MUST NOT block the main flow
@@ -783,6 +775,7 @@ Interceptor invocation errors follow standard JSON-RPC error format:
 ### Execution Model
 
 > **Execution Model Summary:**
+>
 > - **Sending**: Mutate → Validate → Send. A mutation error MUST halt the chain before validation runs.
 > - **Receiving**: Validate → Mutate → Process. A validation error MUST prevent mutations from running.
 > - **Mutations**: Sequential by `priorityHint` (alphabetical tie-break). MUST be atomic — the entire chain succeeds or none apply.
@@ -798,29 +791,34 @@ The execution model follows a **Trust-Boundary-Aware Pattern** where validation 
 Execution order depends on data flow direction:
 
 **Sending Data (Client → Server or Server → Client):**
+
 ```
 Mutate (sequential) → Validate (parallel) → Send
 ```
+
 - Mutations MUST run sequentially to prepare/sanitize data
 - Validations MUST run after mutations to verify before crossing boundary
 
 **Receiving Data (Server ← Client or Client ← Server):**
+
 ```
 Receive → Validate (parallel) → Mutate (sequential)
 ```
+
 - Validations MUST run first as a security barrier (can block)
 - Mutations MUST run only after all validations pass
 
-Implementations MUST follow this trust-boundary-aware ordering when executing interceptors to ensure validation guards every boundary crossing. 
+Implementations MUST follow this trust-boundary-aware ordering when executing interceptors to ensure validation guards every boundary crossing.
 
 **Interceptor Type Behaviors**
 
-| Type | Execution | Failure Behavior | Ordering | Audit Mode |
-|------|-----------|------------------|----------|------------|
-| **Mutation** | Sequential | Chain halts, returns last valid state | By `priorityHint` (low→high), then alphabetically | Shadow mutations: compute but don't apply |
-| **Validation** | Parallel | `severity: "error"` rejects request | None (parallel) | Log violations without blocking |
+| Type           | Execution  | Failure Behavior                      | Ordering                                          | Audit Mode                                |
+| -------------- | ---------- | ------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
+| **Mutation**   | Sequential | Chain halts, returns last valid state | By `priorityHint` (low→high), then alphabetically | Shadow mutations: compute but don't apply |
+| **Validation** | Parallel   | `severity: "error"` rejects request   | None (parallel)                                   | Log violations without blocking           |
 
 Key semantics:
+
 - Mutations MUST be atomic: the entire chain succeeds or none of the mutations apply
 - Validations with `severity: "warn"` or `"info"` MUST NOT block execution
 - Only validations with `severity: "error"` MUST block execution
@@ -831,9 +829,13 @@ Key semantics:
 When ordering mutations, the invoker resolves phase-specific priorities:
 
 ```typescript
-function resolvePriority(interceptor: Interceptor, phase: "request" | "response"): number {
+function resolvePriority(
+  interceptor: Interceptor,
+  phase: "request" | "response",
+): number {
   if (interceptor.priorityHint === undefined) return 0;
-  if (typeof interceptor.priorityHint === "number") return interceptor.priorityHint;
+  if (typeof interceptor.priorityHint === "number")
+    return interceptor.priorityHint;
   return interceptor.priorityHint[phase] ?? 0;
 }
 ```
@@ -842,17 +844,17 @@ function resolvePriority(interceptor: Interceptor, phase: "request" | "response"
 
 To promote consistency across interceptor implementations, the following priority ranges are RECOMMENDED:
 
-| Priority Range | Purpose | Example Use Cases |
-|----------------|---------|-------------------|
-| **-2,000,000,000 to -1,000,000** | System-critical security | Anti-malware scanning, SQL injection prevention |
-| **-999,999 to -10,000** | Security sanitization | PII redaction, credential scrubbing, XSS filtering |
-| **-9,999 to -1,000** | Input/output normalization | Character encoding, format standardization |
-| **-999 to -1** | Content transformation | Language translation, markdown rendering |
-| **0** | Default (no priority specified) | General-purpose interceptor |
-| **1 to 999** | Enrichment | Metadata injection, tagging, formatting |
-| **1,000 to 9,999** | Optimization | Compression, caching, batching |
-| **10,000 to 999,999** | Low-priority transformations | Response enrichment, metadata injection |
-| **1,000,000 to 2,000,000,000** | Low-priority finalization | Audit stamps, response wrapping |
+| Priority Range                   | Purpose                         | Example Use Cases                                  |
+| -------------------------------- | ------------------------------- | -------------------------------------------------- |
+| **-2,000,000,000 to -1,000,000** | System-critical security        | Anti-malware scanning, SQL injection prevention    |
+| **-999,999 to -10,000**          | Security sanitization           | PII redaction, credential scrubbing, XSS filtering |
+| **-9,999 to -1,000**             | Input/output normalization      | Character encoding, format standardization         |
+| **-999 to -1**                   | Content transformation          | Language translation, markdown rendering           |
+| **0**                            | Default (no priority specified) | General-purpose interceptor                        |
+| **1 to 999**                     | Enrichment                      | Metadata injection, tagging, formatting            |
+| **1,000 to 9,999**               | Optimization                    | Compression, caching, batching                     |
+| **10,000 to 999,999**            | Low-priority transformations    | Response enrichment, metadata injection            |
+| **1,000,000 to 2,000,000,000**   | Low-priority finalization       | Audit stamps, response wrapping                    |
 
 **Phase-Specific Priorities:**
 
@@ -1066,7 +1068,7 @@ The chain is constructed from interceptor entries, each describing an intercepto
 interface InterceptorChain {
   /**
    * All interceptor entries in the chain, collected from one or more servers.
-   * Entries are merged and ordered by the chain 
+   * Entries are merged and ordered by the chain
    * according to the execution model.
    */
   entries: ChainEntry[];
@@ -1084,10 +1086,10 @@ interface ChainEntry {
   interceptor: {
     name: string;
     type: "mutation" | "validation";
-    hook: {
+    hooks: Array<{
       events: InterceptionEvent[];
-      phase: "request" | "response" | "both";
-    };
+      phase: "request" | "response";
+    }>;
     priorityHint?: number | { request?: number; response?: number };
     mode?: "audit";
     failOpen?: boolean;
@@ -1107,13 +1109,9 @@ interface ChainEntry {
 ```typescript
 interface ChainExecutionParams {
   /**
-   * The lifecycle event to execute the chain for
+   * Lifecycle event (hook) and phase for this chain
    */
   event: InterceptionEvent;
-
-  /**
-   * The phase of the lifecycle event
-   */
   phase: "request" | "response";
 
   /**
@@ -1227,45 +1225,57 @@ For a `tools/call` event, assume the following interceptor are available:
   {
     name: "pii-redactor",
     type: "mutation",
-    hook: { events: ["tools/call", "llm/completion"], phase: "both" },
+    hooks: [
+      { events: ["tools/call", "llm/completion"], phase: "request" },
+      { events: ["tools/call", "llm/completion"], phase: "response" },
+    ],
     priorityHint: {
-      request: -1000,   // Run first when sending
-      response: 1000    // Run last when receiving
-    }
+      request: -1000, // Run first when sending
+      response: 1000, // Run last when receiving
+    },
   },
   {
     name: "content-filter",
     type: "mutation",
-    hook: { events: ["llm/completion"], phase: "both" },
-    priorityHint: -500  // Same priority for both phases
+    hooks: [
+      { events: ["llm/completion"], phase: "request" },
+      { events: ["llm/completion"], phase: "response" },
+    ],
+    priorityHint: -500, // Same priority for both phases
   },
   {
     name: "format-normalizer",
     type: "mutation",
-    hook: { events: ["tools/call"], phase: "both" },
-    priorityHint: { request: 100 }  // Only applies to requests, response uses default (0)
+    hooks: [
+      { events: ["tools/call"], phase: "request" },
+      { events: ["tools/call"], phase: "response" },
+    ],
+    priorityHint: { request: 100 }, // Only applies to requests, response uses default (0)
   },
   {
     name: "schema-validator",
     type: "validation",
-    hook: { events: ["tools/call"], phase: "request" },
+    hooks: [{ events: ["tools/call"], phase: "request" }],
     // No priorityHint - runs in parallel with other validators
   },
   {
     name: "parameter-validator",
     type: "validation",
-    hook: { events: ["tools/call"], phase: "request" },
+    hooks: [{ events: ["tools/call"], phase: "request" }],
     // No priorityHint - runs in parallel
   },
   {
     name: "audit-logger",
     type: "validation",
-    hook: { events: ["*"], phase: "both" },
+    hooks: [
+      { events: ["*"], phase: "request" },
+      { events: ["*"], phase: "response" },
+    ],
     mode: "audit",
     // No priorityHint - runs in parallel with other validators
     // Audit mode means violations logged but don't block
-  }
-]
+  },
+];
 ```
 
 ##### Full Request/Response Cycle
@@ -1382,14 +1392,14 @@ interface InterceptorChainContext {
     timestamp: string;
     sessionId?: string;
   };
-  
+
   // Mutable interceptor state (enriched by interceptor during chain execution)
   // Each interceptor can read and write to this shared state
   interceptorState?: Record<string, unknown>;
-  
+
   // Deadline for entire operation (inherited and propagated)
-  deadline?: string;  // ISO 8601 timestamp
-  
+  deadline?: string; // ISO 8601 timestamp
+
   // Distributed tracing baggage (key-value pairs for trace correlation)
   // Follows W3C Baggage specification
   baggage?: Record<string, string>;
@@ -1430,8 +1440,8 @@ interface MutationResult {
   payload: { /* unchanged */ },
   contextUpdates: {
     interceptorState: {
-      principal: { 
-        id: "user-123", 
+      principal: {
+        id: "user-123",
         roles: ["admin"],
         authMethod: "oauth2"
       }
@@ -1501,6 +1511,7 @@ This feature would be opt-in and backward compatible, with interceptor that don'
 **1. Separation of Validation and Mutation**
 
 We explicitly separate validation and mutation interceptor types rather than combining them because:
+
 - **Clear intent**: Users know immediately what an interceptor does
 - **Simpler implementation**: Each type has focused logic
 - **Better error handling**: Validation failures vs mutation failures have different semantics
@@ -1510,6 +1521,7 @@ We explicitly separate validation and mutation interceptor types rather than com
 **Audit Mode for Both Types**
 
 Instead of a separate observability type, both validators and mutators support audit mode:
+
 - **Validators in audit mode**: Log violations without blocking (non-blocking observability)
 - **Mutators in audit mode**: Compute transformations without applying them (shadow mutations for testing)
 
@@ -1518,6 +1530,7 @@ This approach is simpler and more flexible than a separate observability type
 **2. Validation as Trust Boundary Guard**
 
 Execution order is trust-boundary-aware:
+
 - **Sending**: Mutate → Validate → Send (prepare data, verify before crossing)
 - **Receiving**: Validate → Mutate → Process (security barrier, then process)
 
@@ -1526,6 +1539,7 @@ This ensures validation guards all boundary crossings, enabling zero-trust archi
 **3. Phase-Aware Priority Hints**
 
 Mutations declare `priorityHint` (default: 0) which can differ by phase. Benefits:
+
 - **Flexibility**: PII redaction runs early when sending (-50000), late when receiving (+50000)
 - **Simplicity**: Single number for common cases, object for phase-specific needs
 - **Determinism**: Alphabetical tie-breaking by `name` ensures consistency
@@ -1545,12 +1559,14 @@ Alternative (global fixed ordering) rejected as too rigid for phase-aware operat
 ### Related Work and Inspiration
 
 **Inspired By:**
+
 - **Kubernetes Admission Controllers**: Validation/mutation webhooks (MCP uses replace vs. patch for simplicity)
 - **gRPC Interceptors**: Client/server-side interception (MCP adds discoverability and dynamic invocation)
 - **HTTP Middleware**: Express.js, ASP.NET patterns (MCP is event-specific vs. path-based)
 - **Envoy Filters**: Network-level request/response filtering
 
 **Complements Existing MCP:**
+
 - Adds validation/mutation capabilities to sampling, tools, prompts, and resources
 - Enables parameter validation, access control, and content filtering across all MCP features
 
@@ -1575,12 +1591,14 @@ This SEP is fully backward compatible:
 **1. Malicious Interceptor**
 
 A compromised interceptor could:
+
 - Exfiltrate sensitive data from requests/responses
 - Modify data to inject malicious content
 - Cause denial of service by rejecting all requests
 - Bypass security controls by approving invalid inputs
 
 **Mitigations:**
+
 - Interceptor runs in the same trust domain as the server/client
 - Organizations must vet interceptor before deployment
 - Interceptor should be sandboxed where possible
@@ -1590,10 +1608,12 @@ A compromised interceptor could:
 **2. Interceptor Bypass**
 
 Attackers might try to bypass interceptor validation:
+
 - Send requests directly to underlying services
 - Exploit interceptor chain ordering
 
 **Mitigations:**
+
 - Interceptor enforcement must be at the transport layer
 - Server-side interceptor is mandatory for requests entering the trust boundary
 - Interceptor chain order must be explicitly configured and immutable
@@ -1601,11 +1621,13 @@ Attackers might try to bypass interceptor validation:
 **3. Information Disclosure**
 
 Interceptor error messages might leak sensitive information:
+
 - Internal system details
 - Validation rules that could be reverse-engineered
 - PII in error messages
 
 **Mitigations:**
+
 - Interceptor should use generic error messages
 - Detailed errors should only be logged, not returned to untrusted clients
 - Separate internal and external validation messages
@@ -1613,11 +1635,13 @@ Interceptor error messages might leak sensitive information:
 **4. Denial of Service**
 
 Interceptor could be exploited for DoS:
+
 - Computationally expensive validation
 - Infinite loops in mutation logic
 - Memory exhaustion from large payloads
 
 **Mitigations:**
+
 - Timeouts for interceptor execution
 - Resource limits (CPU, memory)
 - Rate limiting on interceptor invocations
@@ -1626,11 +1650,13 @@ Interceptor could be exploited for DoS:
 **5. Privilege Escalation**
 
 Interceptor mutation could be used to inject unauthorized operations:
+
 - Modifying request parameters to access unauthorized resources
 - Changing tool invocation targets
 - Injecting administrative commands
 
 **Mitigations:**
+
 - Validation interceptor should verify request authorization at trust boundaries
 - Immutable fields should be enforced at protocol level
 - Audit all mutations that touch security-sensitive fields
@@ -1654,12 +1680,14 @@ Interceptor mutation could be used to inject unauthorized operations:
 ### Compliance Considerations
 
 Interceptors enable compliance with:
+
 - **GDPR**: PII detection and redaction
 - **HIPAA**: PHI filtering in healthcare contexts
 - **SOC 2**: Audit logging and access control
 - **PCI DSS**: Sensitive data masking
 
 However, organizations MUST ensure:
+
 - Interceptors do not create new compliance violations (e.g., storing PII in logs)
 - Audit trails are tamper-proof
 - Data retention policies apply to interceptor logs
@@ -1689,7 +1717,7 @@ interceptors:
     args: []
     config:
       patterns: ["email", "ssn", "phone"]
-    
+
   # Remote interceptor: calls external service
   - name: security-scanner
     type: validation
@@ -1698,7 +1726,7 @@ interceptors:
     timeout: 5s
     headers:
       Authorization: "Bearer ${SECURITY_TOKEN}"
-    
+
   # Local TypeScript interceptor
   - name: rate-limiter
     type: validation
@@ -1710,21 +1738,21 @@ interceptors:
 
 routing:
   # Apply interceptors to specific lifecycle event types
-  tools/call:
+  tools.call:
     request: [rate-limiter, security-scanner]
     response: [pii-redactor]
 
-  llm/completion:
+  llm.completion:
     request: [security-scanner]
     response: [pii-redactor]
 ```
 
 This approach enables platform teams to deploy guardrails across all services from a central control plane without code changes to existing MCP servers.
 
-
 ## Acknowledgments
 
 This proposal draws inspiration from:
+
 - [Kubernetes Admission Controllers](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/)
 - [gRPC interceptors](https://grpc.io/docs/guides/interceptors/) - particularly context propagation concepts ([Context Propagation](#context-propagation-and-interceptor-state-future))
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/) and [W3C Baggage](https://www.w3.org/TR/baggage/) specifications for distributed tracing

@@ -1,7 +1,7 @@
 # MCP Interceptors - Go Implementation
 
 Go implementation of the MCP Interceptor Extension based on
-[SEP-1763](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763).
+[SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624).
 
 Note: Currently the MCP SDK is vendored, in-order to add the Protocol Methods needed for interceptors.
 
