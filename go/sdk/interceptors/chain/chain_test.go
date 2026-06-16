@@ -156,9 +156,9 @@ func TestChain_ExecutionHandler(t *testing.T) {
 			name: "audit-to-enforce validator override aborts chain",
 			interceptor: &interceptors.Validator{
 				Metadata: interceptors.Metadata{
-					Name: "v",
-					Hook: interceptors.Hook{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest},
-					Mode: interceptors.ModeAudit,
+					Name:  "v",
+					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
+					Mode:  interceptors.ModeAudit,
 				},
 				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 					return &interceptors.ValidationResult{
@@ -176,9 +176,9 @@ func TestChain_ExecutionHandler(t *testing.T) {
 			name: "enforce-to-audit validator override does not abort",
 			interceptor: &interceptors.Validator{
 				Metadata: interceptors.Metadata{
-					Name: "v",
-					Hook: interceptors.Hook{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest},
-					Mode: interceptors.ModeEnforce,
+					Name:  "v",
+					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
+					Mode:  interceptors.ModeEnforce,
 				},
 				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 					return &interceptors.ValidationResult{
@@ -195,9 +195,9 @@ func TestChain_ExecutionHandler(t *testing.T) {
 			name: "mutator audit override skips payload application",
 			interceptor: &interceptors.Mutator{
 				Metadata: interceptors.Metadata{
-					Name: "m",
-					Hook: interceptors.Hook{Events: []string{"test/event"}, Phase: interceptors.PhaseResponse},
-					Mode: interceptors.ModeEnforce,
+					Name:  "m",
+					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseResponse}},
+					Mode:  interceptors.ModeEnforce,
 				},
 				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
 					modified, _ := json.Marshal(map[string]any{"value": "mutated"})
@@ -213,9 +213,9 @@ func TestChain_ExecutionHandler(t *testing.T) {
 			name: "nil directive uses descriptor mode",
 			interceptor: &interceptors.Validator{
 				Metadata: interceptors.Metadata{
-					Name: "v",
-					Hook: interceptors.Hook{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest},
-					Mode: interceptors.ModeEnforce,
+					Name:  "v",
+					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
+					Mode:  interceptors.ModeEnforce,
 				},
 				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 					return &interceptors.ValidationResult{
@@ -271,9 +271,9 @@ func TestChain_ExecutionHandler_ShortCircuit(t *testing.T) {
 	invoked := false
 	v := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
-			Name: "v",
-			Hook: interceptors.Hook{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest},
-			Mode: interceptors.ModeEnforce,
+			Name:  "v",
+			Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
+			Mode:  interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			invoked = true
