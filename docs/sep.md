@@ -1346,13 +1346,15 @@ During initialization, servers declare interceptor support:
   jsonrpc: "2.0",
   id: 1,
   result: {
-    protocolVersion: "2024-11-05",
+    protocolVersion: "2025-06-18",
     capabilities: {
-      interceptor?: {
-        // Events this server's interceptor can handle
-        supportedEvents: InterceptionEvent[];
-      },
       // ...existing capabilities
+      extensions: {
+        "io.modelcontextprotocol/interceptors": {
+          // Events this server's interceptors can handle
+          supportedEvents: InterceptionEvent[];
+        }
+      }
     },
     serverInfo: {
       name: "example-server",
