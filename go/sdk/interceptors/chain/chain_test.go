@@ -67,10 +67,12 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 			for _, i := range is {
 				if event != "" {
 					match := false
-					for _, e := range i.GetMetadata().Hook.Events {
-						if e == event {
-							match = true
-							break
+					for _, h := range i.GetMetadata().Hooks {
+						for _, e := range h.Events {
+							if e == event {
+								match = true
+								break
+							}
 						}
 					}
 					if !match {
@@ -142,10 +144,10 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		failOpenValidator := &interceptors.Validator{
 			Metadata: interceptors.Metadata{
 				Name: "fo-validator",
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseRequest,
-				},
+				}},
 				Mode:     interceptors.ModeEnforce,
 				FailOpen: true,
 			},
@@ -156,10 +158,10 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		passingValidator := &interceptors.Validator{
 			Metadata: interceptors.Metadata{
 				Name: "passing-validator",
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseRequest,
-				},
+				}},
 				Mode: interceptors.ModeEnforce,
 			},
 			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -190,10 +192,10 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		failOpenMutator := &interceptors.Mutator{
 			Metadata: interceptors.Metadata{
 				Name: "fo-mutator",
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseResponse,
-				},
+				}},
 				Mode:         interceptors.ModeEnforce,
 				FailOpen:     true,
 				PriorityHint: interceptors.NewPriority(10),
@@ -205,10 +207,10 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		passingMutator := &interceptors.Mutator{
 			Metadata: interceptors.Metadata{
 				Name: "passing-mutator",
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseResponse,
-				},
+				}},
 				Mode:         interceptors.ModeEnforce,
 				PriorityHint: interceptors.NewPriority(20),
 			},

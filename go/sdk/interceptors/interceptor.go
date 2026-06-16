@@ -74,7 +74,7 @@ type Metadata struct {
 	Version      string          `json:"version,omitempty"`
 	Description  string          `json:"description,omitempty"`
 	Type         InterceptorType `json:"type"`
-	Hook         Hook            `json:"hook"`
+	Hooks        []Hook          `json:"hooks"`
 	PriorityHint Priority        `json:"priorityHint,omitempty"`
 	Compat       *Compat         `json:"compat,omitempty"`
 	ConfigSchema json.RawMessage `json:"configSchema,omitempty"`

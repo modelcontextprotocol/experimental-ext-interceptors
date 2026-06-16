@@ -42,7 +42,7 @@ type InterceptorInfo struct {
 	Version      string          `json:"version,omitempty"`
 	Description  string          `json:"description,omitempty"`
 	Type         InterceptorType `json:"type"`
-	Hook         Hook            `json:"hook"`
+	Hooks        []Hook          `json:"hooks"`
 	PriorityHint Priority        `json:"priorityHint,omitempty"`
 	Compat       *Compat         `json:"compat,omitempty"`
 	ConfigSchema json.RawMessage `json:"configSchema,omitempty"`
@@ -58,7 +58,7 @@ func InfoFromInterceptor(i Interceptor) InterceptorInfo {
 		Version:      m.Version,
 		Description:  m.Description,
 		Type:         i.GetType(),
-		Hook:         m.Hook,
+		Hooks:        m.Hooks,
 		PriorityHint: m.PriorityHint,
 		Compat:       m.Compat,
 		ConfigSchema: m.ConfigSchema,

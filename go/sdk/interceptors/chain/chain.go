@@ -143,10 +143,7 @@ func (c *Chain) Execute(ctx context.Context, params *ExecutionParams) (*Executio
 		if len(nameFilter) > 0 && !nameFilter[e.Interceptor.Name] {
 			continue
 		}
-		if !matchesPhase(e.Interceptor.Hook.Phase, params.Phase) {
-			continue
-		}
-		if !slices.Contains(e.Interceptor.Hook.Events, params.Event) {
+		if !matchesHooks(e.Interceptor.Hooks, params.Event, params.Phase) {
 			continue
 		}
 		switch e.Interceptor.Type {
@@ -432,8 +429,16 @@ func (c *Chain) timeoutResult(cr *ExecutionResult, start time.Time) {
 	})
 }
 
-// matchesPhase checks if an interceptor's configured phase covers the target
-// phase. An interceptor with PhaseBoth matches any target phase.
-func matchesPhase(interceptorPhase, targetPhase interceptors.InterceptionPhase) bool {
-	return interceptorPhase == interceptors.PhaseBoth || interceptorPhase == targetPhase
+// matchesHooks checks if any hook entry matches both the target event and phase.
+// A hook with PhaseBoth matches any target phase.
+func matchesHooks(hooks []interceptors.Hook, event string, phase interceptors.InterceptionPhase) bool {
+	for _, h := range hooks {
+		if h.Phase != interceptors.PhaseBoth && h.Phase != phase {
+			continue
+		}
+		if slices.Contains(h.Events, event) {
+			return true
+		}
+	}
+	return false
 }
