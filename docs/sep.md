@@ -11,7 +11,7 @@
 
 ## Abstract
 
-This SEP proposes an interceptor framework for the Model Context Protocol (MCP) that allows context operations to be intercepted, validated, and transformed at key points in the agentic lifecycle. It introduces a new MCP primitive for operations that shape agent context, including MCP-defined operations such as tool invocations, resource access, and prompt handling, as well as other well defined context operations with a standardized interface. Like other MCP primitives, interceptors are deployed as MCP servers and can be invoked by both clients and servers. The framework defines two types of interceptors, validators, which check context and return a pass/fail decision, and mutators, which transform context and return a modified payload. Interceptors follow a deterministic, trust-boundary-aware execution model and are discoverable and invocable through MCP's existing JSON-RPC patterns.
+This SEP proposes an interceptor framework for the Model Context Protocol (MCP) that allows context operations to be intercepted, validated, transformed, and reacted to at key points in the agentic lifecycle. It introduces a new MCP primitive for operations that shape agent context, including MCP-defined operations such as tool invocations, resource access, and prompt handling, as well as other well defined context operations with a standardized interface. Like other MCP primitives, interceptors are deployed as MCP servers and can be invoked by both clients and servers. The framework defines three types of interceptors: validators, which check context and return a pass/fail decision; mutators, which transform context and return a modified payload; and sinks, which react to context without affecting the interaction (e.g., to drive concurrent UX or workflow state). Interceptors follow a deterministic, trust-boundary-aware execution model and are discoverable and invocable through MCP's existing JSON-RPC patterns.
 
 ## Motivation
 
@@ -137,7 +137,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable, and hosted on MCP servers.
 
-Interceptors come in two types: **Validators** (see [Validator](#validator)) and **Mutators** (see [Mutator](#mutator)).
+Interceptors come in three types: **Validators** (see [Validator](#validator)), **Mutators** (see [Mutator](#mutator)), and **Sinks** (see [Sink](#sink)).
 
 > **Important: How do Interceptors Differ from Tools?**
 >
@@ -171,7 +171,7 @@ interface Interceptor {
   /**
    * Interceptor operation type
    */
-  type: "validation" | "mutation";
+  type: "validation" | "mutation" | "sink";
 
   /**
    * Hooks: defines which Lifecycle Events and phases trigger this interceptor.
@@ -221,7 +221,7 @@ interface Interceptor {
    * Default: 0 if omitted
    *
    * Tie-breaker: Interceptors with equal priorityHint are ordered alphabetically by name.
-   * For validation interceptors, this field is ignored.
+   * For validation and sink interceptors, this field is ignored.
    *
    * Examples:
    *   priorityHint: -1000                           // Same priority for both phases
@@ -390,6 +390,46 @@ interface MutationResult {
 
 See [Execution Model](#execution-model) for mutator execution semantics.
 
+#### Sink
+
+A **Sink** is a non-blocking, non-mutating interceptor that reacts to a context operation without affecting the interaction. Sinks MUST NOT block execution and MUST NOT modify the payload; they exist to drive concurrent UX, workflow state, or downstream pipelines based on what the agent is doing.
+
+Common use cases include:
+
+- **Concurrent UX**:
+  - Avatar / character animation driven by conversation mood
+  - Voice-mode style or TTS pipeline switching
+  - Real-time UI affordances surfaced from tool / resource activity
+- **Workflow and indexing**:
+  - Background context indexing of retrieved resources
+  - Triggering of secondary agents or pipelines
+  - Domain-specific telemetry that is not part of the request/response trust check
+
+> **Distinction from observability tooling**: Sinks are not a place to recreate OpenTelemetry or general-purpose logging infrastructure. They are a protocol-level extension point for context-reactive workflows. Telemetry for the interceptor protocol itself SHOULD flow through standard observability tooling; sinks are one of several places implementations MAY wire that tooling in.
+
+> **Distinction from `mode: "audit"`**: Audit mode (see [Execution Model](#execution-model)) is a property of validators and mutators that disables their enforcement while preserving their interface and intent. Sinks are a separate type, with no enforcement interface to disable — they cannot be promoted to affect the interaction, by design. A validator in audit mode still produces validation results; a sink produces a sink result. Implementations MUST reject sinks declared with `mode: "audit"`.
+
+When invoked a sink receives the event payload and MUST return a `SinkResult`. Sinks MUST NOT propose payload changes and SHOULD return immediately, performing any longer-running work asynchronously.
+
+**SinkResult:**
+
+```typescript
+interface SinkResult {
+  // Common Interceptor fields
+  interceptor: string; // Name of the interceptor
+  type: "sink"; // Interceptor type
+  phase: "request" | "response"; // Execution phase
+  durationMs?: number; // Execution time in ms
+  info?: Record<string, unknown>; // Additional interceptor-specific data
+
+  // Sink-specific fields
+  recorded: boolean; // Whether the sink successfully reacted to the event
+  metrics?: Record<string, number>; // Optional metrics emitted by the sink
+}
+```
+
+See [Execution Model](#execution-model) for sink execution semantics.
+
 ### JSON-RPC Methods
 
 #### Interceptor Discovery
@@ -541,13 +581,11 @@ See [Execution Model](#execution-model) for mutator execution semantics.
         name: "audit-logger",
         version: "1.0.0",
         description: "Logs all MCP operations for compliance",
-        type: "validation",
+        type: "sink",
         hooks: [
           { events: ["*"], phase: "request" },
           { events: ["*"], phase: "response" }
         ],
-        mode: "audit",
-        failOpen: true,
         configSchema: {
           type: "object",
           properties: {
@@ -559,6 +597,15 @@ See [Execution Model](#execution-model) for mutator execution semantics.
           },
           required: ["destination"]
         }
+      },
+      {
+        name: "avatar-mood",
+        version: "1.0.0",
+        description: "Drives a UI avatar's mood from LLM completion responses",
+        type: "sink",
+        hooks: [
+          { events: ["llm/completion"], phase: "response" }
+        ]
       }
     ]
   }
@@ -776,13 +823,14 @@ Interceptor invocation errors follow standard JSON-RPC error format:
 
 > **Execution Model Summary:**
 >
-> - **Sending**: Mutate → Validate → Send. A mutation error MUST halt the chain before validation runs.
-> - **Receiving**: Validate → Mutate → Process. A validation error MUST prevent mutations from running.
+> - **Sending**: Mutate → Validate → Sink → Send. A mutation error MUST halt the chain before validation or sinks run.
+> - **Receiving**: Validate → Sink → Mutate → Process. A validation error MUST prevent sinks and mutations from running.
 > - **Mutations**: Sequential by `priorityHint` (alphabetical tie-break). MUST be atomic — the entire chain succeeds or none apply.
 > - **Validations**: Parallel. Only `severity: "error"` blocks; `"warn"` and `"info"` MUST NOT block.
-> - **Audit Mode**: Interceptors in audit mode MUST NOT block execution regardless of results.
-> - **failOpen: true**: If an interceptor fails (crash/timeout), the message MUST be allowed to proceed.
-> - **failOpen: false** (default): If an interceptor fails, the message MUST be blocked.
+> - **Sinks**: Parallel, fire-and-forget. MUST NOT block execution regardless of result or failure.
+> - **Audit Mode** (validators / mutators only): Interceptors in audit mode MUST NOT block execution regardless of results.
+> - **failOpen: true**: If a validator or mutator fails (crash/timeout), the message MUST be allowed to proceed.
+> - **failOpen: false** (default): If a validator or mutator fails, the message MUST be blocked.
 
 The execution model follows a **Trust-Boundary-Aware Pattern** where validation acts as a security gate.
 
@@ -793,29 +841,32 @@ Execution order depends on data flow direction:
 **Sending Data (Client → Server or Server → Client):**
 
 ```
-Mutate (sequential) → Validate (parallel) → Send
+Mutate (sequential) → Validate (parallel) → Sink (parallel, fire-and-forget) → Send
 ```
 
 - Mutations MUST run sequentially to prepare/sanitize data
 - Validations MUST run after mutations to verify before crossing boundary
+- Sinks MUST run after validations pass, in parallel, and MUST NOT block sending
 
 **Receiving Data (Server ← Client or Client ← Server):**
 
 ```
-Receive → Validate (parallel) → Mutate (sequential)
+Receive → Validate (parallel) → Sink (parallel, fire-and-forget) → Mutate (sequential)
 ```
 
 - Validations MUST run first as a security barrier (can block)
+- Sinks MUST run after validations pass, in parallel, and MUST NOT block subsequent mutations
 - Mutations MUST run only after all validations pass
 
 Implementations MUST follow this trust-boundary-aware ordering when executing interceptors to ensure validation guards every boundary crossing.
 
 **Interceptor Type Behaviors**
 
-| Type           | Execution  | Failure Behavior                      | Ordering                                          | Audit Mode                                |
-| -------------- | ---------- | ------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
-| **Mutation**   | Sequential | Chain halts, returns last valid state | By `priorityHint` (low→high), then alphabetically | Shadow mutations: compute but don't apply |
-| **Validation** | Parallel   | `severity: "error"` rejects request   | None (parallel)                                   | Log violations without blocking           |
+| Type           | Execution                    | Failure Behavior                      | Ordering                                          | Audit Mode                                |
+| -------------- | ---------------------------- | ------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
+| **Mutation**   | Sequential                   | Chain halts, returns last valid state | By `priorityHint` (low→high), then alphabetically | Shadow mutations: compute but don't apply |
+| **Validation** | Parallel                     | `severity: "error"` rejects request   | None (parallel)                                   | Log violations without blocking           |
+| **Sink**       | Parallel, fire-and-forget    | Swallowed; never blocks execution     | None (parallel)                                   | N/A — sinks have no enforcement to audit  |
 
 Key semantics:
 
@@ -823,6 +874,8 @@ Key semantics:
 - Validations with `severity: "warn"` or `"info"` MUST NOT block execution
 - Only validations with `severity: "error"` MUST block execution
 - Interceptors in audit mode MUST NOT block execution regardless of results
+- Sinks MUST NOT block execution regardless of result or failure; implementations MUST swallow sink errors
+- Implementations MUST reject sinks declared with `mode: "audit"` (audit mode is meaningless for non-enforcing types)
 
 #### Priority Resolution
 
@@ -1085,13 +1138,13 @@ interface ChainEntry {
    */
   interceptor: {
     name: string;
-    type: "mutation" | "validation";
+    type: "mutation" | "validation" | "sink";
     hooks: Array<{
       events: InterceptionEvent[];
       phase: "request" | "response";
     }>;
     priorityHint?: number | { request?: number; response?: number };
-    mode?: "audit";
+    mode?: "audit"; // mutation and validation only — sinks MUST NOT use audit mode
     failOpen?: boolean;
   };
 
@@ -1169,7 +1222,7 @@ interface ChainExecutionResult {
    */
   results: Array<{
     interceptor: string;
-    type: "mutation" | "validation";
+    type: "mutation" | "validation" | "sink";
     phase: "request" | "response";
     // Mutation-specific fields
     modified?: boolean;
@@ -1178,7 +1231,10 @@ interface ChainExecutionResult {
     valid?: boolean;
     severity?: "error" | "warn" | "info";
     messages?: Array<{ message: string; severity: "error" | "warn" | "info" }>;
-    // Audit mode
+    // Sink-specific fields
+    recorded?: boolean;
+    metrics?: Record<string, number>;
+    // Audit mode (mutation / validation only)
     mode?: "audit";
     info?: Record<string, unknown>;
     // Timing
@@ -1508,24 +1564,38 @@ This feature would be opt-in and backward compatible, with interceptor that don'
 
 ### Design Decisions
 
-**1. Separation of Validation and Mutation**
+**1. Separation of Validation, Mutation, and Sink**
 
-We explicitly separate validation and mutation interceptor types rather than combining them because:
+We explicitly separate the three interceptor types rather than collapsing them because each has a distinct intent and execution profile:
 
-- **Clear intent**: Users know immediately what an interceptor does
+- **Clear intent**: Users know immediately what an interceptor does — gate (validation), transform (mutation), or react (sink)
 - **Simpler implementation**: Each type has focused logic
-- **Better error handling**: Validation failures vs mutation failures have different semantics
-- **Performance**: Validations can run in parallel, mutations run sequentially
-- **Clear execution model**: Validation guards boundaries, mutations transform data
+- **Better error handling**: Validation failures, mutation failures, and sink failures have different semantics
+- **Performance**: Validations and sinks can run in parallel; mutations run sequentially
+- **Clear execution model**: Validation guards boundaries, mutations transform data, sinks react without affecting the interaction
 
-**Audit Mode for Both Types**
+**Audit Mode for Validators and Mutators**
 
-Instead of a separate observability type, both validators and mutators support audit mode:
+Validators and mutators support an `mode: "audit"` flag that disables enforcement while preserving their interface:
 
-- **Validators in audit mode**: Log violations without blocking (non-blocking observability)
-- **Mutators in audit mode**: Compute transformations without applying them (shadow mutations for testing)
+- **Validators in audit mode**: Log violations without blocking
+- **Mutators in audit mode**: Compute transformations without applying them (shadow mutations for testing / dry-runs)
 
-This approach is simpler and more flexible than a separate observability type
+Audit mode is a property of enforcement interceptors that lets them run in a non-enforcing posture. It is distinct from the sink type.
+
+**Why Sinks Are a Separate Type, Not Just `audit` on Validators**
+
+Sinks model interceptors that *structurally* cannot affect the interaction — avatar drivers, voice-mode triggers, real-time UI affordances, background indexing. Audit mode does not fit this shape:
+
+- Audit-mode validators still produce validation results (`valid`, `severity`, `messages`); a sink does not
+- Audit-mode mutators still propose payload changes (shadow mutations); a sink does not
+- Audit mode implies a promotion path ("flip the flag and it enforces"); sinks have no enforcement to promote to, by design
+
+A separate type makes the intent legible at the boundary and prevents accidental conflation between dry-run testing of a guardrail and a first-class context-reactive workflow.
+
+**Why "Sink" and Not "Observability"**
+
+The original draft of this SEP used the name `observability` for this third type. We deliberately renamed it to `sink` to avoid implying overlap with OpenTelemetry or general-purpose logging infrastructure. Sinks are a protocol-level extension point for context-reactive workflows; telemetry for the interceptor protocol itself flows through standard observability tooling and is orthogonal.
 
 **2. Validation as Trust Boundary Guard**
 
