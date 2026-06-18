@@ -33,7 +33,7 @@ public sealed class Interceptor
     public IList<InterceptorHook> Hooks { get; set; } = [];
 
     /// <summary>
-    /// Gets or sets the execution mode. <see cref="InterceptorMode.Enforce"/> (default) applies effects
+    /// Gets or sets the execution mode. <see cref="InterceptorMode.Active"/> (default) applies effects
     /// normally; <see cref="InterceptorMode.Audit"/> records results without blocking or applying.
     /// </summary>
     [JsonPropertyName("mode")]
@@ -42,7 +42,7 @@ public sealed class Interceptor
     /// <summary>
     /// Gets or sets the failure-routing policy. <c>false</c> (default, fail-closed) blocks the message
     /// when the interceptor crashes or times out; <c>true</c> (fail-open) allows it to proceed.
-    /// Note: this only governs crash/timeout — validation results with error severity always block in enforce mode.
+    /// Note: this only governs crash/timeout — validation results with error severity always block in active mode.
     /// </summary>
     [JsonPropertyName("failOpen")]
     public bool? FailOpen { get; set; }

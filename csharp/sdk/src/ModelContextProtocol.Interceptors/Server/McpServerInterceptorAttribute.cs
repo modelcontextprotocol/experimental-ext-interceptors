@@ -68,10 +68,10 @@ public sealed class McpServerInterceptorAttribute : Attribute
     internal int? ResponsePriorityHintOrNull => _responsePriorityHint;
 
     /// <summary>
-    /// Gets or sets the execution mode. Defaults to <see cref="InterceptorMode.Enforce"/>.
+    /// Gets or sets the execution mode. Defaults to <see cref="InterceptorMode.Active"/>.
     /// <see cref="InterceptorMode.Audit"/> records results without blocking or applying changes.
     /// </summary>
-    public InterceptorMode Mode { get; set; } = InterceptorMode.Enforce;
+    public InterceptorMode Mode { get; set; } = InterceptorMode.Active;
 
     /// <summary>
     /// Gets or sets the failure-routing policy. <c>false</c> (default) is fail-closed —
