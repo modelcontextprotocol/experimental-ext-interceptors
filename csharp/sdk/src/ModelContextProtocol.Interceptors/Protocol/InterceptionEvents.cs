@@ -1,7 +1,7 @@
 namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// String constants for the lifecycle events defined by SEP-1763 (Interception Events).
+/// String constants for the lifecycle events defined by SEP-2624 (Interception Events).
 /// </summary>
 /// <remarks>
 /// The SEP defines these as the <c>InterceptionEvent</c> type union; in C# the equivalent is

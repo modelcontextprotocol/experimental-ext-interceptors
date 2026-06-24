@@ -23,6 +23,10 @@ import (
 // interceptors registered via custom methods, connects a chain via
 // in-memory transport, and returns the chain ready for testing.
 func setupChainWithInterceptors(t *testing.T, is ...interceptors.Interceptor) *chain.Chain {
+	return setupChainWithOpts(t, nil, is...)
+}
+
+func setupChainWithOpts(t *testing.T, opts []chain.ChainOption, is ...interceptors.Interceptor) *chain.Chain {
 	t.Helper()
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
@@ -30,7 +34,6 @@ func setupChainWithInterceptors(t *testing.T, is ...interceptors.Interceptor) *c
 		Version: "0.1.0",
 	}, nil)
 
-	// Register interceptors/list and interceptor/invoke handlers.
 	registerInterceptorMethods(mcpServer, is)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
@@ -47,7 +50,8 @@ func setupChainWithInterceptors(t *testing.T, is ...interceptors.Interceptor) *c
 	require.NoError(t, err)
 	t.Cleanup(func() { cs.Close() })
 
-	ch := chain.NewChain(chain.WithChainLogger(slog.Default()))
+	allOpts := append([]chain.ChainOption{chain.WithChainLogger(slog.Default())}, opts...)
+	ch := chain.NewChain(allOpts...)
 	err = ch.AddMCPServer(context.Background(), cs)
 	require.NoError(t, err)
 
@@ -67,10 +71,12 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 			for _, i := range is {
 				if event != "" {
 					match := false
-					for _, e := range i.GetMetadata().Hook.Events {
-						if e == event {
-							match = true
-							break
+					for _, h := range i.GetMetadata().Hooks {
+						for _, e := range h.Events {
+							if e == event {
+								match = true
+								break
+							}
 						}
 					}
 					if !match {
@@ -134,6 +140,172 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 	)
 }
 
+func TestChain_ExecutionHandler(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		interceptor   interceptors.Interceptor
+		directive     *chain.Directive
+		phase         interceptors.InterceptionPhase
+		wantStatus    chain.ChainStatus
+		wantAborted   bool
+		wantNoPayload bool
+	}{
+		{
+			name: "audit-to-enforce validator override aborts chain",
+			interceptor: &interceptors.Validator{
+				Metadata: interceptors.Metadata{
+					Name:  "v",
+					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
+					Mode:  interceptors.ModeAudit,
+				},
+				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
+					return &interceptors.ValidationResult{
+						Valid: false, Severity: interceptors.SeverityError,
+						Messages: []interceptors.ValidationMessage{{Message: "blocked", Severity: interceptors.SeverityError}},
+					}, nil
+				},
+			},
+			directive:   &chain.Directive{Mode: modePtr(interceptors.ModeEnforce)},
+			phase:       interceptors.PhaseRequest,
+			wantStatus:  chain.ChainValidationFailed,
+			wantAborted: true,
+		},
+		{
+			name: "enforce-to-audit validator override does not abort",
+			interceptor: &interceptors.Validator{
+				Metadata: interceptors.Metadata{
+					Name:  "v",
+					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
+					Mode:  interceptors.ModeEnforce,
+				},
+				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
+					return &interceptors.ValidationResult{
+						Valid: false, Severity: interceptors.SeverityError,
+						Messages: []interceptors.ValidationMessage{{Message: "would block", Severity: interceptors.SeverityError}},
+					}, nil
+				},
+			},
+			directive:  &chain.Directive{Mode: modePtr(interceptors.ModeAudit)},
+			phase:      interceptors.PhaseRequest,
+			wantStatus: chain.ChainSuccess,
+		},
+		{
+			name: "mutator audit override skips payload application",
+			interceptor: &interceptors.Mutator{
+				Metadata: interceptors.Metadata{
+					Name:  "m",
+					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseResponse}},
+					Mode:  interceptors.ModeEnforce,
+				},
+				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
+					modified, _ := json.Marshal(map[string]any{"value": "mutated"})
+					return &interceptors.MutationResult{Modified: true, Payload: modified}, nil
+				},
+			},
+			directive:     &chain.Directive{Mode: modePtr(interceptors.ModeAudit)},
+			phase:         interceptors.PhaseResponse,
+			wantStatus:    chain.ChainSuccess,
+			wantNoPayload: true,
+		},
+		{
+			name: "nil directive uses descriptor mode",
+			interceptor: &interceptors.Validator{
+				Metadata: interceptors.Metadata{
+					Name:  "v",
+					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
+					Mode:  interceptors.ModeEnforce,
+				},
+				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
+					return &interceptors.ValidationResult{
+						Valid: false, Severity: interceptors.SeverityError,
+						Messages: []interceptors.ValidationMessage{{Message: "blocked", Severity: interceptors.SeverityError}},
+					}, nil
+				},
+			},
+			directive:   nil,
+			phase:       interceptors.PhaseRequest,
+			wantStatus:  chain.ChainValidationFailed,
+			wantAborted: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			handler := chain.ExecutionHandler(
+				func(ctx context.Context, entry chain.ChainEntry, params *interceptors.InvokeParams,
+					next func(ctx context.Context, params *interceptors.InvokeParams) (interceptors.InvokeResult, error),
+				) (interceptors.InvokeResult, *chain.Directive, error) {
+					result, err := next(ctx, params)
+					return result, tt.directive, err
+				},
+			)
+
+			ch := setupChainWithOpts(t, []chain.ChainOption{chain.WithExecutionHandler(handler)}, tt.interceptor)
+			payload, _ := json.Marshal(map[string]any{"value": "test"})
+			cr, err := ch.Execute(context.Background(), &chain.ExecutionParams{
+				Event:   "test/event",
+				Phase:   tt.phase,
+				Payload: payload,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, cr.Status)
+			if tt.wantAborted {
+				assert.NotEmpty(t, cr.AbortedAt)
+			} else {
+				assert.Empty(t, cr.AbortedAt)
+			}
+			if tt.wantNoPayload {
+				assert.Nil(t, cr.FinalPayload)
+			}
+		})
+	}
+}
+
+func modePtr(m interceptors.Mode) *interceptors.Mode { return &m }
+
+func TestChain_ExecutionHandler_ShortCircuit(t *testing.T) {
+	t.Parallel()
+	invoked := false
+	v := &interceptors.Validator{
+		Metadata: interceptors.Metadata{
+			Name:  "v",
+			Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
+			Mode:  interceptors.ModeEnforce,
+		},
+		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
+			invoked = true
+			return &interceptors.ValidationResult{Valid: true}, nil
+		},
+	}
+
+	handler := chain.ExecutionHandler(
+		func(ctx context.Context, entry chain.ChainEntry, params *interceptors.InvokeParams,
+			next func(ctx context.Context, params *interceptors.InvokeParams) (interceptors.InvokeResult, error),
+		) (interceptors.InvokeResult, *chain.Directive, error) {
+			return interceptors.InvokeResult{
+				Interceptor: entry.Interceptor.Name,
+				Type:        interceptors.TypeValidation,
+				Phase:       interceptors.PhaseRequest,
+				Validation:  &interceptors.ValidationResult{Valid: true},
+			}, nil, nil
+		},
+	)
+
+	ch := setupChainWithOpts(t, []chain.ChainOption{chain.WithExecutionHandler(handler)}, v)
+	payload, _ := json.Marshal(map[string]any{"value": "test"})
+	cr, err := ch.Execute(context.Background(), &chain.ExecutionParams{
+		Event:   "test/event",
+		Phase:   interceptors.PhaseRequest,
+		Payload: payload,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, chain.ChainSuccess, cr.Status)
+	assert.False(t, invoked, "handler short-circuited, server should not be invoked")
+}
+
 func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 	t.Parallel()
 
@@ -142,10 +314,10 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		failOpenValidator := &interceptors.Validator{
 			Metadata: interceptors.Metadata{
 				Name: "fo-validator",
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseRequest,
-				},
+				}},
 				Mode:     interceptors.ModeEnforce,
 				FailOpen: true,
 			},
@@ -156,10 +328,10 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		passingValidator := &interceptors.Validator{
 			Metadata: interceptors.Metadata{
 				Name: "passing-validator",
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseRequest,
-				},
+				}},
 				Mode: interceptors.ModeEnforce,
 			},
 			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -190,10 +362,10 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		failOpenMutator := &interceptors.Mutator{
 			Metadata: interceptors.Metadata{
 				Name: "fo-mutator",
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseResponse,
-				},
+				}},
 				Mode:         interceptors.ModeEnforce,
 				FailOpen:     true,
 				PriorityHint: interceptors.NewPriority(10),
@@ -205,10 +377,10 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		passingMutator := &interceptors.Mutator{
 			Metadata: interceptors.Metadata{
 				Name: "passing-mutator",
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseResponse,
-				},
+				}},
 				Mode:         interceptors.ModeEnforce,
 				PriorityHint: interceptors.NewPriority(20),
 			},

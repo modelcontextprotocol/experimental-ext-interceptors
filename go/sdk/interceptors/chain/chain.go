@@ -25,6 +25,24 @@ type ChainEntry struct {
 	Server      *mcp.ClientSession
 }
 
+// Directive carries per-invocation decisions from an ExecutionHandler
+// back to the chain. nil fields mean "use descriptor default".
+type Directive struct {
+	Mode *interceptors.Mode // nil = use descriptor's static mode
+}
+
+// ExecutionHandler wraps each interceptor/invoke RPC call in the chain.
+// It receives the interceptor entry, the invoke params that will be sent,
+// and a next function that performs the actual RPC. The handler can modify
+// params before calling next, inspect/modify results after, control the
+// effective mode via Directive, or short-circuit by not calling next.
+type ExecutionHandler func(
+	ctx context.Context,
+	entry ChainEntry,
+	params *interceptors.InvokeParams,
+	next func(ctx context.Context, params *interceptors.InvokeParams) (interceptors.InvokeResult, error),
+) (interceptors.InvokeResult, *Directive, error)
+
 // Chain is the SEP-compliant interceptor chain orchestrator. It holds
 // ChainEntry objects (interceptor descriptors + MCP server connections),
 // discovers interceptors via interceptors/list, and invokes them via
@@ -33,6 +51,7 @@ type Chain struct {
 	mu      sync.Mutex
 	entries []ChainEntry
 	logger  *slog.Logger
+	handler ExecutionHandler
 }
 
 // ChainOption configures a Chain.
@@ -43,6 +62,17 @@ type ChainOption func(*Chain)
 func WithChainLogger(l *slog.Logger) ChainOption {
 	return func(c *Chain) {
 		c.logger = l
+	}
+}
+
+// WithExecutionHandler sets the ExecutionHandler for the chain.
+// When set, every interceptor/invoke call is routed through the handler,
+// which can modify invoke params, inspect results, and override the
+// effective mode. If not set, the chain uses the interceptor descriptor's
+// static mode.
+func WithExecutionHandler(h ExecutionHandler) ChainOption {
+	return func(c *Chain) {
+		c.handler = h
 	}
 }
 
@@ -143,10 +173,7 @@ func (c *Chain) Execute(ctx context.Context, params *ExecutionParams) (*Executio
 		if len(nameFilter) > 0 && !nameFilter[e.Interceptor.Name] {
 			continue
 		}
-		if !matchesPhase(e.Interceptor.Hook.Phase, params.Phase) {
-			continue
-		}
-		if !slices.Contains(e.Interceptor.Hook.Events, params.Event) {
+		if !matchesHooks(e.Interceptor.Hooks, params.Event, params.Phase) {
 			continue
 		}
 		switch e.Interceptor.Type {
@@ -291,7 +318,7 @@ func (c *Chain) recordValidation(entry ChainEntry, result invokeOutcome, cr *Exe
 
 	// Tally validation summary and check for abort in a single pass.
 	if result.result.Validation != nil {
-		shouldAbort := entry.Interceptor.Mode != interceptors.ModeAudit && !result.result.Validation.Valid
+		shouldAbort := result.mode != interceptors.ModeAudit && !result.result.Validation.Valid
 		aborted := false
 		for _, msg := range result.result.Validation.Messages {
 			switch msg.Severity {
@@ -371,7 +398,7 @@ func (c *Chain) runMutators(
 		cr.Results = append(cr.Results, result.result)
 
 		// For audit-mode mutators, don't apply the mutated payload.
-		if m.Interceptor.Mode == interceptors.ModeAudit {
+		if result.mode == interceptors.ModeAudit {
 			continue
 		}
 
@@ -387,14 +414,18 @@ func (c *Chain) runMutators(
 	}
 }
 
-// invokeOutcome wraps the result of a single interceptor/invoke call.
+// invokeOutcome wraps the result of a single interceptor/invoke call
+// along with the resolved effective mode.
 type invokeOutcome struct {
 	result interceptors.InvokeResult
+	mode   interceptors.Mode // effective mode (from handler directive or descriptor)
 	err    error
 }
 
 // callInvoke calls interceptor/invoke on the appropriate server for
-// a single chain entry.
+// a single chain entry. When an ExecutionHandler is set, the RPC is
+// routed through the handler which may modify params and override
+// the effective mode.
 func (c *Chain) callInvoke(
 	ctx context.Context,
 	params *ExecutionParams,
@@ -407,18 +438,36 @@ func (c *Chain) callInvoke(
 		Payload: params.Payload,
 		Context: params.Context,
 	}
-
-	// Apply per-interceptor config if provided.
 	if cfg, ok := params.Config[entry.Interceptor.Name]; ok {
 		invokeParams.Config = cfg
 	}
 
-	var result interceptors.InvokeResult
-	err := entry.Server.CallCustom(ctx, interceptors.MethodInvoke, invokeParams, &result)
-	if err != nil {
-		return invokeOutcome{err: err}
+	next := func(ctx context.Context, p *interceptors.InvokeParams) (interceptors.InvokeResult, error) {
+		var result interceptors.InvokeResult
+		err := entry.Server.CallCustom(ctx, interceptors.MethodInvoke, p, &result)
+		return result, err
 	}
-	return invokeOutcome{result: result}
+
+	if c.handler != nil {
+		result, directive, err := c.handler(ctx, entry, invokeParams, next)
+		if err != nil {
+			return invokeOutcome{mode: entry.Interceptor.Mode, err: err}
+		}
+		return invokeOutcome{result: result, mode: resolveMode(entry, directive)}
+	}
+
+	result, err := next(ctx, invokeParams)
+	if err != nil {
+		return invokeOutcome{mode: entry.Interceptor.Mode, err: err}
+	}
+	return invokeOutcome{result: result, mode: entry.Interceptor.Mode}
+}
+
+func resolveMode(entry ChainEntry, d *Directive) interceptors.Mode {
+	if d != nil && d.Mode != nil {
+		return *d.Mode
+	}
+	return entry.Interceptor.Mode
 }
 
 // timeoutResult sets the chain result to timeout status.
@@ -432,8 +481,16 @@ func (c *Chain) timeoutResult(cr *ExecutionResult, start time.Time) {
 	})
 }
 
-// matchesPhase checks if an interceptor's configured phase covers the target
-// phase. An interceptor with PhaseBoth matches any target phase.
-func matchesPhase(interceptorPhase, targetPhase interceptors.InterceptionPhase) bool {
-	return interceptorPhase == interceptors.PhaseBoth || interceptorPhase == targetPhase
+// matchesHooks checks if any hook entry matches both the target event and phase.
+// A hook with PhaseBoth matches any target phase.
+func matchesHooks(hooks []interceptors.Hook, event string, phase interceptors.InterceptionPhase) bool {
+	for _, h := range hooks {
+		if h.Phase != interceptors.PhaseBoth && h.Phase != phase {
+			continue
+		}
+		if slices.Contains(h.Events, event) {
+			return true
+		}
+	}
+	return false
 }

@@ -5,8 +5,8 @@
 /**
  * MCP Interceptors TypeScript SDK
  *
- * Implements MCP Interceptors based on SEP-1763:
- * https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763
+ * Implements MCP Interceptors based on SEP-2624:
+ * https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624
  */
 
 export * from './interceptors.js';

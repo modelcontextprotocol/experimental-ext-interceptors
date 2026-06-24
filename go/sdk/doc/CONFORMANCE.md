@@ -1,6 +1,6 @@
 # SEP Conformance
 
-Status of this Go SDK implementation against the SEP-1763 interceptor proposal.
+Status of this Go SDK implementation against the SEP-2624 interceptor proposal.
 
 ## Implemented
 
