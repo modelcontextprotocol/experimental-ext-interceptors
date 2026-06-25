@@ -4,6 +4,8 @@
 
 This repository provides a multi-language reference implementation of the proposed interceptor extension for the Model Context Protocol (MCP), as described in [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624).
 
+**Charter:** [modelcontextprotocol.io/community/working-groups/interceptors](https://modelcontextprotocol.io/community/working-groups/interceptors) — the Interceptors Working Group's mission, scope, leadership, and active work items.
+
 
 ## Implementations
 
