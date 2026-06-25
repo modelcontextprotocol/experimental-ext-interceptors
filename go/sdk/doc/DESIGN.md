@@ -50,7 +50,7 @@ behavior as remote interceptor servers.
 
 During initialization, a lightweight middleware intercepts the `"initialize"`
 response and injects interceptor metadata into
-`Capabilities.Experimental["io.modelcontextprotocol/interceptors"]`. This
+`Capabilities.Extensions["io.modelcontextprotocol/interceptors"]`. This
 follows the same pattern as the variants extension
 (`io.modelcontextprotocol/server-variants`).
 
