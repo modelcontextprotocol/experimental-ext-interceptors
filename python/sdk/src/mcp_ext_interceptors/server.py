@@ -1,5 +1,5 @@
 # Copyright 2025 The MCP Interceptors Authors. All rights reserved.
-# Use of this source code is governed by a Apache-2.0
+# Use of this source code is governed by an Apache-2.0
 # license that can be found in the LICENSE file.
 
 """Server-side hosting of interceptors as an MCP extension (SEP-2624).
