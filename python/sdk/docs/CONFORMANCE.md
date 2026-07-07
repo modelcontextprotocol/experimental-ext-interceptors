@@ -34,6 +34,8 @@ This SDK implements the third `sink` type: fire-and-forget, observe-only interce
 
 The result union stays open beyond these three types: an unknown `type` from a newer server still degrades to `UnknownInterceptorResult` via `types.parse_invoke_result`, and the chain logs-and-skips entries with unrecognized types. Adding a further type later remains one new model plus a dispatch arm, not a breaking change.
 
+Note that sinks are *awaited* within the chain stage (parallel, via a task group), not detached — so while a sink can never change the verdict, payload, or `abortedAt`, a sink that **hangs** is bounded only by the per-interceptor or chain-level `timeoutMs` and would surface there as a `timeout` status (matching the C# `Task.WhenAll` behaviour). Keep sink handlers fast, or give them a `timeoutMs`.
+
 ## Deliberate divergences from sibling SDKs
 
 - **Mode string**: this SDK uses `"active"` per the revised SEP. The Go SDK still uses `"enforce"` (tracked in issue #15 / PR #17 for C#).
