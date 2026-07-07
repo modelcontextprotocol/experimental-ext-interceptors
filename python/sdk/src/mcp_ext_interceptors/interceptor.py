@@ -17,12 +17,14 @@ from typing import Any
 
 from mcp_ext_interceptors.types import (
     TYPE_MUTATION,
+    TYPE_SINK,
     TYPE_VALIDATION,
     Hook,
     InterceptorInfo,
     InvocationContext,
     MutationResult,
     Phase,
+    SinkResult,
     ValidationResult,
 )
 
@@ -45,6 +47,7 @@ class Invocation:
 
 ValidatorHandler = Callable[[Invocation], Awaitable[ValidationResult]]
 MutatorHandler = Callable[[Invocation], Awaitable[MutationResult]]
+SinkHandler = Callable[[Invocation], Awaitable[SinkResult]]
 
 
 @dataclass(kw_only=True)
@@ -71,7 +74,19 @@ class Mutator:
             raise ValueError(f"Mutator {self.info.name!r} must have type {TYPE_MUTATION!r}, got {self.info.type!r}")
 
 
-RegisteredInterceptor = Validator | Mutator
+@dataclass(kw_only=True)
+class Sink:
+    """A sink interceptor: descriptor plus its handler. Fire-and-forget."""
+
+    info: InterceptorInfo
+    handler: SinkHandler
+
+    def __post_init__(self) -> None:
+        if self.info.type != TYPE_SINK:
+            raise ValueError(f"Sink {self.info.name!r} must have type {TYPE_SINK!r}, got {self.info.type!r}")
+
+
+RegisteredInterceptor = Validator | Mutator | Sink
 
 
 def build_hooks(

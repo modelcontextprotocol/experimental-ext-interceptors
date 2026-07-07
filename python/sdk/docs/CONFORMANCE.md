@@ -24,12 +24,15 @@ This maps the SEP's normative requirements to their implementation, records the 
 | Validations parallel; all complete before rejecting | `anyio.create_task_group` in `_run_validators`; outcomes recorded in entry order after the group completes |
 | Only `severity: "error"` blocks; `warn`/`info` never block | `chain._blocking_severity`; an invalid result with no severity fails secure (treated as error) |
 | Audit mode never blocks; mutators in audit compute but don't apply | audit checks in `_run_validators` / `_run_mutators` (shadow mutations recorded in `results`, payload untouched) |
+| Sinks fire-and-forget: parallel, never block, never mutate | `_run_sinks` runs after validation passes; results recorded in `results`; a crashed/wrong-typed sink is swallowed as `SinkResult(recorded=False)`; never sets `aborted_at` or touches the payload |
 | `failOpen: true` lets a crashed/timed-out interceptor pass; default fail-closed | `effective_fail_open()` consulted on every error path |
 | InterceptorOverrides checked before descriptor values; hooks may only narrow (PR #24) | `chain.InterceptorOverrides`, `ChainEntry.effective_*()`; widening rejected with `ValueError` in `Chain.add_entry` |
 
-## Open-union posture (future `sink` type)
+## `sink` interceptor type (SEP PR #28)
 
-PR #28 (reintroducing a third `sink` interceptor type) is unreviewed, so this SDK implements only `validation` and `mutation` — but the type fields are open strings, invoke results are parsed through `types.parse_invoke_result` (unknown types degrade to `UnknownInterceptorResult` instead of failing validation), and the chain logs-and-skips entries with unknown types. Adding sink later is one new model plus a dispatch arm, not a breaking change.
+This SDK implements the third `sink` type: fire-and-forget, observe-only interceptors that never modify the payload or block the operation. `types.SinkResult` carries `recorded: bool` and optional `metrics`; register with `Interceptors.sink(...)` (no `priorityHint`, like validators). In the chain, sinks run in parallel *after* validation passes (receiving: validate → sink → mutate; sending: mutate → validate → sink); their results are recorded in `results`, and a crashed or wrong-typed sink is swallowed as `SinkResult(recorded=False)` — sinks never set `aborted_at` or touch the payload.
+
+The result union stays open beyond these three types: an unknown `type` from a newer server still degrades to `UnknownInterceptorResult` via `types.parse_invoke_result`, and the chain logs-and-skips entries with unrecognized types. Adding a further type later remains one new model plus a dispatch arm, not a breaking change.
 
 ## Deliberate divergences from sibling SDKs
 
@@ -37,7 +40,7 @@ PR #28 (reintroducing a third `sink` interceptor type) is unreviewed, so this SD
 - **Invoke result shape**: this SDK returns the SEP's flat result body. The Go SDK nests it under `validation`/`mutation` keys in `InvokeResult` (wire.go) — that nesting is not SEP text.
 - **Capability key**: this SDK uses `extensions["io.modelcontextprotocol/interceptors"]` per PR #25. Go used `experimental["io.modelcontextprotocol/interceptors"]`, C# used `extensions["interceptors"]` before that PR.
 - **`interceptors/list` event filter**: a `"*"`-hooked interceptor matches every event filter here (SEP-truer reading); the Go SDK only matches `"*"` against a literal `"*"` filter.
-- **No `sink` type**: C# ships one; the current SEP deliberately replaced it with audit mode.
+- **`sink` type**: implemented here (SEP PR #28) as a fire-and-forget observe-only type, matching the C# `sink`. It is distinct from `mode: "audit"` (an observe-only *mode* on a validator/mutator): a sink is its own interceptor type that returns neither a verdict nor a payload, only `recorded`.
 - **No `"both"` phase value**: Go accepts `PhaseBoth` as an SDK convenience; here an interceptor on both phases declares two hook entries (pass `hooks=[...]` to the decorators), keeping the wire vocabulary exactly the SEP's.
 
 ## Flags for WG discussion
@@ -52,4 +55,4 @@ PR #28 (reintroducing a third `sink` interceptor type) is unreviewed, so this SD
 
 ## Test coverage
 
-`uv run pytest` — 79 tests: wire-shape round-trips (`test_types.py`), server hosting incl. error codes, timeouts, and both protocol eras via `Client(mode=...)` parametrization (`test_server_extension.py`, `test_client.py`), and the full chain matrix — ordering, parallelism, blocking, audit, failOpen, atomicity, timeouts, overrides (`test_chain.py`).
+`uv run pytest` — 85 tests: wire-shape round-trips (`test_types.py`), server hosting incl. error codes, timeouts, and both protocol eras via `Client(mode=...)` parametrization (`test_server_extension.py`, `test_client.py`), and the full chain matrix — ordering, parallelism, blocking, audit, sinks, failOpen, atomicity, timeouts, overrides (`test_chain.py`).

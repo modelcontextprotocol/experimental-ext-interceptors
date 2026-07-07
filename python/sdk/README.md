@@ -1,6 +1,6 @@
 # MCP Interceptors Python SDK
 
-Python implementation of the Model Context Protocol interceptor framework ([SEP-2624](../../docs/sep.md)): validators and mutators that govern context operations, hosted on MCP servers and orchestrated through `interceptors/list` and `interceptor/invoke`.
+Python implementation of the Model Context Protocol interceptor framework ([SEP-2624](../../docs/sep.md)): validators, mutators, and sinks that govern context operations, hosted on MCP servers and orchestrated through `interceptors/list` and `interceptor/invoke`.
 
 Built on the [MCP Python SDK v2 beta](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.0.0b1), which serves both the 2025-11-25 (handshake) and 2026-07-28 (modern) protocol revisions from one package. The interceptor methods work on every connection mode; see the capability note below for what differs.
 
@@ -18,7 +18,7 @@ This SDK depends on `mcp>=2.0.0b1`, which is a pre-release: `pip` resolves it au
 
 ```python
 from mcp.server import MCPServer
-from mcp_ext_interceptors import Interceptors, Invocation, MutationResult, ValidationResult
+from mcp_ext_interceptors import Interceptors, Invocation, MutationResult, SinkResult, ValidationResult
 
 interceptors = Interceptors()
 
@@ -29,6 +29,11 @@ async def check(inv: Invocation) -> ValidationResult:
 @interceptors.mutator("pii-redactor", events=["tools/call"], phase="request", priority_hint=-1000)
 async def redact(inv: Invocation) -> MutationResult:
     return MutationResult(modified=True, payload=redact_pii(inv.payload))
+
+@interceptors.sink("audit-log", events=["tools/call"], phase="response")  # fire-and-forget, observe-only
+async def record(inv: Invocation) -> SinkResult:
+    log_to_bus(inv.payload)
+    return SinkResult(recorded=True)
 
 server = MCPServer("demo", extensions=[interceptors])
 ```
@@ -83,7 +88,7 @@ Servers advertise `capabilities.extensions["io.modelcontextprotocol/interceptors
 
 ```bash
 uv sync          # creates .venv with the mcp 2.0.0b1 beta
-uv run pytest    # 80 tests, including both protocol eras over in-memory transport
+uv run pytest    # 85 tests, including both protocol eras over in-memory transport
 uv run ruff check && uv run mypy src
 ```
 

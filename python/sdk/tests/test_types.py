@@ -6,7 +6,7 @@
 
 import pytest
 
-from mcp_ext_interceptors.interceptor import Invocation, Mutator, Validator, build_hooks
+from mcp_ext_interceptors.interceptor import Invocation, Mutator, Sink, Validator, build_hooks
 from mcp_ext_interceptors.types import (
     Compat,
     Hook,
@@ -14,6 +14,7 @@ from mcp_ext_interceptors.types import (
     InvokeInterceptorParams,
     MutationResult,
     PhasePriority,
+    SinkResult,
     UnknownInterceptorResult,
     ValidationResult,
     hooks_contain_event,
@@ -91,6 +92,24 @@ class TestWireSerialization:
             "messages": [{"message": "bad", "severity": "error", "path": "params.x"}],
         }
 
+    def test_sink_result_wire_shape(self) -> None:
+        result = SinkResult(
+            interceptor="s",
+            phase="response",
+            recorded=True,
+            metrics={"latency_ms": 4.0},
+            duration_ms=2.0,
+        )
+        wire = result.model_dump(by_alias=True, mode="json", exclude_none=True)
+        assert wire == {
+            "interceptor": "s",
+            "type": "sink",
+            "phase": "response",
+            "durationMs": 2.0,
+            "recorded": True,
+            "metrics": {"latency_ms": 4.0},
+        }
+
 
 class TestParseInvokeResult:
     def test_validation(self) -> None:
@@ -105,12 +124,20 @@ class TestParseInvokeResult:
         assert isinstance(parsed, MutationResult)
         assert parsed.payload == {"a": 1}
 
+    def test_sink(self) -> None:
+        parsed = parse_invoke_result(
+            {"type": "sink", "interceptor": "s", "phase": "request", "recorded": True, "metrics": {"n": 3}}
+        )
+        assert isinstance(parsed, SinkResult)
+        assert parsed.recorded is True
+        assert parsed.metrics == {"n": 3}
+
     def test_unknown_type_degrades_gracefully(self) -> None:
         parsed = parse_invoke_result(
-            {"type": "sink", "interceptor": "s", "phase": "request", "accepted": True, "durationMs": 2}
+            {"type": "rate_limit", "interceptor": "s", "phase": "request", "accepted": True, "durationMs": 2}
         )
         assert isinstance(parsed, UnknownInterceptorResult)
-        assert parsed.type == "sink"
+        assert parsed.type == "rate_limit"
         assert parsed.duration_ms == 2
 
     def test_common_field_defaults_for_authors(self) -> None:
@@ -196,6 +223,9 @@ class TestAuthorApi:
     async def _mutate(self, inv: Invocation) -> MutationResult:
         return MutationResult(modified=False, payload=inv.payload)
 
+    async def _record(self, inv: Invocation) -> SinkResult:
+        return SinkResult(recorded=True)
+
     def _info(self, type_: str) -> InterceptorInfo:
         return InterceptorInfo(name="x", type=type_, hooks=[Hook(events=["tools/call"], phase="request")])
 
@@ -208,6 +238,11 @@ class TestAuthorApi:
         Mutator(info=self._info("mutation"), handler=self._mutate)
         with pytest.raises(ValueError, match="must have type 'mutation'"):
             Mutator(info=self._info("validation"), handler=self._mutate)
+
+    def test_sink_type_enforced(self) -> None:
+        Sink(info=self._info("sink"), handler=self._record)
+        with pytest.raises(ValueError, match="must have type 'sink'"):
+            Sink(info=self._info("validation"), handler=self._record)
 
     def test_build_hooks_single(self) -> None:
         assert build_hooks(events=["tools/call"], phase="request", hooks=None) == [

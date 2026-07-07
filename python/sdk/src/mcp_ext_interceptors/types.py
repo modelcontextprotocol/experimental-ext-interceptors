@@ -27,10 +27,13 @@ METHOD_INVOKE: Final = "interceptor/invoke"
 # (SEP-2133 format, per the capability-alignment amendment to SEP-2624).
 EXTENSION_ID: Final = "io.modelcontextprotocol/interceptors"
 
-# Interceptor types. The SEP defines exactly these two; the `type` fields below
-# are typed as open strings so a future third type is not a breaking change.
+# Interceptor types. Validation and mutation are the two the SEP text defines;
+# `sink` is the fire-and-forget observe-only type (C# ships it; SEP PR #28).
+# The `type` fields below stay typed as open strings so a further type is not a
+# breaking change.
 TYPE_VALIDATION: Final = "validation"
 TYPE_MUTATION: Final = "mutation"
+TYPE_SINK: Final = "sink"
 
 # Lifecycle events defined by the SEP. The set is open: implementations may
 # define additional `namespace/operation` events.
@@ -159,6 +162,18 @@ class MutationResult(_ResultCommon):
     payload: Any = None
 
 
+class SinkResult(_ResultCommon):
+    """Result of a sink interceptor: fire-and-forget, observe-only.
+
+    Sinks never modify the payload and never block; `recorded` reports whether
+    the observation was captured. `metrics` carries optional numeric telemetry.
+    """
+
+    type: Literal["sink"] = "sink"
+    recorded: bool
+    metrics: dict[str, float] | None = None
+
+
 class UnknownInterceptorResult(_ResultCommon):
     """Fallback for invoke results whose `type` this SDK version does not know.
 
@@ -171,7 +186,7 @@ class UnknownInterceptorResult(_ResultCommon):
     type: str
 
 
-AnyInvokeResult = ValidationResult | MutationResult | UnknownInterceptorResult
+AnyInvokeResult = ValidationResult | MutationResult | SinkResult | UnknownInterceptorResult
 
 
 def parse_invoke_result(raw: Mapping[str, Any]) -> AnyInvokeResult:
@@ -181,6 +196,8 @@ def parse_invoke_result(raw: Mapping[str, Any]) -> AnyInvokeResult:
         return ValidationResult.model_validate(raw)
     if result_type == TYPE_MUTATION:
         return MutationResult.model_validate(raw)
+    if result_type == TYPE_SINK:
+        return SinkResult.model_validate(raw)
     return UnknownInterceptorResult.model_validate(raw)
 
 

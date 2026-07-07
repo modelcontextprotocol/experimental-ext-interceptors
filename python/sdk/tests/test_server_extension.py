@@ -26,6 +26,7 @@ from mcp_ext_interceptors.types import (
     Hook,
     InvokeInterceptorParams,
     MutationResult,
+    SinkResult,
     ValidationMessage,
     ValidationResult,
 )
@@ -73,6 +74,10 @@ def build_extension() -> Interceptors:
     async def wrong_type(inv: Invocation) -> ValidationResult:
         return MutationResult(modified=False, payload=None)  # type: ignore[return-value]
 
+    @interceptors.sink("recorder", events=["tools/call"], phase="response")
+    async def record(inv: Invocation) -> SinkResult:
+        return SinkResult(recorded=True, metrics={"size": float(len(str(inv.payload)))})
+
     return interceptors
 
 
@@ -81,7 +86,7 @@ def server() -> MCPServer:
     return MCPServer("interceptors-test", extensions=[build_extension()])
 
 
-ALL_NAMES = {"param-check", "redactor", "audit-log", "slow", "crasher", "wrong-type"}
+ALL_NAMES = {"param-check", "redactor", "audit-log", "slow", "crasher", "wrong-type", "recorder"}
 
 
 class TestList:
@@ -201,6 +206,18 @@ class TestInvoke:
             with pytest.raises(MCPError) as exc_info:
                 await invoke_interceptor(client, name="wrong-type", event="tools/call", phase="request", payload={})
         assert exc_info.value.code == INTERCEPTOR_MUTATION_FAILED
+
+    async def test_sink_invoke(self, server: MCPServer) -> None:
+        async with Client(server) as client:
+            result = await invoke_interceptor(
+                client, name="recorder", event="tools/call", phase="response", payload={"a": 1}
+            )
+        assert isinstance(result, SinkResult)
+        assert result.recorded is True
+        assert result.interceptor == "recorder"
+        assert result.phase == "response"
+        assert result.duration_ms is not None
+        assert result.metrics is not None
 
 
 class TestCapability:

@@ -28,6 +28,7 @@ import anyio
 from mcp_ext_interceptors.client import InvokerTarget, invoke_interceptor, list_interceptors
 from mcp_ext_interceptors.types import (
     TYPE_MUTATION,
+    TYPE_SINK,
     TYPE_VALIDATION,
     AnyInvokeResult,
     Hook,
@@ -39,6 +40,7 @@ from mcp_ext_interceptors.types import (
     MutationResult,
     Phase,
     PriorityHint,
+    SinkResult,
     ValidationResult,
     is_hook_subset,
     matches_hooks,
@@ -210,8 +212,9 @@ class Chain:
             (e for e in selected if e.interceptor.type == TYPE_MUTATION),
             key=lambda e: (e.effective_priority(params.phase), e.interceptor.name),
         )
+        sinks = [e for e in selected if e.interceptor.type == TYPE_SINK]
         for entry in selected:
-            if entry.interceptor.type not in (TYPE_VALIDATION, TYPE_MUTATION):
+            if entry.interceptor.type not in (TYPE_VALIDATION, TYPE_MUTATION, TYPE_SINK):
                 logger.warning(
                     "skipping interceptor %r with unknown type %r", entry.interceptor.name, entry.interceptor.type
                 )
@@ -220,14 +223,19 @@ class Chain:
         state = _ExecutionState(payload=params.payload)
 
         async def body() -> None:
+            # Sinks observe after validation has passed but never gate the flow:
+            # receiving = validate -> sink -> mutate; sending = mutate -> validate -> sink.
             if direction == "receiving":
                 await self._run_validators(validators, params, state, result)
                 if result.aborted_at is None:
+                    await self._run_sinks(sinks, params, state, result)
                     await self._run_mutators(mutators, params, state, result)
             else:
                 await self._run_mutators(mutators, params, state, result)
                 if result.aborted_at is None:
                     await self._run_validators(validators, params, state, result)
+                if result.aborted_at is None:
+                    await self._run_sinks(sinks, params, state, result)
 
         if params.timeout_ms is not None:
             with anyio.move_on_after(params.timeout_ms / 1000) as scope:
@@ -334,6 +342,44 @@ class Chain:
             if not audit and invoke_result.modified:
                 state.payload = invoke_result.payload
 
+    async def _run_sinks(
+        self,
+        sinks: list[ChainEntry],
+        params: ChainExecutionParams,
+        state: _ExecutionState,
+        result: ChainExecutionResult,
+    ) -> None:
+        """Run sinks fire-and-forget: parallel, never blocking, never aborting.
+
+        A sink that crashes or returns a non-sink result is swallowed and
+        recorded as ``SinkResult(recorded=False)`` — sinks observe, they never
+        gate the operation, so their failures don't touch the payload or status.
+        """
+        if not sinks:
+            return
+        outcomes: list[tuple[AnyInvokeResult | None, Exception | None]] = [(None, None)] * len(sinks)
+
+        async def invoke_one(index: int, entry: ChainEntry) -> None:
+            try:
+                outcomes[index] = (await self._invoke(entry, params, state.payload), None)
+            except Exception as exc:  # observe-only: never propagates to the operation
+                outcomes[index] = (None, exc)
+
+        async with anyio.create_task_group() as tg:
+            for index, entry in enumerate(sinks):
+                tg.start_soon(invoke_one, index, entry)
+
+        for entry, (invoke_result, error) in zip(sinks, outcomes, strict=True):
+            if error is not None:
+                logger.warning("sink %r failed: %s", entry.interceptor.name, error)
+                result.results.append(_unrecorded(entry, params.phase))
+                continue
+            if not isinstance(invoke_result, SinkResult):
+                logger.warning("sink %r returned a non-sink result; ignoring", entry.interceptor.name)
+                result.results.append(_unrecorded(entry, params.phase))
+                continue
+            result.results.append(invoke_result)
+
     # -- Plumbing ------------------------------------------------------------
 
     async def _invoke(self, entry: ChainEntry, params: ChainExecutionParams, payload: Any) -> AnyInvokeResult:
@@ -403,6 +449,11 @@ class Chain:
                 summary.warnings += 1
             else:
                 summary.infos += 1
+
+
+def _unrecorded(entry: ChainEntry, phase: Phase) -> SinkResult:
+    """The placeholder result for a sink that crashed or returned the wrong type."""
+    return SinkResult(interceptor=entry.interceptor.name, phase=phase, recorded=False)
 
 
 def _blocking_severity(validation: ValidationResult) -> bool:

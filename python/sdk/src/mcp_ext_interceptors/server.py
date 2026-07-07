@@ -35,6 +35,8 @@ from mcp_ext_interceptors.interceptor import (
     Mutator,
     MutatorHandler,
     RegisteredInterceptor,
+    Sink,
+    SinkHandler,
     Validator,
     ValidatorHandler,
     build_hooks,
@@ -47,6 +49,7 @@ from mcp_ext_interceptors.types import (
     METHOD_INVOKE,
     METHOD_LIST,
     TYPE_MUTATION,
+    TYPE_SINK,
     TYPE_VALIDATION,
     Compat,
     Hook,
@@ -58,6 +61,7 @@ from mcp_ext_interceptors.types import (
     MutationResult,
     Phase,
     PriorityHint,
+    SinkResult,
     ValidationResult,
     hooks_contain_event,
     matches_hooks,
@@ -165,6 +169,44 @@ class Interceptors(Extension):
 
         return decorator
 
+    def sink(
+        self,
+        name: str,
+        *,
+        events: Sequence[str] | None = None,
+        phase: Phase | None = None,
+        hooks: Sequence[Hook] | None = None,
+        version: str | None = None,
+        description: str | None = None,
+        mode: Mode = "active",
+        fail_open: bool = False,
+        compat: Compat | None = None,
+        config_schema: dict[str, Any] | None = None,
+    ) -> Callable[[SinkHandler], SinkHandler]:
+        """Decorator registering an async sink handler.
+
+        Sinks are fire-and-forget and observe-only: they never modify the
+        payload and never block the operation. Like validators, they carry no
+        `priority_hint` (the chain runs them unordered, in parallel).
+        """
+
+        def decorator(fn: SinkHandler) -> SinkHandler:
+            info = InterceptorInfo(
+                name=name,
+                version=version,
+                description=description,
+                type=TYPE_SINK,
+                hooks=build_hooks(events=events, phase=phase, hooks=hooks),
+                mode=mode,
+                fail_open=fail_open,
+                compat=compat,
+                config_schema=config_schema,
+            )
+            self.add(Sink(info=info, handler=fn))
+            return fn
+
+        return decorator
+
     # -- Extension contract ------------------------------------------------
 
     def settings(self) -> dict[str, Any]:
@@ -196,7 +238,7 @@ class Interceptors(Extension):
 
     async def _handle_invoke(
         self, ctx: ServerRequestContext[Any, Any], params: InvokeInterceptorParams
-    ) -> ValidationResult | MutationResult:
+    ) -> ValidationResult | MutationResult | SinkResult:
         interceptor = self._by_name.get(params.name)
         if interceptor is None:
             raise MCPError(

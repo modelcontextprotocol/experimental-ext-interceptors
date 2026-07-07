@@ -25,6 +25,7 @@ from mcp_ext_interceptors.types import (
     InterceptorInfo,
     MutationResult,
     PhasePriority,
+    SinkResult,
     ValidationMessage,
     ValidationResult,
 )
@@ -139,6 +140,61 @@ async def test_trust_boundary_ordering() -> None:
         order.clear()
         await chain.execute(ChainExecutionParams(event="tools/call", phase="request", payload={}, direction="sending"))
         assert order == ["mut", "val"], "explicit direction overrides the phase-derived default"
+
+
+async def test_sinks_observe_without_gating() -> None:
+    """Sinks run after validation, record results, and never block or mutate."""
+    order: list[str] = []
+    ext = Interceptors()
+    both = [Hook(events=["*"], phase="request"), Hook(events=["*"], phase="response")]
+
+    @ext.validator("val", hooks=both)
+    async def val(inv: Invocation) -> ValidationResult:
+        order.append("val")
+        return ValidationResult(valid=True)
+
+    @ext.sink("observe", hooks=both)
+    async def observe(inv: Invocation) -> SinkResult:
+        order.append("observe")
+        return SinkResult(recorded=True)
+
+    @ext.mutator("mut", hooks=both)
+    async def mut(inv: Invocation) -> MutationResult:
+        order.append("mut")
+        return MutationResult(modified=False, payload=inv.payload)
+
+    async with Client(MCPServer("s", extensions=[ext])) as client:
+        chain = Chain()
+        await chain.add_server(client)
+
+        result = await chain.execute(ChainExecutionParams(event="tools/call", phase="request", payload={}))
+        assert order == ["val", "observe", "mut"], "receiving: validate, then observe, then mutate"
+        assert result.status == "success"
+        assert any(isinstance(r, SinkResult) and r.recorded for r in result.results)
+
+        order.clear()
+        await chain.execute(ChainExecutionParams(event="tools/call", phase="response", payload={}))
+        assert order == ["mut", "val", "observe"], "sending: mutate, validate, then observe"
+
+
+async def test_sink_failure_is_swallowed() -> None:
+    """A crashing sink never fails the chain; it records recorded=False."""
+    ext = Interceptors()
+
+    @ext.sink("boom", events=["tools/call"], phase="request")
+    async def boom(inv: Invocation) -> SinkResult:
+        raise RuntimeError("kaboom")
+
+    async with Client(MCPServer("s", extensions=[ext])) as client:
+        chain = Chain()
+        await chain.add_server(client)
+        result = await chain.execute(ChainExecutionParams(event="tools/call", phase="request", payload="original"))
+
+    assert result.status == "success"
+    assert result.final_payload == "original"
+    assert len(result.results) == 1
+    assert isinstance(result.results[0], SinkResult)
+    assert result.results[0].recorded is False
 
 
 async def test_validators_run_in_parallel() -> None:
