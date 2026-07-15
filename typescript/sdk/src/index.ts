@@ -9,4 +9,5 @@
  * https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624
  */
 
-export * from './interceptors.js';
+export * from './protocol/index.js';
+
