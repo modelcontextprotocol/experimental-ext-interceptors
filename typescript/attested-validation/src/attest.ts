@@ -41,7 +41,11 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function fromBase64(b64: string): Uint8Array {
+// Return type intentionally inferred: under TS >= 5.7 it is the ArrayBuffer-
+// backed `Uint8Array<ArrayBuffer>` that Web Crypto's `BufferSource` demands,
+// while the annotation `Uint8Array` would widen to `Uint8Array<ArrayBufferLike>`
+// and fail; under TS <= 5.6 the generic syntax does not exist at all.
+function fromBase64(b64: string) {
   const binary = atob(b64);
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
@@ -86,7 +90,8 @@ function withoutSignature(
   return rest;
 }
 
-function payloadBytes(result: ValidationResult): Uint8Array {
+// Inferred for the same BufferSource reason as `fromBase64` above.
+function payloadBytes(result: ValidationResult) {
   return new TextEncoder().encode(canonicalize(withoutSignature(result)));
 }
 
