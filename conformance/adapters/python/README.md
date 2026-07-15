@@ -42,7 +42,7 @@ Output shape matches the TypeScript reference runner:
 | --- | --- | --- |
 | `conformant` (`python-wg-sdk`) | 100% | WG SDK + documented SEP bridges + Python security interceptors |
 | `raw` (`python-wg-sdk-raw`) | <100% | WG SDK out-of-the-box; its failures ARE the interop findings |
-| `strawman` (`permissive-strawman`) | 0% on `behavior/` | security behaviors unbound; proves the fixtures reject a permissive implementation |
+| `strawman` (`permissive-strawman`) | 70.8% overall, 0/7 on enforcement fixtures | security behaviors unbound; fails all 7 `behavior/` fixtures that require blocking or redaction, passes only the 3 allow-expected fixtures (the false-positive floor) and `protocol/` |
 
 ## Interop findings (why `raw` fails)
 
