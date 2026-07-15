@@ -1,0 +1,44 @@
+{
+  "id": "behavior/redaction-aws_access_key",
+  "kind": "behavior",
+  "requirement": "SEC/outbound-secret-redaction",
+  "description": "redaction (aws_access_key): an outbound payload carrying a verbatim secret must leave the chain WITHOUT the secret (handle format is implementation-defined; the absence of the verbatim value is the requirement).",
+  "interceptors": [
+    {
+      "name": "security/secretless-redactor",
+      "type": "mutation",
+      "behavior": "secretless-redactor",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "request"
+    }
+  ],
+  "steps": [
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "write_query",
+        "arguments": {
+          "query": "INSERT INTO notes (body) VALUES ('AKIA5MZXN8QRF3WBY6OE')"
+        }
+      },
+      "context": {
+        "sessionId": "redaction-aws_access_key"
+      },
+      "expect": {
+        "decision": "allow",
+        "forbids": [
+          "AKIA5MZXN8QRF3WBY6OE"
+        ]
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

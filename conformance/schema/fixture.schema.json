@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://formalcore.dev/schemas/mcp-interceptors-conformance/fixture.schema.json",
+  "title": "MCP Interceptors Conformance Fixture (SEP-2624)",
+  "description": "One golden conformance fixture: interceptors to register, steps to replay in order against one adapter session, and declarative expectations. Generated from the typed catalog; never hand-edited.",
+  "type": "object",
+  "required": ["id", "kind", "requirement", "description", "interceptors", "steps", "volatile"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^(protocol|behavior)/[a-z0-9-]+$" },
+    "kind": { "enum": ["protocol", "behavior"] },
+    "requirement": {
+      "type": "string",
+      "description": "The SEP-2624 (SEP-2624/*) or security-profile (SEC/*) requirement this fixture certifies."
+    },
+    "description": { "type": "string" },
+    "interceptors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/interceptor" }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/step" }
+    },
+    "volatile": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Keys scrubbed recursively from ACTUAL results before canonical comparison (timings, implementation-specific info)."
+    }
+  },
+  "$defs": {
+    "interceptor": {
+      "type": "object",
+      "required": ["name", "type", "behavior", "events", "phases"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "enum": ["validation", "mutation"] },
+        "behavior": {
+          "enum": [
+            "allow-all",
+            "deny-all",
+            "require-note",
+            "require-uppercase-note",
+            "uppercase-note",
+            "crash",
+            "cross-boundary-guard",
+            "secretless-redactor"
+          ],
+          "description": "Named behavior the adapter binds to an implementation (ADAPTER.md defines each one's exact semantics)."
+        },
+        "events": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "phases": { "enum": ["request", "response", "both"] },
+        "mode": { "enum": ["enforce", "audit"], "description": "Omitted when the default (enforce)." },
+        "failOpen": { "const": true, "description": "Omitted when the default (false)." }
+      }
+    },
+    "phase": { "enum": ["request", "response"] },
+    "resultExpectation": {
+      "type": "object",
+      "required": ["result", "canonical"],
+      "additionalProperties": false,
+      "properties": {
+        "result": { "description": "The exact SEP wire JSON expected (volatile keys absent)." },
+        "canonical": {
+          "type": "string",
+          "description": "RFC-8785 (JCS) canonical form of `result`. Compare canonicalize(scrub(actual)) to this string."
+        }
+      }
+    },
+    "errorExpectation": {
+      "type": "object",
+      "required": ["errorCode"],
+      "additionalProperties": false,
+      "properties": {
+        "errorCode": { "type": "integer", "description": "Required JSON-RPC error code." }
+      }
+    },
+    "decisionExpectation": {
+      "type": "object",
+      "required": ["decision"],
+      "additionalProperties": false,
+      "properties": {
+        "decision": { "enum": ["allow", "deny"] },
+        "finalPayload": { "description": "Exact final payload, when deterministic across implementations." },
+        "finalPayloadCanonical": { "type": "string" },
+        "forbids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Substrings that MUST NOT appear in the canonicalized final payload."
+        },
+        "requires": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Substrings that MUST appear in the canonicalized final payload."
+        }
+      }
+    },
+    "step": {
+      "oneOf": [
+        { "$ref": "#/$defs/listStep" },
+        { "$ref": "#/$defs/invokeStep" },
+        { "$ref": "#/$defs/chainStep" }
+      ]
+    },
+    "listStep": {
+      "type": "object",
+      "required": ["op", "event", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "list" },
+        "event": { "type": ["string", "null"], "description": "Event filter; null lists everything." },
+        "expect": { "$ref": "#/$defs/resultExpectation" }
+      }
+    },
+    "invokeStep": {
+      "type": "object",
+      "required": ["op", "params", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "invoke" },
+        "params": {
+          "type": "object",
+          "required": ["name", "event", "phase", "payload"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "event": { "type": "string" },
+            "phase": { "$ref": "#/$defs/phase" },
+            "payload": {}
+          }
+        },
+        "expect": {
+          "oneOf": [
+            { "$ref": "#/$defs/resultExpectation" },
+            { "$ref": "#/$defs/errorExpectation" }
+          ]
+        }
+      }
+    },
+    "chainStep": {
+      "type": "object",
+      "required": ["op", "event", "phase", "payload", "context", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "chain" },
+        "event": { "type": "string" },
+        "phase": { "$ref": "#/$defs/phase" },
+        "payload": {},
+        "context": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["sessionId"],
+              "additionalProperties": false,
+              "properties": { "sessionId": { "type": "string" } }
+            }
+          ],
+          "description": "Session correlation for stateful (security) interceptors; null = stateless."
+        },
+        "expect": { "$ref": "#/$defs/decisionExpectation" }
+      }
+    }
+  }
+}

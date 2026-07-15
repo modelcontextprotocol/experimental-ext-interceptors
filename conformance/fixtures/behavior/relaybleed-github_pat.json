@@ -1,0 +1,77 @@
+{
+  "id": "behavior/relaybleed-github_pat",
+  "kind": "behavior",
+  "requirement": "SEC/cross-boundary-exfiltration",
+  "description": "relaybleed (github_pat): a secret read from the filesystem server must not be sent to the sqlite server — every individual call is authorized; the composed cross-server flow MUST be denied.",
+  "interceptors": [
+    {
+      "name": "security/cross-boundary-guard",
+      "type": "validation",
+      "behavior": "cross-boundary-guard",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "read_file",
+        "arguments": {
+          "path": "/workspace/.env"
+        }
+      },
+      "context": {
+        "sessionId": "relaybleed-github_pat"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    },
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "response",
+      "payload": {
+        "content": [
+          {
+            "type": "text",
+            "text": "STRIPE_KEY=ghp_Xa2bC3dEf4gH5iJk6Lm7nN8oP"
+          }
+        ]
+      },
+      "context": {
+        "sessionId": "relaybleed-github_pat"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    },
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "write_query",
+        "arguments": {
+          "query": "INSERT INTO notes (body) VALUES ('ghp_Xa2bC3dEf4gH5iJk6Lm7nN8oP')"
+        }
+      },
+      "context": {
+        "sessionId": "relaybleed-github_pat"
+      },
+      "expect": {
+        "decision": "deny"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

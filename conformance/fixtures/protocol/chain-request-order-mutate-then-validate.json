@@ -1,0 +1,55 @@
+{
+  "id": "protocol/chain-request-order-mutate-then-validate",
+  "kind": "protocol",
+  "requirement": "SEP-2624/chain.request-order",
+  "description": "Request phase runs mutations BEFORE validations: the validator must see the mutated payload (allow); validating first would deny.",
+  "interceptors": [
+    {
+      "name": "conf/require-uppercase-note",
+      "type": "validation",
+      "behavior": "require-uppercase-note",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    },
+    {
+      "name": "conf/uppercase-note",
+      "type": "mutation",
+      "behavior": "uppercase-note",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "echo",
+        "arguments": {
+          "note": "hello"
+        }
+      },
+      "context": null,
+      "expect": {
+        "decision": "allow",
+        "finalPayload": {
+          "name": "echo",
+          "arguments": {
+            "note": "HELLO"
+          }
+        },
+        "finalPayloadCanonical": "{\"arguments\":{\"note\":\"HELLO\"},\"name\":\"echo\"}"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  // Typecheck-only package (fixtures are the shipped artifact, not JS).
+  // The reference adapter consumes the TypeScript SDK and the attestation
+  // package AS SOURCE via paths; vitest.config.ts mirrors these aliases.
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "NodeNext",
+    "lib": ["esnext", "dom"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@formalcore/mcp-interceptors-sdk": ["../typescript/sdk/src/index.ts"],
+      "@formalcore/mcp-attested-validation": ["../typescript/attested-validation/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "scripts/**/*", "vitest.config.ts"],
+  "exclude": ["node_modules"]
+}

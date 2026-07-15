@@ -1,0 +1,39 @@
+{
+  "id": "protocol/chain-validation-blocks",
+  "kind": "protocol",
+  "requirement": "SEP-2624/chain.enforce-blocks",
+  "description": "An enforce-mode validator returning severity=error aborts the chain.",
+  "interceptors": [
+    {
+      "name": "conf/deny-all",
+      "type": "validation",
+      "behavior": "deny-all",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "echo",
+        "arguments": {
+          "note": "hi"
+        }
+      },
+      "context": null,
+      "expect": {
+        "decision": "deny"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

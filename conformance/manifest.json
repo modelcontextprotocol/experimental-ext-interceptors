@@ -1,0 +1,176 @@
+{
+  "suite": "mcp-interceptors-conformance",
+  "version": "0.1.0",
+  "sep": "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624",
+  "generatedBy": "conformance/src/generate.ts (from src/catalog.ts)",
+  "fixtures": [
+    {
+      "id": "protocol/list-all",
+      "kind": "protocol",
+      "file": "fixtures/protocol/list-all.json",
+      "requirement": "SEP-2624/interceptors-list",
+      "description": "interceptors/list with no filter returns every registered descriptor, in registration order, in SEP wire shape (defaults omitted)."
+    },
+    {
+      "id": "protocol/list-filtered-by-event",
+      "kind": "protocol",
+      "file": "fixtures/protocol/list-filtered-by-event.json",
+      "requirement": "SEP-2624/interceptors-list.event-filter",
+      "description": "interceptors/list?event= returns only interceptors hooking that event."
+    },
+    {
+      "id": "protocol/invoke-validation-pass",
+      "kind": "protocol",
+      "file": "fixtures/protocol/invoke-validation-pass.json",
+      "requirement": "SEP-2624/interceptor-invoke.validation",
+      "description": "interceptor/invoke of a passing validator returns a SEP ValidationResult with valid=true and no severity."
+    },
+    {
+      "id": "protocol/invoke-validation-deny",
+      "kind": "protocol",
+      "file": "fixtures/protocol/invoke-validation-deny.json",
+      "requirement": "SEP-2624/interceptor-invoke.validation",
+      "description": "interceptor/invoke of a denying validator returns valid=false, severity=error, and the exact message."
+    },
+    {
+      "id": "protocol/invoke-mutation-modified",
+      "kind": "protocol",
+      "file": "fixtures/protocol/invoke-mutation-modified.json",
+      "requirement": "SEP-2624/interceptor-invoke.mutation",
+      "description": "interceptor/invoke of a mutator that changes the payload returns modified=true and the transformed payload."
+    },
+    {
+      "id": "protocol/invoke-mutation-unmodified",
+      "kind": "protocol",
+      "file": "fixtures/protocol/invoke-mutation-unmodified.json",
+      "requirement": "SEP-2624/interceptor-invoke.mutation",
+      "description": "interceptor/invoke of a mutator that declines returns modified=false with the original payload passed through."
+    },
+    {
+      "id": "protocol/invoke-unknown-name",
+      "kind": "protocol",
+      "file": "fixtures/protocol/invoke-unknown-name.json",
+      "requirement": "SEP-2624/interceptor-invoke.unknown-name",
+      "description": "interceptor/invoke of an unregistered name fails with JSON-RPC invalid params (-32602)."
+    },
+    {
+      "id": "protocol/chain-request-order-mutate-then-validate",
+      "kind": "protocol",
+      "file": "fixtures/protocol/chain-request-order-mutate-then-validate.json",
+      "requirement": "SEP-2624/chain.request-order",
+      "description": "Request phase runs mutations BEFORE validations: the validator must see the mutated payload (allow); validating first would deny."
+    },
+    {
+      "id": "protocol/chain-response-order-validate-then-mutate",
+      "kind": "protocol",
+      "file": "fixtures/protocol/chain-response-order-validate-then-mutate.json",
+      "requirement": "SEP-2624/chain.response-order",
+      "description": "Response phase runs validations BEFORE mutations: the validator must see the raw payload (deny); mutating first would allow."
+    },
+    {
+      "id": "protocol/chain-validation-blocks",
+      "kind": "protocol",
+      "file": "fixtures/protocol/chain-validation-blocks.json",
+      "requirement": "SEP-2624/chain.enforce-blocks",
+      "description": "An enforce-mode validator returning severity=error aborts the chain."
+    },
+    {
+      "id": "protocol/chain-audit-never-blocks",
+      "kind": "protocol",
+      "file": "fixtures/protocol/chain-audit-never-blocks.json",
+      "requirement": "SEP-2624/chain.audit-nonblocking",
+      "description": "An audit-mode validator NEVER blocks: the same denial that aborts in enforce mode passes through in audit mode."
+    },
+    {
+      "id": "protocol/chain-audit-mutation-shadowed",
+      "kind": "protocol",
+      "file": "fixtures/protocol/chain-audit-mutation-shadowed.json",
+      "requirement": "SEP-2624/chain.audit-nonblocking",
+      "description": "An audit-mode mutator computes but MUST NOT apply: the final payload is unchanged."
+    },
+    {
+      "id": "protocol/chain-fail-closed",
+      "kind": "protocol",
+      "file": "fixtures/protocol/chain-fail-closed.json",
+      "requirement": "SEP-2624/chain.fail-closed-default",
+      "description": "A crashing interceptor with failOpen unset (default false) blocks the chain."
+    },
+    {
+      "id": "protocol/chain-fail-open",
+      "kind": "protocol",
+      "file": "fixtures/protocol/chain-fail-open.json",
+      "requirement": "SEP-2624/chain.fail-open",
+      "description": "A crashing interceptor with failOpen=true is skipped; the chain proceeds."
+    },
+    {
+      "id": "behavior/relaybleed-stripe_secret_live",
+      "kind": "behavior",
+      "file": "fixtures/behavior/relaybleed-stripe_secret_live.json",
+      "requirement": "SEC/cross-boundary-exfiltration",
+      "description": "relaybleed (stripe_secret_live): a secret read from the filesystem server must not be sent to the sqlite server — every individual call is authorized; the composed cross-server flow MUST be denied."
+    },
+    {
+      "id": "behavior/relaybleed-github_pat",
+      "kind": "behavior",
+      "file": "fixtures/behavior/relaybleed-github_pat.json",
+      "requirement": "SEC/cross-boundary-exfiltration",
+      "description": "relaybleed (github_pat): a secret read from the filesystem server must not be sent to the sqlite server — every individual call is authorized; the composed cross-server flow MUST be denied."
+    },
+    {
+      "id": "behavior/relaybleed-aws_access_key",
+      "kind": "behavior",
+      "file": "fixtures/behavior/relaybleed-aws_access_key.json",
+      "requirement": "SEC/cross-boundary-exfiltration",
+      "description": "relaybleed (aws_access_key): a secret read from the filesystem server must not be sent to the sqlite server — every individual call is authorized; the composed cross-server flow MUST be denied."
+    },
+    {
+      "id": "behavior/same-origin-writeback-allowed",
+      "kind": "behavior",
+      "file": "fixtures/behavior/same-origin-writeback-allowed.json",
+      "requirement": "SEC/cross-boundary-exfiltration.same-origin",
+      "description": "Writing a secret back to the server it was read from is NOT a cross-boundary flow and must be allowed (no false positive)."
+    },
+    {
+      "id": "behavior/no-prior-read-allowed",
+      "kind": "behavior",
+      "file": "fixtures/behavior/no-prior-read-allowed.json",
+      "requirement": "SEC/cross-boundary-exfiltration.causality",
+      "description": "A secret-shaped value sent WITHOUT a strictly-prior cross-boundary read must be allowed: the guard tracks flows, not values (no false positive)."
+    },
+    {
+      "id": "behavior/session-isolation",
+      "kind": "behavior",
+      "file": "fixtures/behavior/session-isolation.json",
+      "requirement": "SEC/cross-boundary-exfiltration.session-isolation",
+      "description": "Taint recorded in one session must not affect another: session B may send a value session A read (no cross-session bleed)."
+    },
+    {
+      "id": "behavior/redaction-stripe_secret_live",
+      "kind": "behavior",
+      "file": "fixtures/behavior/redaction-stripe_secret_live.json",
+      "requirement": "SEC/outbound-secret-redaction",
+      "description": "redaction (stripe_secret_live): an outbound payload carrying a verbatim secret must leave the chain WITHOUT the secret (handle format is implementation-defined; the absence of the verbatim value is the requirement)."
+    },
+    {
+      "id": "behavior/redaction-github_pat",
+      "kind": "behavior",
+      "file": "fixtures/behavior/redaction-github_pat.json",
+      "requirement": "SEC/outbound-secret-redaction",
+      "description": "redaction (github_pat): an outbound payload carrying a verbatim secret must leave the chain WITHOUT the secret (handle format is implementation-defined; the absence of the verbatim value is the requirement)."
+    },
+    {
+      "id": "behavior/redaction-aws_access_key",
+      "kind": "behavior",
+      "file": "fixtures/behavior/redaction-aws_access_key.json",
+      "requirement": "SEC/outbound-secret-redaction",
+      "description": "redaction (aws_access_key): an outbound payload carrying a verbatim secret must leave the chain WITHOUT the secret (handle format is implementation-defined; the absence of the verbatim value is the requirement)."
+    },
+    {
+      "id": "behavior/redaction-defuses-relaybleed",
+      "kind": "behavior",
+      "file": "fixtures/behavior/redaction-defuses-relaybleed.json",
+      "requirement": "SEC/outbound-secret-redaction.composition",
+      "description": "Guard + redactor composed: request-phase mutation order means the redactor strips the secret BEFORE the guard checks, so the flow is allowed WITHOUT the verbatim secret leaving."
+    }
+  ]
+}

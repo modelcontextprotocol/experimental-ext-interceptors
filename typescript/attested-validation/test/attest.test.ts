@@ -77,14 +77,16 @@ test("verification is canonical: key order does not matter", async () => {
   const attested = await attestValidationResult(sample(), keys);
 
   // Rebuild the same result with keys in a different insertion order.
+  // (Conditional spreads: exactOptionalPropertyTypes forbids assigning
+  // `X | undefined` to an optional property.)
   const reordered: ValidationResult = {
     phase: "request",
     valid: false,
     type: "validation",
     severity: "error",
     interceptor: "cross-boundary-guard",
-    messages: attested.messages,
-    signature: attested.signature,
+    ...(attested.messages === undefined ? {} : { messages: attested.messages }),
+    ...(attested.signature === undefined ? {} : { signature: attested.signature }),
   };
   assert.equal((await verifyAttestedValidationResult(reordered, pinned)).ok, true);
 });

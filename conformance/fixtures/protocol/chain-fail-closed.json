@@ -1,0 +1,39 @@
+{
+  "id": "protocol/chain-fail-closed",
+  "kind": "protocol",
+  "requirement": "SEP-2624/chain.fail-closed-default",
+  "description": "A crashing interceptor with failOpen unset (default false) blocks the chain.",
+  "interceptors": [
+    {
+      "name": "conf/crash-closed",
+      "type": "validation",
+      "behavior": "crash",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "echo",
+        "arguments": {
+          "note": "hi"
+        }
+      },
+      "context": null,
+      "expect": {
+        "decision": "deny"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

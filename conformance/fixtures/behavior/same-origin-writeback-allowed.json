@@ -1,0 +1,78 @@
+{
+  "id": "behavior/same-origin-writeback-allowed",
+  "kind": "behavior",
+  "requirement": "SEC/cross-boundary-exfiltration.same-origin",
+  "description": "Writing a secret back to the server it was read from is NOT a cross-boundary flow and must be allowed (no false positive).",
+  "interceptors": [
+    {
+      "name": "security/cross-boundary-guard",
+      "type": "validation",
+      "behavior": "cross-boundary-guard",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "read_file",
+        "arguments": {
+          "path": "/workspace/.env"
+        }
+      },
+      "context": {
+        "sessionId": "same-origin"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    },
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "response",
+      "payload": {
+        "content": [
+          {
+            "type": "text",
+            "text": "KEY=sk_live_4eC7aRm9Kx2bNw5pQj8sYd"
+          }
+        ]
+      },
+      "context": {
+        "sessionId": "same-origin"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    },
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "write_file",
+        "arguments": {
+          "path": "/workspace/.env.bak",
+          "content": "sk_live_4eC7aRm9Kx2bNw5pQj8sYd"
+        }
+      },
+      "context": {
+        "sessionId": "same-origin"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

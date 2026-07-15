@@ -1,0 +1,47 @@
+{
+  "id": "protocol/chain-audit-mutation-shadowed",
+  "kind": "protocol",
+  "requirement": "SEP-2624/chain.audit-nonblocking",
+  "description": "An audit-mode mutator computes but MUST NOT apply: the final payload is unchanged.",
+  "interceptors": [
+    {
+      "name": "conf/uppercase-note",
+      "type": "mutation",
+      "behavior": "uppercase-note",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both",
+      "mode": "audit"
+    }
+  ],
+  "steps": [
+    {
+      "op": "chain",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "echo",
+        "arguments": {
+          "note": "hello"
+        }
+      },
+      "context": null,
+      "expect": {
+        "decision": "allow",
+        "finalPayload": {
+          "name": "echo",
+          "arguments": {
+            "note": "hello"
+          }
+        },
+        "finalPayloadCanonical": "{\"arguments\":{\"note\":\"hello\"},\"name\":\"echo\"}"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}
