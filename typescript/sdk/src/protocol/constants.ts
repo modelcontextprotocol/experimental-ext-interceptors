@@ -89,12 +89,15 @@ export const INTERCEPTION_EVENT = {
 export type KnownInterceptionEvent =
   (typeof INTERCEPTION_EVENT)[keyof typeof INTERCEPTION_EVENT];
 /**
- * A known event or any custom `namespace/operation` string. The `string & {}`
- * intersection preserves literal autocomplete for the known members while the
- * SEP-mandated extension point stays open. This is the ONE sanctioned widening
- * (the spec requires custom events); every other set stays strictly closed.
+ * A known event or any custom `namespace/operation` string. Intersecting with
+ * an empty-key record preserves literal autocomplete for the known members
+ * while the SEP-mandated extension point stays open. This is the ONE
+ * sanctioned widening (the spec requires custom events); every other set
+ * stays strictly closed.
  */
-export type InterceptionEvent = KnownInterceptionEvent | (string & {});
+export type InterceptionEvent =
+  | KnownInterceptionEvent
+  | (string & Record<never, never>);
 
 /** Capability key for extension negotiation (SEP-2133 extensions format). */
 export const INTERCEPTORS_CAPABILITY =

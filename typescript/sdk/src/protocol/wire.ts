@@ -27,6 +27,8 @@ import type {
   InterceptorCompatibility,
   InterceptorHook,
   InterceptorResult,
+  InvokeContext,
+  InvokeParams,
   PriorityHint,
   ValidationMessage,
   ValidationSuggestion,
@@ -172,4 +174,38 @@ export function normalizeResult(raw: unknown): InterceptorResult {
     info: recOrNull(o.info),
   };
   return RESULT_BY_TYPE[interceptorType(o.type)](o, base);
+}
+
+function context(v: unknown): InvokeContext | null {
+  const o = recOrNull(v);
+  if (o === null) return null;
+  const p = recOrNull(o.principal);
+  return {
+    principal:
+      p === null
+        ? null
+        : { type: str(p.type) ?? "anonymous", id: str(p.id), claims: recOrNull(p.claims) },
+    traceId: str(o.traceId),
+    spanId: str(o.spanId),
+    timestamp: str(o.timestamp),
+    sessionId: str(o.sessionId),
+  };
+}
+
+/** Normalize inbound `interceptor/invoke` params (server side). */
+export function normalizeInvokeParams(raw: unknown): InvokeParams {
+  const o = rec(raw);
+  const name = str(o.name);
+  const event = str(o.event);
+  if (name === null) throw new WireError("invoke params.name is required");
+  if (event === null) throw new WireError("invoke params.event is required");
+  return {
+    name,
+    event,
+    phase: phase(o.phase),
+    payload: o.payload ?? null,
+    config: recOrNull(o.config),
+    timeoutMs: num(o.timeoutMs),
+    context: context(o.context),
+  };
 }
