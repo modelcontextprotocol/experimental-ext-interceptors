@@ -1,0 +1,32 @@
+{
+  "name": "@formalcore/mcp-attested-validation",
+  "version": "0.1.0",
+  "description": "Reference implementation of the reserved SEP-2624 ValidationResult.signature field: Ed25519-signed, offline-verifiable attested interceptor decisions.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "mcp-attested-verify": "./cli/verify.ts"
+  },
+  "scripts": {
+    "test": "node --test --experimental-strip-types \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "interceptors",
+    "sep-2624",
+    "attestation",
+    "ed25519",
+    "information-flow-control"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
