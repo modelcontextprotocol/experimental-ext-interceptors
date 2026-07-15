@@ -1,8 +1,8 @@
 /**
  * Conformance suite meta-tests.
  *
- * RULE 20/21: the tests are generated from the catalog — one runner pass per
- * fixture — plus structural meta-tests: generation is deterministic and
+ * RULE 20/21: the tests are generated from the catalog - one runner pass per
+ * fixture - plus structural meta-tests: generation is deterministic and
  * complete (fixture count == catalog size), the on-disk JSON is exactly what
  * the catalog generates (stale/hand-edited fixtures fail), every fixture
  * traces to a requirement, and the reference SDK scores 100% compliance.
@@ -91,7 +91,7 @@ describe("generator", () => {
   it("matches the fixtures on disk byte-for-byte (regenerate if this fails)", async () => {
     for (const file of generateFiles()) {
       const onDisk = await readFile(join(ROOT, file.path), "utf8");
-      expect(onDisk, `${file.path} is stale — run scripts/generate.ts`).toBe(
+      expect(onDisk, `${file.path} is stale - run scripts/generate.ts`).toBe(
         file.contents,
       );
     }

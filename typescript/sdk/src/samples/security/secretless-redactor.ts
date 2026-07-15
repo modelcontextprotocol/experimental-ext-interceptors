@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /**
- * `secretless-redactor` — the reference security MUTATOR (open tier).
+ * `secretless-redactor` - the reference security MUTATOR (open tier).
  *
  * Replaces every verbatim secret value in an outbound payload with an opaque
  * handle token, so downstream servers receive a stable reference instead of
@@ -12,7 +12,7 @@
  *
  * Composes with `cross-boundary-guard`: on the request phase mutations run
  * BEFORE validations (SEP-2624 trust-boundary order), so a payload redacted
- * here no longer carries the verbatim secret when the guard checks it —
+ * here no longer carries the verbatim secret when the guard checks it -
  * redaction is the remediation, blocking is the backstop.
  */
 import { INTERCEPTION_EVENT, INTERCEPTOR_PHASE } from "../../protocol/constants.js";
@@ -23,7 +23,7 @@ import { findSecrets } from "./secret-formats.js";
 export const SECRETLESS_REDACTOR_NAME = "formalcore/secretless-redactor";
 
 /**
- * FNV-1a 32-bit over the secret value — deterministic, dependency-free, and
+ * FNV-1a 32-bit over the secret value - deterministic, dependency-free, and
  * enough to disambiguate handles. This is an OPAQUE REFERENCE, not a
  * commitment: unforgeability is the attestation layer's job, not the token's.
  */

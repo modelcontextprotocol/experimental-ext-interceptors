@@ -45,7 +45,7 @@ GOLDEN: tuple[tuple[object, str], ...] = (
     ({"B": 1, "a": 2, "Z": 3, "_": 4, "0": 5}, '{"0":5,"B":1,"Z":3,"_":4,"a":2}'),
     # RFC 8785 key order is UTF-16 code units: the astral key U+1F600
     # (surrogates d83d de00) sorts BEFORE U+FFFF. Python's code-point sort
-    # would invert this — the exact trap this pin guards.
+    # would invert this - the exact trap this pin guards.
     ({"\uffff": "bmp-max", "\U0001f600": "astral"}, '{"\U0001f600":"astral","\uffff":"bmp-max"}'),
     (["plain", {"deep": [True, False, None]}], '["plain",{"deep":[true,false,null]}]'),
     ("top-level string with \x07 bell", '"top-level string with \\u0007 bell"'),

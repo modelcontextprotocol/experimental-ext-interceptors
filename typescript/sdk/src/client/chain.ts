@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /**
- * The interceptor chain executor — the load-bearing runtime of the SDK.
+ * The interceptor chain executor - the load-bearing runtime of the SDK.
  *
  * Trust-boundary-aware order (SEP-2624), dispatched on phase (RULE 2), never a
  * `switch`:
@@ -16,7 +16,7 @@
  * `failOpen` governs a crashed/timed-out interceptor (default: fail-closed →
  * block). Payloads are cloned before a mutator sees them
  * (snapshot-simulate-discard, RULE 26), so a handler cannot mutate chain state
- * in place. The executor is pure over an injected `invoke` — no transport here.
+ * in place. The executor is pure over an injected `invoke` - no transport here.
  */
 import {
   CHAIN_STATUS,

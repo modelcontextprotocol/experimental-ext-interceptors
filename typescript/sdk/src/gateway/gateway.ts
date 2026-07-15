@@ -4,7 +4,7 @@
 
 /**
  * A transparent MCP gateway: presents as the backend server while every
- * proxied operation passes through the interceptor chain — request phase
+ * proxied operation passes through the interceptor chain - request phase
  * before the backend sees it, response phase before the caller does.
  *
  * The proxy surface is ONE route table (RULE 2): each entry binds an MCP

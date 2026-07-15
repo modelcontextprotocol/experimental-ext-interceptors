@@ -1,7 +1,7 @@
 /**
  * Deterministic canonical JSON so a signature verifies identically regardless of
  * object key order or whitespace. Aligned with RFC 8785 (JCS) for the value types
- * an interceptor result actually contains — strings, booleans, integers, arrays,
+ * an interceptor result actually contains - strings, booleans, integers, arrays,
  * and objects. Non-finite numbers are rejected rather than silently coerced.
  *
  * Full RFC 8785 float serialization (ECMAScript `Number` shortest round-trip) is

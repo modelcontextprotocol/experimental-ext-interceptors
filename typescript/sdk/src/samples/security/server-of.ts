@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /**
- * Deriving the "server" (trust boundary) an event belongs to — the OPEN tier's
+ * Deriving the "server" (trust boundary) an event belongs to - the OPEN tier's
  * heuristic. Real per-request server identity is a gateway/host concern the
  * closed tier consumes directly; here we infer it from the tool name (via a
  * small MCPHunt-server catalog, RULE 8) or a resource URI authority, so the

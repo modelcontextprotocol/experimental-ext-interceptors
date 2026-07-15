@@ -2,7 +2,7 @@
 # Use of this source code is governed by an Apache-2.0
 # license that can be found in the LICENSE file.
 
-"""Deriving the "server" (trust boundary) an event belongs to — the OPEN
+"""Deriving the "server" (trust boundary) an event belongs to - the OPEN
 tier's heuristic, ported from
 `typescript/sdk/src/samples/security/server-of.ts`.
 

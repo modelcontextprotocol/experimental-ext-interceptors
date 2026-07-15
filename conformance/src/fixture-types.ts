@@ -3,7 +3,7 @@
  *
  * These types are the TypeScript view of `schema/fixture.schema.json`; the
  * JSON files under `fixtures/` are the artifact other SDKs consume. Fixtures
- * are GENERATED from the catalog (catalog.ts) — never edited by hand — and
+ * are GENERATED from the catalog (catalog.ts) - never edited by hand - and
  * the catalog states expectations declaratively: it is the oracle, not any
  * reference implementation.
  *

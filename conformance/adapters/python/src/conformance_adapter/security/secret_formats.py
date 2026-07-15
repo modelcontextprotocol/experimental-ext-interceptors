@@ -2,12 +2,12 @@
 # Use of this source code is governed by an Apache-2.0
 # license that can be found in the LICENSE file.
 
-"""Secret-format catalog — the Python port of the OPEN detection tier
+"""Secret-format catalog - the Python port of the OPEN detection tier
 (`typescript/sdk/src/samples/security/secret-formats.ts`), clean-room.
 
 Recognizes credentials by their public, well-known *format* (prefix + shape):
 exactly the seven formats from MCPHunt's public canary registry (CC-BY 4.0).
-Detection is exact/verbatim only — the literal token, which is what the open
+Detection is exact/verbatim only - the literal token, which is what the open
 cross-boundary guard tracks. Every entry carries an ``origin``.
 """
 
@@ -49,7 +49,7 @@ class SecretHit:
 
 def find_secrets(text: str) -> tuple[SecretHit, ...]:
     """Every verbatim secret occurrence in ``text``, across all formats, in
-    catalog order then position order — the same enumeration order as the TS
+    catalog order then position order - the same enumeration order as the TS
     ``findSecrets`` (per-format global scans, concatenated)."""
     return tuple(
         SecretHit(format_id=fmt.id, value=match.group(0))

@@ -2,7 +2,7 @@
 # Use of this source code is governed by an Apache-2.0
 # license that can be found in the LICENSE file.
 
-"""``cross-boundary-guard`` — the reference security VALIDATOR (open tier),
+"""``cross-boundary-guard`` - the reference security VALIDATOR (open tier),
 ported clean-room from
 `typescript/sdk/src/samples/security/cross-boundary-guard.ts` onto the WG
 ``feature/python-sdk`` author API.
@@ -11,7 +11,7 @@ Enforces causal cross-boundary non-interference over verbatim secrets: a
 secret value that appeared in a strictly-prior response from server A may not
 appear in a later request to a different server B. That composed
 read-then-send flow is the exfiltration class where every per-call check
-legitimately passes — only the cross-call, cross-server view denies it.
+legitimately passes - only the cross-call, cross-server view denies it.
 
 Attribution: a request payload names its server (tool name / resource URI,
 via ``server_of``); a response payload does not. The guard therefore hooks
@@ -22,14 +22,14 @@ session; concurrent in-flight operations within one session would need
 host-supplied attribution (a closed-tier concern).
 
 Open tier boundaries (exact, by design):
-  - verbatim (exact-match) secrets only — no fragment, paraphrase, or
+  - verbatim (exact-match) secrets only - no fragment, paraphrase, or
     semantic detection;
   - the public secret-FORMAT catalog in ``secret_formats.py`` only;
   - in-memory per-session taint, isolated per guard instance.
 
 Causality is by construction: taint is only ever recorded from responses, so
 a request-phase check can only see taint from strictly-prior reads. A secret
-sent with no prior cross-boundary read passes — the guard tracks flows, it
+sent with no prior cross-boundary read passes - the guard tracks flows, it
 does not moralize about values.
 """
 

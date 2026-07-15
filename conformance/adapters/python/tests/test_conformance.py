@@ -6,10 +6,10 @@
 Python implementations without modification.
 
 - The conformant posture (WG feature/python-sdk + documented SEP bridges +
-  the Python security interceptors) scores 100% — all 24 fixtures, including
+  the Python security interceptors) scores 100% - all 24 fixtures, including
   every ``behavior/relaybleed-*`` fixture.
 - The permissive strawman scores 0% on the relaybleed fixtures (the same
-  negative control as the TS meta-test) — the suite cannot be satisfied by
+  negative control as the TS meta-test) - the suite cannot be satisfied by
   an implementation that denies nothing.
 - The raw WG-SDK posture fails EXACTLY the fixtures that encode its
   divergences from the SEP wire shape (the interop findings), pinned here so

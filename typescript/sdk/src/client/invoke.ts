@@ -6,7 +6,7 @@
  * Thin wrappers over `Client.request` for the two SEP methods. Every response
  * crosses the wire boundary (`normalizeInterceptor` / `normalizeResult`)
  * before the interior sees it; an unknown result `type` therefore surfaces as
- * a thrown `WireError` — which the chain executor treats as an interceptor
+ * a thrown `WireError` - which the chain executor treats as an interceptor
  * failure subject to `failOpen`, never a crash.
  */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";

@@ -8,7 +8,7 @@ to the WG ``feature/python-sdk`` implementation (``mcp_ext_interceptors``).
 Every fixture interceptor is registered on a real in-memory MCP server via the
 WG ``Interceptors`` extension; ``list``/``invoke`` return the RAW bytes the WG
 SDK puts on the wire (captured through an untyped ``send_request``), and
-``chain`` runs the WG ``Chain`` orchestrator over a live client connection —
+``chain`` runs the WG ``Chain`` orchestrator over a live client connection -
 so a fixture pass certifies the full wire round-trip, not an in-process stub.
 
 Three adapter configurations, differing ONLY in two documented switches:
@@ -23,7 +23,7 @@ Three adapter configurations, differing ONLY in two documented switches:
   the security behaviors NOT bound (mirrors the TS meta-test's strawman).
   Must score 0% on the ``behavior/relaybleed-*`` fixtures.
 
-FINDINGS — divergences of feature/python-sdk from the SEP-2624 wire shape the
+FINDINGS - divergences of feature/python-sdk from the SEP-2624 wire shape the
 fixtures (and the TS SDK's serializer) pin. Each is bridged in exactly one
 place below, marked ``FINDING n``:
 

@@ -7,7 +7,7 @@
  * JSON from another SDK/server is read and normalized into the trusted
  * interior shape. Optionals collapse to `null`, defaults are applied
  * (`mode=enforce`, `failOpen=false`), and result parsing dispatches on `type`
- * through a `Record` table (RULE 2) — never a `switch`. The interior
+ * through a `Record` table (RULE 2) - never a `switch`. The interior
  * (types.ts) is trusted after this point and never re-validates.
  */
 import {

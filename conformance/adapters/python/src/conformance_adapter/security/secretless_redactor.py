@@ -2,7 +2,7 @@
 # Use of this source code is governed by an Apache-2.0
 # license that can be found in the LICENSE file.
 
-"""``secretless-redactor`` — the reference security MUTATOR (open tier),
+"""``secretless-redactor`` - the reference security MUTATOR (open tier),
 ported clean-room from
 `typescript/sdk/src/samples/security/secretless-redactor.ts` onto the WG
 ``feature/python-sdk`` author API.
@@ -16,7 +16,7 @@ token alone.
 
 Composes with ``cross-boundary-guard``: on the request phase mutations run
 BEFORE validations (SEP-2624 trust-boundary order), so a payload redacted
-here no longer carries the verbatim secret when the guard checks it —
+here no longer carries the verbatim secret when the guard checks it -
 redaction is the remediation, blocking is the backstop.
 """
 
@@ -48,7 +48,7 @@ _REDACTOR_EVENTS: tuple[str, ...] = (
 
 
 def fnv1a(text: str) -> str:
-    """FNV-1a 32-bit over the secret value — deterministic, dependency-free,
+    """FNV-1a 32-bit over the secret value - deterministic, dependency-free,
     and enough to disambiguate handles. Iterates UTF-16 code units and wraps
     multiplication to 32 bits, matching the TS ``charCodeAt``/``Math.imul``
     implementation bit-for-bit. This is an OPAQUE REFERENCE, not a

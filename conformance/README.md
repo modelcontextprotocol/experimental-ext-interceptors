@@ -1,7 +1,7 @@
 # MCP Interceptors Conformance Suite
 
 Language-neutral conformance for SEP-2624 interceptors. The tests are **pure
-JSON golden fixtures** — no test framework, no language runtime assumptions —
+JSON golden fixtures** - no test framework, no language runtime assumptions -
 generated programmatically from one typed catalog. Any SDK (TypeScript,
 Python, C#, Go, …) certifies by implementing a four-function adapter
 ([ADAPTER.md](./ADAPTER.md)) and replaying the fixtures.
@@ -27,12 +27,12 @@ conformance/
 
 ## The two fixture kinds
 
-- **`protocol/`** — exact `interceptors/list`, `interceptor/invoke`, and chain
+- **`protocol/`** - exact `interceptors/list`, `interceptor/invoke`, and chain
   semantics (trust-boundary ordering, enforce vs audit, fail-open vs
   fail-closed, unknown-name errors). Expectations are exact SEP wire JSON with
   a precomputed RFC 8785 (JCS) canonical string, so comparison in any language
   is: scrub volatile keys → canonicalize → compare one string.
-- **`behavior/`** — flows a conformant **security interceptor** MUST handle,
+- **`behavior/`** - flows a conformant **security interceptor** MUST handle,
   stated declaratively (the catalog is the oracle; no reference implementation
   output is trusted). The canonical `relaybleed-*` fixtures certify denial of
   the composed read-then-send cross-server exfiltration; sibling fixtures pin
@@ -55,7 +55,7 @@ reference SDK.
 ## Certifying another SDK
 
 1. Implement the adapter contract in your language (see ADAPTER.md; the
-   reference adapter is the template — the language-specific surface is one
+   reference adapter is the template - the language-specific surface is one
    behavior table plus four calls).
 2. Replay every fixture under `fixtures/` with the documented algorithm.
 3. Report `passed / total` as the compliance percentage, grouped by the

@@ -6,7 +6,7 @@
  * A client-side wrapper that runs the interceptor chain around every MCP
  * operation: request phase (mutate → validate) before the backend sees the
  * payload, response phase (validate → mutate) before the caller sees the
- * result. ONE generic `intercepted` primitive carries every method (RULE 9) —
+ * result. ONE generic `intercepted` primitive carries every method (RULE 9) -
  * each MCP operation is a single delegating line, not a copied block.
  */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";

@@ -1,7 +1,7 @@
 {
   // TYPECHECK config: the whole source tree, including tests and the
   // src/attest integration, which imports @formalcore/mcp-attested-validation
-  // AS SOURCE (a strip-types package with .ts-extension imports — hence
+  // AS SOURCE (a strip-types package with .ts-extension imports - hence
   // allowImportingTsExtensions + noEmit here). The publishable build lives in
   // tsconfig.build.json, which excludes src/attest and tests.
   "compilerOptions": {

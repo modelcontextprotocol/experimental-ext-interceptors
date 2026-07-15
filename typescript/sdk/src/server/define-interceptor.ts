@@ -6,8 +6,8 @@
  * Authoring surface for interceptor implementations. This is a boundary
  * (RULE 7): specs written by SDK consumers may omit fields for ergonomics, and
  * `defineValidator` / `defineMutator` normalize them ONCE into the trusted
- * interior `Interceptor` + handler pair. Two explicit constructors — one per
- * SEP interceptor type — instead of one function that sniffs its input.
+ * interior `Interceptor` + handler pair. Two explicit constructors - one per
+ * SEP interceptor type - instead of one function that sniffs its input.
  */
 import {
   INTERCEPTOR_MODE,

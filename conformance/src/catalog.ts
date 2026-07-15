@@ -1,5 +1,5 @@
 /**
- * The conformance CATALOG — the single oracle for every generated fixture
+ * The conformance CATALOG - the single oracle for every generated fixture
  * (FUNCTIONAL_PATTERNS RULE 8/20/21: scenarios are typed literal data; the
  * suite is generated from them, never hand-authored per case).
  *
@@ -529,7 +529,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
       requirement: "SEC/cross-boundary-exfiltration",
       description:
         `relaybleed (${secret.formatId}): a secret read from the filesystem server must not ` +
-        "be sent to the sqlite server — every individual call is authorized; the composed " +
+        "be sent to the sqlite server - every individual call is authorized; the composed " +
         "cross-server flow MUST be denied.",
       interceptors: [GUARD],
       steps: relaybleedSteps(secret.value, `relaybleed-${secret.formatId}`),

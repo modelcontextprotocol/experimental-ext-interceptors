@@ -7,7 +7,7 @@
  * MCP clients, merge them under the SEP's chain-global-unique-name rule, and
  * run {@link executeChain} with `interceptor/invoke` routed to the host that
  * advertised each name. `createChainRunner` adds cached discovery plus default
- * event filter / timeout / context — the shared engine behind the intercepting
+ * event filter / timeout / context - the shared engine behind the intercepting
  * client and the gateway.
  */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";

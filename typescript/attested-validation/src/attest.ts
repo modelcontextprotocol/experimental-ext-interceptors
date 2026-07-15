@@ -1,9 +1,9 @@
 /**
- * Attested validation — the load-bearing implementation of the reserved
+ * Attested validation - the load-bearing implementation of the reserved
  * SEP-2624 `ValidationResult.signature` field.
  *
  * An interceptor signs its decision with an Ed25519 private key; ANY party
- * verifies it later, offline, against a PINNED trusted public key — no callback
+ * verifies it later, offline, against a PINNED trusted public key - no callback
  * to the issuer, no shared state. This is what turns a validator's "trust me, I
  * checked" into "check it yourself": the proof outlives the request.
  *
@@ -15,7 +15,7 @@
  *    (and carrying that key) is internally self-consistent but MUST fail against
  *    the pinned key. That is the whole point.
  *
- * Uses Web Crypto Ed25519 — portable across Node 20+, Deno, and browsers, with
+ * Uses Web Crypto Ed25519 - portable across Node 20+, Deno, and browsers, with
  * no external signing dependency.
  */
 import { canonicalize } from "./canonicalize.ts";
@@ -115,7 +115,7 @@ export async function attestValidationResult(
 
 /**
  * Verify an attested result OFFLINE against a PINNED trusted issuer key.
- * Never throws on hostile input — any failure resolves to `{ ok: false, reason }`.
+ * Never throws on hostile input - any failure resolves to `{ ok: false, reason }`.
  */
 export async function verifyAttestedValidationResult(
   result: ValidationResult,

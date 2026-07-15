@@ -3,10 +3,10 @@
 // license that can be found in the LICENSE file.
 
 /**
- * Secret-format catalog — data-as-textbook (FUNCTIONAL_PATTERNS RULE 8).
+ * Secret-format catalog - data-as-textbook (FUNCTIONAL_PATTERNS RULE 8).
  *
  * This is the OPEN/donated detection tier: it recognizes credentials by their
- * public, well-known *format* (prefix + shape). It is clean-room — only the
+ * public, well-known *format* (prefix + shape). It is clean-room - only the
  * credential FORMATS that appear in MCPHunt's public canary registry
  * (CC-BY 4.0), no proprietary values and no proprietary code. The closed tier
  * (full 11-signal catalog, fragment/partial, and the semantic/embedding tier)
@@ -46,7 +46,7 @@ export interface SecretHit {
 /**
  * Every verbatim secret occurrence in `text`, across all formats. A fresh
  * RegExp is used per scan so global-regex `lastIndex` never leaks between calls
- * (a classic stateful-regex bug — we do not trust shared mutable state).
+ * (a classic stateful-regex bug - we do not trust shared mutable state).
  */
 export function findSecrets(text: string): readonly SecretHit[] {
   const hits: SecretHit[] = [];

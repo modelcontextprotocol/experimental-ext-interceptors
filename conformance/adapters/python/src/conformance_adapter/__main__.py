@@ -9,7 +9,7 @@ Usage::
     python -m conformance_adapter [--adapter conformant|raw|strawman] [--only PREFIX]
 
 Prints the same report shape as the TypeScript reference runner
-(`per-fixture PASS/FAIL, then "passed/total fixtures passed — compliance N%"`).
+(`per-fixture PASS/FAIL, then "passed/total fixtures passed - compliance N%"`).
 Exits 0 iff every selected fixture passed.
 """
 

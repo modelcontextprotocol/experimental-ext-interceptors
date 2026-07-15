@@ -107,21 +107,21 @@
       "kind": "behavior",
       "file": "fixtures/behavior/relaybleed-stripe_secret_live.json",
       "requirement": "SEC/cross-boundary-exfiltration",
-      "description": "relaybleed (stripe_secret_live): a secret read from the filesystem server must not be sent to the sqlite server — every individual call is authorized; the composed cross-server flow MUST be denied."
+      "description": "relaybleed (stripe_secret_live): a secret read from the filesystem server must not be sent to the sqlite server - every individual call is authorized; the composed cross-server flow MUST be denied."
     },
     {
       "id": "behavior/relaybleed-github_pat",
       "kind": "behavior",
       "file": "fixtures/behavior/relaybleed-github_pat.json",
       "requirement": "SEC/cross-boundary-exfiltration",
-      "description": "relaybleed (github_pat): a secret read from the filesystem server must not be sent to the sqlite server — every individual call is authorized; the composed cross-server flow MUST be denied."
+      "description": "relaybleed (github_pat): a secret read from the filesystem server must not be sent to the sqlite server - every individual call is authorized; the composed cross-server flow MUST be denied."
     },
     {
       "id": "behavior/relaybleed-aws_access_key",
       "kind": "behavior",
       "file": "fixtures/behavior/relaybleed-aws_access_key.json",
       "requirement": "SEC/cross-boundary-exfiltration",
-      "description": "relaybleed (aws_access_key): a secret read from the filesystem server must not be sent to the sqlite server — every individual call is authorized; the composed cross-server flow MUST be denied."
+      "description": "relaybleed (aws_access_key): a secret read from the filesystem server must not be sent to the sqlite server - every individual call is authorized; the composed cross-server flow MUST be denied."
     },
     {
       "id": "behavior/same-origin-writeback-allowed",

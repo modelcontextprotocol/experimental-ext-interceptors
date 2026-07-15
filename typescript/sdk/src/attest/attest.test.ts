@@ -6,7 +6,7 @@
  * End-to-end attestation wiring: a cross-boundary-guard DENIAL leaves as a
  * signed SEP wire result that verifies OFFLINE against a pinned issuer key,
  * fails on any tamper, and fails against a forged (attacker-signed) receipt.
- * This is the "check it yourself" property — the proof outlives the request.
+ * This is the "check it yourself" property - the proof outlives the request.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -121,8 +121,8 @@ describe("attested cross-boundary-guard denial", () => {
   it("rejects a FORGED receipt: attacker re-signs with their own key", async () => {
     const { result, pinnedKey } = await attestedDenial();
     const attacker = await generateSigningKeyPair();
-    // Internally self-consistent — signed by the attacker, carrying the
-    // attacker's public key — but it MUST fail against the pinned issuer key.
+    // Internally self-consistent - signed by the attacker, carrying the
+    // attacker's public key - but it MUST fail against the pinned issuer key.
     const forged = await attestValidationResult({ ...result, valid: true }, attacker);
     expect(await verifyAttestedValidation(forged, pinnedKey)).toEqual({
       ok: false,

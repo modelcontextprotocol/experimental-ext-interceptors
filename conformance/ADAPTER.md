@@ -1,8 +1,8 @@
 # The Adapter Contract
 
 To run this conformance suite against ANY SEP-2624 interceptors implementation
-(Python, C#, Go, TypeScript, …) you implement one small adapter — four
-functions — and replay the JSON fixtures under `fixtures/` with the algorithm
+(Python, C#, Go, TypeScript, …) you implement one small adapter - four
+functions - and replay the JSON fixtures under `fixtures/` with the algorithm
 below. You do not port the tests; the fixtures ARE the tests.
 
 ## What you implement
@@ -25,7 +25,7 @@ session.chain(event, phase, payload, sessionId | null)
 - `chain` runs ONE lifecycle event through your chain executor over ALL of the
   session's interceptors: `allow` iff the chain completed, `deny` iff it was
   blocked. `finalPayload` is the payload after applied mutations. Pass
-  `sessionId` through to interceptor invocation context — the security
+  `sessionId` through to interceptor invocation context - the security
   behaviors are stateful per session.
 
 ## The behavior vocabulary
@@ -66,7 +66,7 @@ For each fixture JSON:
 
 Fixture files validate against `schema/fixture.schema.json`; `manifest.json`
 maps every fixture to the SEP-2624 / security-profile requirement it
-certifies. Fixtures are generated from `src/catalog.ts` — regenerate with
+certifies. Fixtures are generated from `src/catalog.ts` - regenerate with
 `node --experimental-strip-types scripts/generate.ts`; never edit JSON by hand.
 
 The reference TypeScript adapter (`src/reference-adapter.ts`) is the porting

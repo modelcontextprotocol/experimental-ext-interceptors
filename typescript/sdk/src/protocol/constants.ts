@@ -31,7 +31,7 @@ export type InterceptorPhase =
  * Execution mode. The SEP wire value is `enforce` (normal blocking /
  * transforming) or `audit` (non-blocking: validators log without blocking,
  * mutators compute without applying). `enforce` is the default when omitted.
- * (Note: the C# SDK shipped `active` instead of `enforce` — see issue #15.
+ * (Note: the C# SDK shipped `active` instead of `enforce` - see issue #15.
  * This SDK uses the SEP value.)
  */
 export const INTERCEPTOR_MODE = {
@@ -69,7 +69,7 @@ export type RpcMethod = (typeof RPC_METHOD)[keyof typeof RPC_METHOD];
 /**
  * Well-known lifecycle events (SEP-2624). `*` matches all events.
  * The SEP explicitly permits custom `namespace/operation` events, so a hook's
- * event is the open `InterceptionEvent` below — a closed set of known members
+ * event is the open `InterceptionEvent` below - a closed set of known members
  * with a documented extension point (RULE 5: closed set, open extension).
  */
 export const INTERCEPTION_EVENT = {

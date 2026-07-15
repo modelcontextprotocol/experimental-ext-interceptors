@@ -5,7 +5,7 @@
 /**
  * End-to-end tests over the real MCP SDK in-memory transport: interceptor
  * host servers, wire wrappers, multi-host chains, the intercepting client,
- * and the transparent gateway — every layer talking actual JSON-RPC.
+ * and the transparent gateway - every layer talking actual JSON-RPC.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";

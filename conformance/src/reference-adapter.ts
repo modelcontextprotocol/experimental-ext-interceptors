@@ -2,7 +2,7 @@
  * The TypeScript reference ADAPTER: binds the conformance behavior vocabulary
  * to the reference SDK (`typescript/sdk`). This file is simultaneously
  * (a) the proof that every generated fixture is satisfiable, and
- * (b) the template a Python/C#/Go adapter ports — the language-specific part
+ * (b) the template a Python/C#/Go adapter ports - the language-specific part
  * is only the BEHAVIOR table plus the four session calls.
  */
 import {
@@ -34,7 +34,7 @@ import type { Adapter, AdapterSession } from "./runner.ts";
 
 /**
  * Common spec fields for `defineValidator`/`defineMutator`. Optional fields
- * are spread in only when present — the catalog's absence semantics survive
+ * are spread in only when present - the catalog's absence semantics survive
  * `exactOptionalPropertyTypes`.
  */
 function common(i: FixtureInterceptor) {

@@ -3,14 +3,14 @@
 // license that can be found in the LICENSE file.
 
 /**
- * Opt-in attestation for SDK validators — the wiring between this SDK and
+ * Opt-in attestation for SDK validators - the wiring between this SDK and
  * `@formalcore/mcp-attested-validation` (the reference implementation of the
  * reserved SEP-2624 `ValidationResult.signature` field).
  *
  * Attestation is a WIRE concern: the signature covers the canonicalized
  * SEP-shape result, so it is attached where the interior result becomes wire
  * JSON, not inside the interior type system. `toWireValidationResult` maps the
- * interior result (null-for-absent) to the SEP optional shape — the same
+ * interior result (null-for-absent) to the SEP optional shape - the same
  * omission semantics as `serializeResult`, but statically typed against the
  * attestation package so a drift between the two shapes fails to compile.
  *
@@ -48,7 +48,7 @@ export {
  * Interior → SEP wire shape (optional-not-null), typed against the
  * attestation package. An attestation binds an ISSUER to a decision, so a
  * result that has not been stamped with its interceptor name is not
- * attestable — that is a caller bug, surfaced loudly.
+ * attestable - that is a caller bug, surfaced loudly.
  */
 export function toWireValidationResult(
   result: ValidationResult,
@@ -109,7 +109,7 @@ export type AttestedInvoke = (
 
 /**
  * The opt-in: wrap a validator so every decision it returns is an attested
- * wire result. Rejects non-validators at wrap time — mutation results carry
+ * wire result. Rejects non-validators at wrap time - mutation results carry
  * payloads, not verdicts, and have no reserved `signature` field to populate.
  */
 export function withAttestation(

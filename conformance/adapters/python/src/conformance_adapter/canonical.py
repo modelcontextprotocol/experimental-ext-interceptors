@@ -18,7 +18,7 @@ pinned golden tests (`tests/test_canonical_parity.py`):
   lone surrogates, and leaves everything else (including astral chars) raw.
 
 Numbers implement ECMAScript ``Number::toString(10)`` (ES2023 §6.1.6.1.20)
-over Python's shortest round-trip digits — both runtimes produce shortest-
+over Python's shortest round-trip digits - both runtimes produce shortest-
 round-trip digit strings, so only the FORMATTING thresholds differ (Python's
 ``repr`` switches to exponent notation at 1e16 and 1e-5; ECMAScript at 1e21
 and 1e-7), and ``_format_double`` applies the ECMAScript rules exactly.
@@ -53,7 +53,7 @@ def canonicalize(value: Any) -> str:
 
 
 def _utf16_units(text: str) -> tuple[int, ...]:
-    """The UTF-16 code units of ``text`` — RFC 8785's key sort order."""
+    """The UTF-16 code units of ``text`` - RFC 8785's key sort order."""
     units: list[int] = []
     for ch in text:
         cp = ord(ch)

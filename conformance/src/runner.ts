@@ -1,6 +1,6 @@
 /**
  * The conformance RUNNER: replays fixtures against an ADAPTER and diffs
- * canonical JSON. The runner knows nothing about any SDK — everything
+ * canonical JSON. The runner knows nothing about any SDK - everything
  * implementation-specific lives behind the ~4-method adapter contract
  * (ADAPTER.md), which is how Python/C#/Go SDKs reuse this suite without
  * re-authoring tests.
@@ -291,8 +291,8 @@ export function formatReport(report: ComplianceReport): string {
     return `  ${mark}  ${f.id} [${f.requirement}]${failures}`;
   });
   return [
-    `MCP interceptors conformance — adapter: ${report.adapter}`,
+    `MCP interceptors conformance - adapter: ${report.adapter}`,
     ...lines,
-    `  ${String(report.passed)}/${String(report.total)} fixtures passed — compliance ${String(report.compliancePercent)}%`,
+    `  ${String(report.passed)}/${String(report.total)} fixtures passed - compliance ${String(report.compliancePercent)}%`,
   ].join("\n");
 }

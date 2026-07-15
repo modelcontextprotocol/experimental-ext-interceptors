@@ -26,7 +26,7 @@ export interface ValidationSuggestion {
 
 /**
  * The reserved SEP-2624 `signature` object, implemented for real.
- * `publicKey` is INFORMATIONAL — a verifier MUST pin the trusted issuer key out
+ * `publicKey` is INFORMATIONAL - a verifier MUST pin the trusted issuer key out
  * of band and MUST NOT trust this embedded value (see `verifyAttestedValidationResult`).
  */
 export interface AttestedSignature {

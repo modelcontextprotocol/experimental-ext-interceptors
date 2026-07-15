@@ -1,5 +1,5 @@
 /**
- * @formalcore/mcp-attested-validation — a reference implementation of the
+ * @formalcore/mcp-attested-validation - a reference implementation of the
  * reserved SEP-2624 `ValidationResult.signature` field: Ed25519-signed,
  * offline-verifiable attested interceptor decisions.
  */

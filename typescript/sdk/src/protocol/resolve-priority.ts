@@ -8,7 +8,7 @@ import type { PriorityHint } from "./types.js";
 /**
  * Resolve a mutation's ordering priority for a phase (SEP-2624 priority
  * resolution). Lower executes first; the default is 0. Validation interceptors
- * ignore priority — only call this when ordering mutations.
+ * ignore priority - only call this when ordering mutations.
  */
 export function resolvePriority(
   hint: PriorityHint | null,

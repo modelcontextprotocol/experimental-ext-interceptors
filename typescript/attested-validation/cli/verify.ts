@@ -1,5 +1,5 @@
 /**
- * Offline verifier — the "check it yourself" surface.
+ * Offline verifier - the "check it yourself" surface.
  *
  * An auditor runs this on a laptop months later, against a key they hold, with
  * no access to the issuer's systems and no network. The attested validation
@@ -27,10 +27,10 @@ export async function main(argv: readonly string[]): Promise<number> {
   const result = JSON.parse(readFileSync(resultPath, "utf8")) as ValidationResult;
   const v = await verifyAttestedValidationResult(result, resolvePinnedKey(keyArg));
   if (v.ok) {
-    console.log("PASS — attestation verifies against the pinned issuer key");
+    console.log("PASS - attestation verifies against the pinned issuer key");
     return 0;
   }
-  console.log(`FAIL — ${v.reason}`);
+  console.log(`FAIL - ${v.reason}`);
   return 1;
 }
 

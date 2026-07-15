@@ -4,8 +4,8 @@
  * catalog entry; nothing under `fixtures/` is hand-authored.
  *
  * Canonical strings are derived with the RFC-8785-aligned `canonicalize` from
- * `@formalcore/mcp-attested-validation` — the SAME canonicalization that
- * attested validation signs over — so byte-equality is one string comparison
+ * `@formalcore/mcp-attested-validation` - the SAME canonicalization that
+ * attested validation signs over - so byte-equality is one string comparison
  * in any language, and a runner never needs deep-equality logic.
  *
  * The generator is deterministic: same catalog → identical bytes. The

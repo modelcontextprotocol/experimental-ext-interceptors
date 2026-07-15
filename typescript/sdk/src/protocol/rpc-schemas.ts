@@ -5,7 +5,7 @@
 /**
  * The thin JSON-RPC handshake schemas the MCP SDK needs to route
  * `interceptors/list` and `interceptor/invoke`. These stay deliberately
- * permissive — the REAL normalization is wire.ts (`normalizeInterceptor`,
+ * permissive - the REAL normalization is wire.ts (`normalizeInterceptor`,
  * `normalizeResult`, `normalizeInvokeParams`). Validating twice would duplicate
  * the boundary (the exact bloat we removed), so here we only pin the method
  * literals the SDK dispatches on and let the trusted interior do the rest.

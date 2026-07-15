@@ -3,7 +3,7 @@
 # license that can be found in the LICENSE file.
 
 """The Python conformance RUNNER: replays the SHARED fixtures against an
-adapter and diffs canonical JSON — the Python realization of the algorithm in
+adapter and diffs canonical JSON - the Python realization of the algorithm in
 `conformance/ADAPTER.md`, structurally mirroring `conformance/src/runner.ts`.
 
 No expectation logic is ported from TypeScript: the fixtures are the oracle.
@@ -209,7 +209,7 @@ class ComplianceReport:
     adapter: str
     total: int
     passed: int
-    #: passed / total as a percentage, rounded half-up to one decimal place —
+    #: passed / total as a percentage, rounded half-up to one decimal place -
     #: the same rounding as the TS reference (`Math.round(x * 1000) / 10`).
     compliance_percent: float
     fixtures: tuple[FixtureReport, ...]
@@ -271,9 +271,9 @@ def format_report(report: ComplianceReport) -> str:
         lines.append(f"  {mark}  {f.id} [{f.requirement}]{failures}")
     return "\n".join(
         [
-            f"MCP interceptors conformance — adapter: {report.adapter}",
+            f"MCP interceptors conformance - adapter: {report.adapter}",
             *lines,
-            f"  {report.passed}/{report.total} fixtures passed — "
+            f"  {report.passed}/{report.total} fixtures passed - "
             f"compliance {_js_number(report.compliance_percent)}%",
         ]
     )

@@ -344,7 +344,7 @@ describe("validations", () => {
       invokerFrom({ a: gated("a"), b: gated("b") }),
       params(),
     );
-    // Both started before either finished — impossible under sequential execution.
+    // Both started before either finished - impossible under sequential execution.
     expect(started.sort()).toEqual(["a", "b"]);
     expect(chain.status).toBe(CHAIN_STATUS.Success);
   });
@@ -526,7 +526,7 @@ describe("wire failures", () => {
     expect(chain.abortedAt?.reason).toContain("invalid interceptor type");
   });
 
-  it("an unknown result type is skipped under failOpen — never a crash", async () => {
+  it("an unknown result type is skipped under failOpen - never a crash", async () => {
     const chain = await executeChain(
       [validator("v", { failOpen: true }), mutator("m", { failOpen: true })],
       unknownTypeInvoker,

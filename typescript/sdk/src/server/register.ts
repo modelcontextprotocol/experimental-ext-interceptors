@@ -6,7 +6,7 @@
  * Wires an {@link InterceptorRegistry} into an MCP `Server`: advertises the
  * extension capability (SEP-2133 `extensions` key) and handles the two SEP
  * methods. Inbound params cross the wire boundary through
- * `normalizeInvokeParams`; outbound results leave through `serialize*` — the
+ * `normalizeInvokeParams`; outbound results leave through `serialize*` - the
  * interior never touches raw JSON.
  */
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
