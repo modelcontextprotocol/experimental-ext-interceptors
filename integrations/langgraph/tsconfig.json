@@ -1,0 +1,25 @@
+{
+  // Typecheck-only: this package ships TypeScript source consumed by strip-types
+  // runtimes (Node >= 22 --experimental-strip-types, vitest/esbuild). The MCP
+  // SDK is consumed as its built package; the attested-validation package and
+  // our own modules are consumed as .ts source, hence allowImportingTsExtensions.
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["esnext", "dom"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "examples/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}
