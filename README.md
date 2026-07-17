@@ -4,7 +4,7 @@
 
 This repository provides a multi-language reference implementation of the proposed interceptor extension for the Model Context Protocol (MCP), as described in [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624).
 
-**Charter:** [modelcontextprotocol.io/community/working-groups/interceptors](https://modelcontextprotocol.io/community/working-groups/interceptors) — the Interceptors Working Group's mission, scope, leadership, and active work items.
+**Charter:** [modelcontextprotocol.io/community/working-groups/interceptors](https://modelcontextprotocol.io/community/working-groups/interceptors) - the Interceptors Working Group's mission, scope, leadership, and active work items.
 
 
 ## Implementations
@@ -16,6 +16,26 @@ This repository provides a multi-language reference implementation of the propos
 | Python | `python/sdk/` | `mcp-ext-interceptors` | Planned |
 | TypeScript | `typescript/sdk/` | `@ext-modelcontextprotocol/interceptors` | Planned |
 
+## Conformance and reference components
+
+Additional components in this tree address cross-SDK conformance (issue #20) and
+the reserved `ValidationResult.signature` field. They are self-contained and
+independently tested.
+
+| Component | Directory | What it is |
+|-----------|-----------|------------|
+| Conformance suite | `conformance/` | Language-neutral golden fixtures (generated deterministically from one typed catalog) plus a four-function adapter contract. Any SDK certifies by implementing the adapter and replaying the fixtures. See [`conformance/README.md`](conformance/README.md) and [`conformance/ADAPTER.md`](conformance/ADAPTER.md). |
+| Python adapter | `conformance/adapters/python/` | Certifies the `feature/python-sdk` implementation against the shared fixtures, proving the suite is language-neutral in fact. |
+| Attested validation | `typescript/attested-validation/` | Reference implementation of the reserved SEP-2624 `ValidationResult.signature` field: Ed25519-signed, offline-verifiable interceptor decisions. |
+| LangGraph binding | `integrations/langgraph/` | One-line binding that wires the reference security interceptors and attested receipts into a LangGraph agent. |
+
+### Walkthrough
+
+`scripts/demo.sh` runs three self-verifying beats end to end: the conformance
+suite is deterministic and discriminating, the same fixtures certify the Python
+SDK cross-language, and an interceptor denial is an Ed25519 receipt that verifies
+offline (and rejects a forged key). Run a single beat with `scripts/demo.sh 1|2|3`.
+
 
 ## CI/CD
 
@@ -26,6 +46,7 @@ This monorepo uses **path-based CI workflows** to efficiently test only what cha
 1. **Language-specific workflows** (`csharp.yml`, `python.yml`, `go.yml`, `typescript.yml`)
    - Only trigger when their language directory or workflow file changes
    - Run all tests, linting, and checks for that language
+   - `conformance.yml` and `integrations.yml` cover the components above on the same path-based model (the conformance job also asserts fixture determinism and that the suite discriminates a permissive implementation)
 
 2. **Status check workflow** (`status-check.yml`)
    - Runs on every PR to verify required checks passed
