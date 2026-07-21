@@ -81,10 +81,10 @@ func TestMiddlewareBlocksOnValidationError(t *testing.T) {
 	blocker := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "block-echo",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -125,10 +125,10 @@ func TestMiddlewarePassesOnSuccess(t *testing.T) {
 	allow := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "allow-all",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -152,10 +152,10 @@ func TestMiddlewareMutatesPayload(t *testing.T) {
 	mutator := &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: "add-prefix",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
@@ -197,10 +197,10 @@ func TestMiddlewareAuditModeNonBlocking(t *testing.T) {
 	auditValidator := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "audit-reject",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeAudit,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -230,10 +230,10 @@ func TestMiddlewareWithContextProvider(t *testing.T) {
 	principalCheck := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "check-principal",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -312,10 +312,10 @@ func TestMiddlewareRequestMutatorModifiesArgs(t *testing.T) {
 	reqMutator := &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: "inject-field",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {

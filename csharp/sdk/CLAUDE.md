@@ -1,25 +1,25 @@
 # MCP Interceptors - C# SDK
 
 ## What this is
-C# implementation of gateway-level interceptors from [SEP-1763](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1763). NuGet package additive to the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (v1.1.0). Focus is on the protocol-level extension (client → interceptor server → server), NOT in-process middleware.
+C# implementation of gateway-level interceptors from [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624). NuGet package additive to the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (v1.1.0). Focus is on the protocol-level extension (client → interceptor server → server), NOT in-process middleware.
 
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 97 tests across the interceptor test project
+dotnet test    # 98 tests across the interceptor test project
 ```
 
 ## Key architectural constraints
 
 **Why message filter, not handlers**: `McpServerHandlers` and `McpServerImpl` are `internal` in the SDK. We can't register handlers for new JSON-RPC methods from outside. Instead we use `McpServerOptions.Filters.Message.IncomingFilters` to intercept `interceptors/list` and `interceptor/invoke`, handle them, send `JsonRpcResponse` via `context.Server.SendMessageAsync()`, and skip calling `next`. See `InterceptorMessageFilter.cs`. Chain execution is no longer a wire method — it's SDK orchestration in `Client/InterceptorChainOrchestrator.cs`.
 
-**Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions. Requires `#pragma warning disable MCPEXP001`. We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["interceptors"]`.
+**Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions. Requires `#pragma warning disable MCPEXP001`. We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["io.modelcontextprotocol/interceptors"]`.
 
 **Client `SendRequestAsync`**: The public overload (`McpSession.Methods.cs:24`) takes `JsonSerializerOptions`. We pass `InterceptorJsonUtilities.DefaultOptions` which chains `McpJsonUtilities.DefaultOptions` + our `InterceptorJsonContext`. The internal overload takes `JsonTypeInfo<T>` — we can't use it.
 
 **`InterceptingMcpClient` is composition**: `McpClient` has an internal constructor; subclassing is `[Experimental]`. We wrap it as a concrete class exposing `.Inner` for direct access.
 
-## Chain execution order (SEP-1763)
+## Chain execution order (SEP-2624)
 - **Request phase (sending)**: Mutations (sequential by priority ↑) → Validations (parallel) → Sinks (fire-and-forget)
 - **Response phase (receiving)**: Validations (parallel) → Sinks (fire-and-forget) → Mutations (sequential by priority ↑)
 - Lower `PriorityHint` executes first; scalar (both phases) or per-phase `{request, response}` form, unset phase resolves to 0; ties broken alphabetically by name

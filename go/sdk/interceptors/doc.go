@@ -45,10 +45,10 @@
 //	v := &interceptors.Validator{
 //	    Metadata: interceptors.Metadata{
 //	        Name: "block-dangerous-tool",
-//	        Hook: interceptors.Hook{
+//	        Hooks: []interceptors.Hook{{
 //	            Events: []string{"tools/call"},
 //	            Phase:  interceptors.PhaseRequest,
-//	        },
+//	        }},
 //	        Mode: interceptors.ModeEnforce,
 //	    },
 //	    Handler: func(ctx context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -73,10 +73,10 @@
 //	m := &interceptors.Mutator{
 //	    Metadata: interceptors.Metadata{
 //	        Name: "redact-pii",
-//	        Hook: interceptors.Hook{
+//	        Hooks: []interceptors.Hook{{
 //	            Events: []string{"tools/call"},
 //	            Phase:  interceptors.PhaseResponse,
-//	        },
+//	        }},
 //	        Mode: interceptors.ModeEnforce,
 //	    },
 //	    Handler: func(ctx context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {

@@ -1,6 +1,6 @@
 # SEP Conformance
 
-Status of this Go SDK implementation against the SEP-1763 interceptor proposal.
+Status of this Go SDK implementation against the SEP-2624 interceptor proposal.
 
 ## Implemented
 
@@ -24,7 +24,7 @@ Status of this Go SDK implementation against the SEP-1763 interceptor proposal.
 | Audit mode | `ModeAudit` records results without blocking; mutated payloads not propagated |
 | Timeout & context | Per-interceptor timeouts via `InvokeParams.TimeoutMs`, chain-level context cancellation, `InvocationContext` with principal/traceId |
 | Receiving direction (client → server) | All server-side method calls intercepted via `AddReceivingMiddleware` |
-| Capability declaration | Interceptor metadata injected into `initialize` response via `Capabilities.Experimental` |
+| Capability declaration | Interceptor metadata injected into `initialize` response via `Capabilities.Extensions` |
 | First-party (in-process) deployment | `Server.LocalChain()` creates an in-memory transport `chain.Chain`; interceptors invoked via JSON-RPC even in-process |
 | Third-party and hybrid deployment | Chain entries can point to any `*mcp.ClientSession` — local (in-memory), stdio, or HTTP transport |
 | `json.RawMessage` payloads | Interceptor handlers receive `json.RawMessage` via `interceptor/invoke`, matching the SEP's JSON-level payload model |

@@ -15,7 +15,7 @@ import (
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/chain"
 )
 
-// extensionID is the capability key used in Capabilities.Experimental
+// extensionID is the capability key used in Capabilities.Extensions
 const extensionID = "io.modelcontextprotocol/interceptors"
 
 // Option configures an Extension.
@@ -163,8 +163,7 @@ func (e *Extension) initMiddleware() mcp.Middleware {
 
 // enrichInitResult injects interceptor capability metadata into the
 // InitializeResult, following the same pattern as the variants extension.
-// The capability is declared under Capabilities.Experimental so it works
-// without upstream go-sdk changes.
+// The capability is declared under Capabilities.Extensions per SEP-2133.
 func (e *Extension) enrichInitResult(result mcp.Result) (mcp.Result, error) {
 	initResult, ok := result.(*mcp.InitializeResult)
 	if !ok {
@@ -174,15 +173,17 @@ func (e *Extension) enrichInitResult(result mcp.Result) (mcp.Result, error) {
 	if initResult.Capabilities == nil {
 		initResult.Capabilities = &mcp.ServerCapabilities{}
 	}
-	if initResult.Capabilities.Experimental == nil {
-		initResult.Capabilities.Experimental = make(map[string]any)
+	if initResult.Capabilities.Extensions == nil {
+		initResult.Capabilities.Extensions = make(map[string]any)
 	}
 
 	all := e.getInterceptors()
 	supportedEvents := map[string]bool{}
 	for _, ri := range all {
-		for _, ev := range ri.GetMetadata().Hook.Events {
-			supportedEvents[ev] = true
+		for _, h := range ri.GetMetadata().Hooks {
+			for _, ev := range h.Events {
+				supportedEvents[ev] = true
+			}
 		}
 	}
 
@@ -191,7 +192,7 @@ func (e *Extension) enrichInitResult(result mcp.Result) (mcp.Result, error) {
 		events = append(events, ev)
 	}
 
-	initResult.Capabilities.Experimental[extensionID] = map[string]any{
+	initResult.Capabilities.Extensions[extensionID] = map[string]any{
 		"supportedEvents": events,
 	}
 

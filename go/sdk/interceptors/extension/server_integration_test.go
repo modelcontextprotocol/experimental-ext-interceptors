@@ -86,10 +86,10 @@ func TestServer_ValidatorWarnDoesNotBlock(t *testing.T) {
 	warnValidator := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "warn-only",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -117,10 +117,10 @@ func TestServer_ValidationFailurePreventsM(t *testing.T) {
 	spy := &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: "spy-mutator",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
@@ -141,10 +141,10 @@ func TestServer_ValidatorTimeoutAbortsChain(t *testing.T) {
 	slowValidator := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "slow-validator",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(ctx context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -172,10 +172,10 @@ func TestServer_MutatorTimeoutAbortsChain(t *testing.T) {
 	slowMutator := &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: "m2-slow",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
-			},
+			}},
 			Mode:         interceptors.ModeEnforce,
 			PriorityHint: interceptors.NewPriority(20),
 		},
@@ -208,10 +208,10 @@ func TestServer_MutatorFailOpenContinuesChain(t *testing.T) {
 	failOpenMutator := &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: "m2-failopen",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
-			},
+			}},
 			Mode:         interceptors.ModeEnforce,
 			FailOpen:     true,
 			PriorityHint: interceptors.NewPriority(20),
@@ -248,10 +248,10 @@ func TestServer_ResponseMutatorSeesMutatedParams(t *testing.T) {
 	reqMutator := &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: "inject-marker",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
@@ -309,10 +309,10 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 	reqV1 := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "req-v1-tool-check",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -343,10 +343,10 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 	reqV2 := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "req-v2-args-check",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -381,10 +381,10 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 	reqV3 := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "req-v3-warn",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -405,10 +405,10 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 		return &interceptors.Mutator{
 			Metadata: interceptors.Metadata{
 				Name: name,
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{interceptors.EventToolsCall},
 					Phase:  interceptors.PhaseRequest,
-				},
+				}},
 				Mode:         interceptors.ModeEnforce,
 				PriorityHint: interceptors.NewPriority(priority),
 			},
@@ -454,10 +454,10 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 		return &interceptors.Mutator{
 			Metadata: interceptors.Metadata{
 				Name: name,
-				Hook: interceptors.Hook{
+				Hooks: []interceptors.Hook{{
 					Events: []string{interceptors.EventToolsCall},
 					Phase:  interceptors.PhaseResponse,
-				},
+				}},
 				Mode:         interceptors.ModeEnforce,
 				PriorityHint: interceptors.NewPriority(priority),
 			},
@@ -496,10 +496,10 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 	respV1 := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "resp-v1-has-content",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -530,10 +530,10 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 	respV2 := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "resp-v2-sees-mutation",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -566,10 +566,10 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 	respV3 := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "resp-v3-info",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {

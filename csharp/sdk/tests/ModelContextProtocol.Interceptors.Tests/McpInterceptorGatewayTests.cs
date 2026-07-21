@@ -272,7 +272,7 @@ public class McpInterceptorGatewayTests
         var caps = fixture.ProxyClient.ServerCapabilities;
         Assert.NotNull(caps.Extensions);
         Assert.True(caps.Extensions!.ContainsKey("com.example/backend"));
-        Assert.False(caps.Extensions.ContainsKey("interceptors"));
+        Assert.False(caps.Extensions.ContainsKey("io.modelcontextprotocol/interceptors"));
 #pragma warning restore MCPEXP001
     }
 
@@ -292,7 +292,7 @@ public class McpInterceptorGatewayTests
 
 #pragma warning disable MCPEXP001
         var caps = fixture.ProxyClient.ServerCapabilities;
-        Assert.False(caps?.Extensions?.ContainsKey("interceptors") ?? false);
+        Assert.False(caps?.Extensions?.ContainsKey("io.modelcontextprotocol/interceptors") ?? false);
 #pragma warning restore MCPEXP001
     }
 
@@ -318,7 +318,7 @@ public class McpInterceptorGatewayTests
 #pragma warning disable MCPEXP001
         var caps = fixture.ProxyClient.ServerCapabilities;
         Assert.NotNull(caps?.Extensions);
-        Assert.True(caps!.Extensions!.ContainsKey("interceptors"));
+        Assert.True(caps!.Extensions!.ContainsKey("io.modelcontextprotocol/interceptors"));
         Assert.True(caps.Extensions.ContainsKey("com.example/backend"));
 #pragma warning restore MCPEXP001
     }

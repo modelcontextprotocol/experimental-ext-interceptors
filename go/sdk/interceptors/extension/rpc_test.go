@@ -42,10 +42,10 @@ func TestListWithEventFilter(t *testing.T) {
 	promptsValidator := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "prompts-v",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventPromptsGet},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -112,10 +112,10 @@ func TestInvokeValidatorRejects(t *testing.T) {
 	rejectAll := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "reject-all",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -155,10 +155,10 @@ func TestInvokeMutator(t *testing.T) {
 	mutator := &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: "add-field",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
@@ -231,10 +231,10 @@ func TestInvokeTimeout(t *testing.T) {
 	slowValidator := &interceptors.Validator{
 		Metadata: interceptors.Metadata{
 			Name: "slow-v",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(ctx context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {

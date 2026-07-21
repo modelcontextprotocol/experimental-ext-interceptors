@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
 /// Parameters for SDK-level chain execution (see
-/// <see cref="Client.McpClientInterceptorExtensions.ExecuteChainAsync"/>). Per SEP-1763 the chain
+/// <see cref="Client.McpClientInterceptorExtensions.ExecuteChainAsync"/>). Per SEP-2624 the chain
 /// is orchestrated client-side via <c>interceptors/list</c> + <c>interceptor/invoke</c>; there is
 /// no <c>interceptor/executeChain</c> wire method.
 /// </summary>

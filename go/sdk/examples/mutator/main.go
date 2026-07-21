@@ -37,10 +37,10 @@ func main() {
 	m := &interceptors.Mutator{
 		Metadata: interceptors.Metadata{
 			Name: "audit-tag",
-			Hook: interceptors.Hook{
+			Hooks: []interceptors.Hook{{
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
-			},
+			}},
 			Mode: interceptors.ModeEnforce,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {

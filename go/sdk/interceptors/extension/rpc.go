@@ -27,7 +27,7 @@ func (e *Extension) handleList(_ context.Context, req *mcp.ServerRequest[*interc
 	all := e.getInterceptors()
 	infos := make([]interceptors.InterceptorInfo, 0, len(all))
 	for _, ri := range all {
-		if event != "" && !slices.Contains(ri.GetMetadata().Hook.Events, event) {
+		if event != "" && !hooksContainEvent(ri.GetMetadata().Hooks, event) {
 			continue
 		}
 		infos = append(infos, interceptors.InfoFromInterceptor(ri))
@@ -104,4 +104,13 @@ func (e *Extension) handleInvoke(ctx context.Context, req *mcp.ServerRequest[*in
 	}
 
 	return result, nil
+}
+
+func hooksContainEvent(hooks []interceptors.Hook, event string) bool {
+	for _, h := range hooks {
+		if slices.Contains(h.Events, event) {
+			return true
+		}
+	}
+	return false
 }
