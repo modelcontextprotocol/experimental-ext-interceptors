@@ -6,14 +6,14 @@ C# implementation of gateway-level interceptors from [SEP-2624](https://github.c
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 66 tests across the interceptor test project
+dotnet test    # 87 tests across the interceptor test project
 ```
 
 ## Key architectural constraints
 
 **Why message filter, not handlers**: `McpServerHandlers` and `McpServerImpl` are `internal` in the SDK. We can't register handlers for new JSON-RPC methods from outside. Instead we use `McpServerOptions.Filters.Message.IncomingFilters` to intercept `interceptors/list` and `interceptor/invoke`, handle them, send `JsonRpcResponse` via `context.Server.SendMessageAsync()`, and skip calling `next`. See `InterceptorMessageFilter.cs`. Chain execution is no longer a wire method — it's SDK orchestration in `Client/InterceptorChainOrchestrator.cs`.
 
-**Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions. Requires `#pragma warning disable MCPEXP001`. We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["interceptors"]`.
+**Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions. Requires `#pragma warning disable MCPEXP001`. We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["io.modelcontextprotocol/interceptors"]`.
 
 **Client `SendRequestAsync`**: The public overload (`McpSession.Methods.cs:24`) takes `JsonSerializerOptions`. We pass `InterceptorJsonUtilities.DefaultOptions` which chains `McpJsonUtilities.DefaultOptions` + our `InterceptorJsonContext`. The internal overload takes `JsonTypeInfo<T>` — we can't use it.
 
@@ -22,7 +22,7 @@ dotnet test    # 66 tests across the interceptor test project
 ## Chain execution order (SEP-2624)
 - **Request phase (sending)**: Mutations (sequential by priority ↑) → Validations (parallel) → Sinks (fire-and-forget)
 - **Response phase (receiving)**: Validations (parallel) → Sinks (fire-and-forget) → Mutations (sequential by priority ↑)
-- Lower `PriorityHint` executes first; ties broken alphabetically by name
+- Lower `PriorityHint` executes first; scalar (both phases) or per-phase `{request, response}` form, unset phase resolves to 0; ties broken alphabetically by name
 
 ## JSON-RPC methods
 | Method | Params → Result |
