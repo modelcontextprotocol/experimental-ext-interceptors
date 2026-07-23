@@ -88,7 +88,7 @@ Servers advertise `capabilities.extensions["io.modelcontextprotocol/interceptors
 
 ```bash
 uv sync          # creates .venv with the mcp 2.0.0b1 beta
-uv run pytest    # 85 tests, including both protocol eras over in-memory transport
+uv run pytest    # exercises both protocol eras over in-memory transport
 uv run ruff check && uv run mypy src
 ```
 

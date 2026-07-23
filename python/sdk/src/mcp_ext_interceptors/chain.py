@@ -242,9 +242,10 @@ class Chain:
                 await body()
             if scope.cancelled_caught:
                 result.status = "timeout"
+                where = state.in_flight or (f"{state.stage} stage" if state.stage else "chain")
                 result.aborted_at = AbortInfo(
                     interceptor=state.in_flight or "",
-                    reason=f"chain timeout of {params.timeout_ms}ms exceeded",
+                    reason=f"chain timeout of {params.timeout_ms}ms exceeded during {where}",
                     type="timeout",
                 )
         else:
@@ -266,6 +267,7 @@ class Chain:
     ) -> None:
         if not validators:
             return
+        state.stage = "validation"
         outcomes: list[tuple[AnyInvokeResult | None, Exception | None]] = [(None, None)] * len(validators)
 
         async def invoke_one(index: int, entry: ChainEntry) -> None:
@@ -313,6 +315,7 @@ class Chain:
         state: _ExecutionState,
         result: ChainExecutionResult,
     ) -> None:
+        state.stage = "mutation"
         for entry in mutators:
             if result.aborted_at is not None:
                 return
@@ -357,6 +360,7 @@ class Chain:
         """
         if not sinks:
             return
+        state.stage = "sink"
         outcomes: list[tuple[AnyInvokeResult | None, Exception | None]] = [(None, None)] * len(sinks)
 
         async def invoke_one(index: int, entry: ChainEntry) -> None:
@@ -469,3 +473,7 @@ def _blocking_severity(validation: ValidationResult) -> bool:
 class _ExecutionState:
     payload: Any
     in_flight: str | None = None
+    # The stage currently running, so a chain-level timeout that fires during a
+    # parallel stage (validators/sinks, where `in_flight` names no single entry)
+    # is still attributable.
+    stage: str | None = None

@@ -398,6 +398,31 @@ async def test_chain_timeout() -> None:
     assert result.final_payload is None
 
 
+async def test_chain_timeout_during_parallel_stage_names_the_stage() -> None:
+    """A chain timeout in a parallel stage has no single in-flight entry, but is
+    still attributable via the abort reason (interceptor stays empty)."""
+    ext = Interceptors()
+
+    @ext.validator("slow", events=["tools/call"], phase="request")
+    async def slow(inv: Invocation) -> ValidationResult:
+        await anyio.sleep(5)
+        return ValidationResult(valid=True)
+
+    async with Client(MCPServer("s", extensions=[ext])) as client:
+        chain = Chain()
+        await chain.add_server(client)
+        result = await chain.execute(
+            ChainExecutionParams(event="tools/call", phase="request", payload={}, timeout_ms=200)
+        )
+
+    assert result.status == "timeout"
+    assert result.aborted_at is not None
+    assert result.aborted_at.type == "timeout"
+    assert result.aborted_at.interceptor == ""
+    assert "validation" in result.aborted_at.reason
+    assert result.final_payload is None
+
+
 async def test_per_entry_timeout_override() -> None:
     ext = Interceptors()
 
