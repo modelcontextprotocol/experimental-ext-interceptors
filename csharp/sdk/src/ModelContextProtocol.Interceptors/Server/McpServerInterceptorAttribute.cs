@@ -28,8 +28,44 @@ public sealed class McpServerInterceptorAttribute : Attribute
     /// </summary>
     public InterceptorPhase Phase { get; set; } = InterceptorPhase.Both;
 
-    /// <summary>Gets or sets the priority hint for mutation ordering. Lower values execute first.</summary>
-    public int PriorityHint { get; set; }
+    private int? _priorityHint;
+    private int? _requestPriorityHint;
+    private int? _responsePriorityHint;
+
+    /// <summary>
+    /// Gets or sets the priority hint for mutation ordering, applying to both phases.
+    /// Lower values execute first. Mutually exclusive with <see cref="RequestPriorityHint"/> and
+    /// <see cref="ResponsePriorityHint"/>. Unset is omitted from the wire and resolves to 0.
+    /// </summary>
+    public int PriorityHint
+    {
+        get => _priorityHint ?? 0;
+        set => _priorityHint = value;
+    }
+
+    /// <summary>
+    /// Gets or sets the request-phase priority hint for mutation ordering. Lower values execute
+    /// first. Mutually exclusive with <see cref="PriorityHint"/>. Unset resolves to 0.
+    /// </summary>
+    public int RequestPriorityHint
+    {
+        get => _requestPriorityHint ?? 0;
+        set => _requestPriorityHint = value;
+    }
+
+    /// <summary>
+    /// Gets or sets the response-phase priority hint for mutation ordering. Lower values execute
+    /// first. Mutually exclusive with <see cref="PriorityHint"/>. Unset resolves to 0.
+    /// </summary>
+    public int ResponsePriorityHint
+    {
+        get => _responsePriorityHint ?? 0;
+        set => _responsePriorityHint = value;
+    }
+
+    internal int? PriorityHintOrNull => _priorityHint;
+    internal int? RequestPriorityHintOrNull => _requestPriorityHint;
+    internal int? ResponsePriorityHintOrNull => _responsePriorityHint;
 
     /// <summary>
     /// Gets or sets the execution mode. Defaults to <see cref="InterceptorMode.Active"/>.

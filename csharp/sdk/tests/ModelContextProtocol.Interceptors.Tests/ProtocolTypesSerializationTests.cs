@@ -70,6 +70,8 @@ public class ProtocolTypesSerializationTests
         };
 
         var json = JsonSerializer.Serialize(interceptor, Options);
+        Assert.Contains("\"priorityHint\":-1000", json);
+
         var deserialized = JsonSerializer.Deserialize<Interceptor>(json, Options)!;
 
         Assert.Equal("pii-validator", deserialized.Name);
@@ -80,9 +82,71 @@ public class ProtocolTypesSerializationTests
         Assert.Equal(InterceptorPhase.Request, deserialized.Hooks[0].Phase);
         Assert.Equal(InterceptorPhase.Response, deserialized.Hooks[1].Phase);
         Assert.Equal(InterceptorType.Validation, deserialized.Type);
-        Assert.Equal(-1000, deserialized.PriorityHint);
+        Assert.Equal(-1000, deserialized.PriorityHint!.GetEffective(InterceptorPhase.Request));
+        Assert.Equal(-1000, deserialized.PriorityHint.GetEffective(InterceptorPhase.Response));
         Assert.NotNull(deserialized.Compat);
         Assert.Equal("2024-11-05", deserialized.Compat.MinProtocol);
+    }
+
+    [Fact]
+    public void PriorityHint_ScalarJson_RoundTripsAsNumber()
+    {
+        var hint = JsonSerializer.Deserialize<PriorityHint>("-5", Options)!;
+
+        Assert.Equal(-5, hint.Request);
+        Assert.Equal(-5, hint.Response);
+        Assert.Equal("-5", JsonSerializer.Serialize(hint, Options));
+    }
+
+    [Fact]
+    public void PriorityHint_ObjectForm_RoundTripsAsObject()
+    {
+        var hint = new PriorityHint(-50000, 50000);
+
+        var json = JsonSerializer.Serialize(hint, Options);
+        Assert.Equal("""{"request":-50000,"response":50000}""", json);
+
+        var deserialized = JsonSerializer.Deserialize<PriorityHint>(json, Options)!;
+        Assert.Equal(-50000, deserialized.Request);
+        Assert.Equal(50000, deserialized.Response);
+        Assert.Equal(json, JsonSerializer.Serialize(deserialized, Options));
+    }
+
+    [Fact]
+    public void PriorityHint_PartialObject_ResolvesUnsetPhaseToZero()
+    {
+        var hint = JsonSerializer.Deserialize<PriorityHint>("""{"response":1000}""", Options)!;
+
+        Assert.Null(hint.Request);
+        Assert.Equal(0, hint.GetEffective(InterceptorPhase.Request));
+        Assert.Equal(1000, hint.GetEffective(InterceptorPhase.Response));
+        Assert.Equal("""{"response":1000}""", JsonSerializer.Serialize(hint, Options));
+    }
+
+    [Fact]
+    public void PriorityHint_EqualValuedObject_StaysObjectForm()
+    {
+        var hint = JsonSerializer.Deserialize<PriorityHint>("""{"request":5,"response":5}""", Options)!;
+
+        Assert.Equal("""{"request":5,"response":5}""", JsonSerializer.Serialize(hint, Options));
+    }
+
+    [Fact]
+    public void PriorityHint_UnknownKeysAndEmptyObject_AreTolerated()
+    {
+        var withUnknown = JsonSerializer.Deserialize<PriorityHint>("""{"request":7,"future":{"a":1}}""", Options)!;
+        Assert.Equal(7, withUnknown.Request);
+        Assert.Null(withUnknown.Response);
+
+        var empty = JsonSerializer.Deserialize<PriorityHint>("{}", Options)!;
+        Assert.Equal(0, empty.GetEffective(InterceptorPhase.Request));
+        Assert.Equal(0, empty.GetEffective(InterceptorPhase.Response));
+    }
+
+    [Fact]
+    public void PriorityHint_InvalidToken_Throws()
+    {
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<PriorityHint>("\"high\"", Options));
     }
 
     [Fact]
@@ -113,6 +177,13 @@ public class ProtocolTypesSerializationTests
     {
         Assert.Equal("\"active\"", JsonSerializer.Serialize(InterceptorMode.Active, Options));
         Assert.Equal("\"audit\"", JsonSerializer.Serialize(InterceptorMode.Audit, Options));
+    }
+
+    [Fact]
+    public void InterceptorMode_DeserializesFromString()
+    {
+        Assert.Equal(InterceptorMode.Active, JsonSerializer.Deserialize<InterceptorMode>("\"active\"", Options));
+        Assert.Equal(InterceptorMode.Audit, JsonSerializer.Deserialize<InterceptorMode>("\"audit\"", Options));
     }
 
     [Fact]

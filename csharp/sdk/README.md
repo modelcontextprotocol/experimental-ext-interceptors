@@ -49,6 +49,9 @@ public class MyInterceptors
 }
 ```
 
+`PriorityHint` applies to both phases; use `RequestPriorityHint`/`ResponsePriorityHint` instead to
+order a mutation differently per phase (unset phases default to 0).
+
 ### Consuming Interceptors from a Client
 
 ```csharp
