@@ -73,7 +73,7 @@ if outcome.status == "success":
 
 `InterceptorOverrides` lets the invoker adjust `failOpen`, `priorityHint`, `mode`, and `timeoutMs`, and narrow (never widen) the hooks of a discovered interceptor without touching the server-side declaration.
 
-`direction` tells the chain which side of the trust boundary it guards; when omitted it is derived from the phase (request → receiving, response → sending), matching the Go SDK.
+`direction` tells the chain which side of the trust boundary it guards; when omitted it is derived from the phase (request → receiving, response → sending).
 
 ## Capability advertisement
 

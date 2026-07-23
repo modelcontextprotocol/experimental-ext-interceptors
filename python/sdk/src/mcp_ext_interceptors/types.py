@@ -28,9 +28,9 @@ METHOD_INVOKE: Final = "interceptor/invoke"
 EXTENSION_ID: Final = "io.modelcontextprotocol/interceptors"
 
 # Interceptor types. Validation and mutation are the two the SEP text defines;
-# `sink` is the fire-and-forget observe-only type (C# ships it; SEP PR #28).
-# The `type` fields below stay typed as open strings so a further type is not a
-# breaking change.
+# `sink` is the fire-and-forget observe-only type (SEP PR #28). The `type`
+# fields below stay typed as open strings so a further type is not a breaking
+# change.
 TYPE_VALIDATION: Final = "validation"
 TYPE_MUTATION: Final = "mutation"
 TYPE_SINK: Final = "sink"

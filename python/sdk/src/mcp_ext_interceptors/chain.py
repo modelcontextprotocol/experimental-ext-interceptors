@@ -116,9 +116,9 @@ class ChainExecutionParams:
     """Which side of the trust boundary this chain guards.
 
     The SEP orders execution by data-flow direction. When omitted it is
-    derived from the phase the way the Go SDK does: request -> receiving,
-    response -> sending. An invoker sitting on the sending side of a request
-    (e.g. a client about to send tools/call) should pass "sending" explicitly.
+    derived from the phase: request -> receiving, response -> sending. An
+    invoker sitting on the sending side of a request (e.g. a client about to
+    send tools/call) should pass "sending" explicitly.
     """
 
 
