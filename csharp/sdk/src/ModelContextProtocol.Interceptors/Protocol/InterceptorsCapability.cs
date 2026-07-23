@@ -4,7 +4,7 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
 /// Represents the interceptors capability advertised by a server during initialization.
-/// This is placed in <c>ServerCapabilities.Extensions["interceptors"]</c>.
+/// This is placed in <c>ServerCapabilities.Extensions["io.modelcontextprotocol/interceptors"]</c>.
 /// </summary>
 public sealed class InterceptorsCapability
 {

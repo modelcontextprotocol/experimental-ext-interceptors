@@ -30,6 +30,14 @@ internal static class InterceptorChainOrchestrator
         ExecuteChainRequestParams chainParams,
         CancellationToken cancellationToken)
     {
+        if (chainParams.Phase is not (InterceptorPhase.Request or InterceptorPhase.Response))
+        {
+            throw new ArgumentException(
+                $"Chain execution phase must be '{nameof(InterceptorPhase.Request)}' or '{nameof(InterceptorPhase.Response)}'; " +
+                $"'{chainParams.Phase}' is an attribute-only convenience value that is invalid at execution time.",
+                nameof(chainParams));
+        }
+
         var sw = Stopwatch.StartNew();
         var results = new List<InterceptorResult>();
         var summary = new ChainValidationSummary();
@@ -40,7 +48,7 @@ internal static class InterceptorChainOrchestrator
         var applicable = FilterInterceptors(interceptors, chainParams);
 
         var mutations = applicable.Where(i => i.Type == InterceptorType.Mutation)
-            .OrderBy(i => i.PriorityHint ?? 0)
+            .OrderBy(i => i.PriorityHint?.GetEffective(chainParams.Phase) ?? 0)
             .ThenBy(i => i.Name, StringComparer.Ordinal)
             .ToList();
 

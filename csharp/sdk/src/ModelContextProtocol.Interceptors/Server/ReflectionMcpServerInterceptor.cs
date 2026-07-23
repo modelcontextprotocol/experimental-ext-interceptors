@@ -113,7 +113,7 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
             Hooks = hooks,
             Mode = attr.Mode == InterceptorMode.Active ? null : attr.Mode,
             FailOpen = attr.FailOpen ? true : null,
-            PriorityHint = attr.PriorityHint,
+            PriorityHint = ResolvePriorityHint(attr, method.Name),
         };
 
         // Collect metadata from declaring type and method
@@ -128,6 +128,23 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
         var resultConverter = BuildResultConverter(method, attr.Type);
 
         return new ReflectionMcpServerInterceptor(interceptor, metadata, method, target, parameterBinder, resultConverter);
+    }
+
+    private static PriorityHint? ResolvePriorityHint(McpServerInterceptorAttribute attr, string methodName)
+    {
+        var hasPhaseHint = attr.RequestPriorityHintOrNull is not null || attr.ResponsePriorityHintOrNull is not null;
+        if (attr.PriorityHintOrNull is int scalar)
+        {
+            if (hasPhaseHint)
+            {
+                throw new InvalidOperationException(
+                    $"Interceptor method '{methodName}' sets both PriorityHint and RequestPriorityHint/ResponsePriorityHint; use one or the other.");
+            }
+
+            return scalar;
+        }
+
+        return hasPhaseHint ? new PriorityHint(attr.RequestPriorityHintOrNull, attr.ResponsePriorityHintOrNull) : null;
     }
 
     private static Func<InvokeInterceptorRequestParams, McpServer, IServiceProvider?, CancellationToken, object?[]> BuildParameterBinder(MethodInfo method)

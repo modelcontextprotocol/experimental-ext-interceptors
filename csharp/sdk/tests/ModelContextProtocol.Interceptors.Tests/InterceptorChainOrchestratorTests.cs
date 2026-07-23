@@ -124,6 +124,110 @@ public class InterceptorChainOrchestratorTests
     }
 
     [Fact]
+    public async Task MutationsOrderByPhaseSpecificPriority()
+    {
+        // SEP example: PII redactor runs early when sending, late when receiving;
+        // compressor runs late when sending, early when receiving.
+        var executionOrder = new List<string>();
+
+        var pii = CreateInterceptor("pii-redactor", InterceptorType.Mutation, (req, _) =>
+        {
+            executionOrder.Add("pii-redactor");
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: new PriorityHint(request: -50000, response: 50000));
+
+        var compressor = CreateInterceptor("compressor", InterceptorType.Mutation, (req, _) =>
+        {
+            executionOrder.Add("compressor");
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: new PriorityHint(request: 5000, response: -5000));
+
+        var requestResult = await RunAsync(
+            [pii, compressor],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, requestResult.Status);
+        Assert.Equal(["pii-redactor", "compressor"], executionOrder);
+
+        executionOrder.Clear();
+
+        var responseResult = await RunAsync(
+            [pii, compressor],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Response,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, responseResult.Status);
+        Assert.Equal(["compressor", "pii-redactor"], executionOrder);
+    }
+
+    [Fact]
+    public async Task MutationsMixedScalarObjectAndUnsetHintsInterleaveAtDefaultZero()
+    {
+        var executionOrder = new List<string>();
+
+        TestEntry Mut(string name, PriorityHint? hint) => CreateInterceptor(name, InterceptorType.Mutation, (req, _) =>
+        {
+            executionOrder.Add(name);
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: hint);
+
+        var scalar = Mut("scalar", -10);
+        var requestOnly = Mut("request-only", new PriorityHint(request: 5, response: null));
+        var responseOnly = Mut("a-response-only", new PriorityHint(request: null, response: -7)); // effective 0 in request phase
+        var unset = Mut("b-unset", null); // effective 0
+
+        var result = await RunAsync(
+            [scalar, requestOnly, responseOnly, unset],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        // -10, then the two 0-effective entries tie-broken alphabetically, then 5.
+        Assert.Equal(["scalar", "a-response-only", "b-unset", "request-only"], executionOrder);
+    }
+
+    [Fact]
+    public async Task MutationsTieBreakAlphabeticallyByName()
+    {
+        var executionOrder = new List<string>();
+
+        TestEntry Mut(string name) => CreateInterceptor(name, InterceptorType.Mutation, (req, _) =>
+        {
+            executionOrder.Add(name);
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: 10);
+
+        var result = await RunAsync(
+            [Mut("charlie"), Mut("alpha"), Mut("bravo")],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(["alpha", "bravo", "charlie"], executionOrder);
+    }
+
+    [Fact]
     public async Task MutationsChainPayloads()
     {
         var mut1 = CreateInterceptor("mut-1", InterceptorType.Mutation, (req, _) =>
@@ -408,6 +512,27 @@ public class InterceptorChainOrchestratorTests
     }
 
     [Fact]
+    public async Task NonWirePhase_Throws()
+    {
+        var validation = CreateInterceptor("val", InterceptorType.Validation, (req, _) =>
+        {
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => RunAsync(
+            [validation],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Both,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None).AsTask());
+
+        Assert.Contains("Both", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ValidationSummaryCountsCorrectly()
     {
         var val = CreateInterceptor("val", InterceptorType.Validation, (req, _) =>
@@ -459,7 +584,7 @@ public class InterceptorChainOrchestratorTests
         string name,
         InterceptorType type,
         Func<InvokeInterceptorRequestParams, CancellationToken, ValueTask<InterceptorResult>> handler,
-        int priorityHint = 0,
+        PriorityHint? priorityHint = null,
         string[]? events = null,
         InterceptorPhase phase = InterceptorPhase.Both,
         InterceptorMode? mode = null,
