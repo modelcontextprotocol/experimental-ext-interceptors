@@ -29,6 +29,14 @@ public class TestInterceptors
         return new MutationInterceptorResult { Modified = true, Payload = obj };
     }
 
+    [McpServerInterceptor(Name = "phase-mutator", Type = InterceptorType.Mutation, Events = ["tools/call"], RequestPriorityHint = -50000, ResponsePriorityHint = 50000)]
+    public static MutationInterceptorResult MutateWithPhasePriorities(JsonNode payload)
+        => new() { Modified = false };
+
+    [McpServerInterceptor(Name = "conflicting-mutator", Type = InterceptorType.Mutation, Events = ["tools/call"], PriorityHint = -100, RequestPriorityHint = -50000)]
+    public static MutationInterceptorResult MutateWithConflictingPriorities(JsonNode payload)
+        => new() { Modified = false };
+
     [McpServerInterceptor(Name = "sink", Type = InterceptorType.Sink, Events = ["*"])]
     public static SinkInterceptorResult Sink(JsonNode payload, InvokeInterceptorContext? context)
     {
@@ -127,7 +135,8 @@ public class ReflectionMcpServerInterceptorTests
         var interceptor = ReflectionMcpServerInterceptor.Create(method, target: null);
 
         Assert.Equal("mutator", interceptor.ProtocolInterceptor.Name);
-        Assert.Equal(-100, interceptor.ProtocolInterceptor.PriorityHint);
+        Assert.Equal(-100, interceptor.ProtocolInterceptor.PriorityHint!.GetEffective(InterceptorPhase.Request));
+        Assert.Equal(-100, interceptor.ProtocolInterceptor.PriorityHint.GetEffective(InterceptorPhase.Response));
 
         var request = new InvokeInterceptorRequestParams
         {
@@ -181,6 +190,36 @@ public class ReflectionMcpServerInterceptorTests
         var result = await interceptor.InvokeAsync(request, null!, null, CancellationToken.None);
         var validation = Assert.IsType<ValidationInterceptorResult>(result);
         Assert.True(validation.Valid);
+    }
+
+    [Fact]
+    public void Create_PerPhasePriorityHints_ProduceObjectFormHint()
+    {
+        var method = typeof(TestInterceptors).GetMethod(nameof(TestInterceptors.MutateWithPhasePriorities))!;
+        var interceptor = ReflectionMcpServerInterceptor.Create(method, target: null);
+
+        var hint = interceptor.ProtocolInterceptor.PriorityHint;
+        Assert.NotNull(hint);
+        Assert.Equal(-50000, hint!.Request);
+        Assert.Equal(50000, hint.Response);
+        Assert.Equal(-50000, hint.GetEffective(InterceptorPhase.Request));
+        Assert.Equal(50000, hint.GetEffective(InterceptorPhase.Response));
+    }
+
+    [Fact]
+    public void Create_NoPriorityHint_OmitsHint()
+    {
+        var method = typeof(TestInterceptors).GetMethod(nameof(TestInterceptors.ValidateWithBool))!;
+        var interceptor = ReflectionMcpServerInterceptor.Create(method, target: null);
+
+        Assert.Null(interceptor.ProtocolInterceptor.PriorityHint);
+    }
+
+    [Fact]
+    public void Create_ScalarAndPerPhasePriorityHints_Throws()
+    {
+        var method = typeof(TestInterceptors).GetMethod(nameof(TestInterceptors.MutateWithConflictingPriorities))!;
+        Assert.Throws<InvalidOperationException>(() => ReflectionMcpServerInterceptor.Create(method, target: null));
     }
 
     [Fact]
