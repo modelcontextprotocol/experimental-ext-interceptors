@@ -18,23 +18,19 @@ This repository provides a multi-language reference implementation of the propos
 
 ## Conformance and reference components
 
-Additional components in this tree address cross-SDK conformance (issue #20) and
-the reserved `ValidationResult.signature` field. They are self-contained and
-independently tested.
+Additional components in this tree address cross-SDK conformance (issue #20).
+They are self-contained and independently tested.
 
 | Component | Directory | What it is |
 |-----------|-----------|------------|
 | Conformance suite | `conformance/` | Language-neutral golden fixtures (generated deterministically from one typed catalog) plus a four-function adapter contract. Any SDK certifies by implementing the adapter and replaying the fixtures. See [`conformance/README.md`](conformance/README.md) and [`conformance/ADAPTER.md`](conformance/ADAPTER.md). |
 | Python adapter | `conformance/adapters/python/` | Certifies the `feature/python-sdk` implementation against the shared fixtures, proving the suite is language-neutral in fact. |
-| Attested validation | `typescript/attested-validation/` | Reference implementation of the reserved SEP-2624 `ValidationResult.signature` field: Ed25519-signed, offline-verifiable interceptor decisions. |
-| LangGraph binding | `integrations/langgraph/` | One-line binding that wires the reference security interceptors and attested receipts into a LangGraph agent. |
 
 ### Walkthrough
 
-`scripts/demo.sh` runs three self-verifying beats end to end: the conformance
-suite is deterministic and discriminating, the same fixtures certify the Python
-SDK cross-language, and an interceptor denial is an Ed25519 receipt that verifies
-offline (and rejects a forged key). Run a single beat with `scripts/demo.sh 1|2|3`.
+`scripts/demo.sh` runs two self-verifying beats end to end: the conformance
+suite is deterministic and discriminating, and the same fixtures certify the
+Python SDK cross-language. Run a single beat with `scripts/demo.sh 1|2`.
 
 
 ## CI/CD

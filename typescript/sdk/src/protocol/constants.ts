@@ -28,14 +28,20 @@ export type InterceptorPhase =
   (typeof INTERCEPTOR_PHASE)[keyof typeof INTERCEPTOR_PHASE];
 
 /**
- * Execution mode. The SEP wire value is `enforce` (normal blocking /
+ * Execution mode. The canonical SEP wire value is `active` (normal blocking /
  * transforming) or `audit` (non-blocking: validators log without blocking,
- * mutators compute without applying). `enforce` is the default when omitted.
- * (Note: the C# SDK shipped `active` instead of `enforce` - see issue #15.
- * This SDK uses the SEP value.)
+ * mutators compute without applying). `active` is the default when omitted.
+ *
+ * History: an earlier draft of this SEP (and the Go SDK) spelled the enforcing
+ * mode `enforce`; the SEP was amended back to `active` (modelcontextprotocol
+ * PR #2624; this repo reverted the rename in PR #17). `enforce` is accepted
+ * READ-ONLY on the wire and normalized to `active` (see wire.ts); it is never
+ * emitted. The constant key stays `Enforce` so existing references keep
+ * resolving, but its value is the canonical `active` (rename the key to
+ * `Active` in a coordinated change across the SDK + integrations later).
  */
 export const INTERCEPTOR_MODE = {
-  Enforce: "enforce",
+  Enforce: "active",
   Audit: "audit",
 } as const;
 export type InterceptorMode =

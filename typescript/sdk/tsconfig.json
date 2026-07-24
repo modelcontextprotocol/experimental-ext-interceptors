@@ -1,15 +1,11 @@
 {
-  // TYPECHECK config: the whole source tree, including tests and the
-  // src/attest integration, which imports @formalcore/mcp-attested-validation
-  // AS SOURCE (a strip-types package with .ts-extension imports - hence
-  // allowImportingTsExtensions + noEmit here). The publishable build lives in
-  // tsconfig.build.json, which excludes src/attest and tests.
+  // TYPECHECK config: the whole source tree, including tests. The publishable
+  // build lives in tsconfig.build.json, which excludes tests.
   "compilerOptions": {
     "target": "esnext",
     "module": "NodeNext",
     "lib": ["esnext", "dom"],
     "noEmit": true,
-    "allowImportingTsExtensions": true,
     "strict": true,
     "isolatedModules": true,
     "esModuleInterop": true,
@@ -17,12 +13,8 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "NodeNext",
-    "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "@formalcore/mcp-attested-validation": ["../attested-validation/src/index.ts"]
-    }
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*", "vitest.config.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

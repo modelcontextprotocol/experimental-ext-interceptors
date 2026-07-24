@@ -25,7 +25,8 @@ export const SECRETLESS_REDACTOR_NAME = "formalcore/secretless-redactor";
 /**
  * FNV-1a 32-bit over the secret value - deterministic, dependency-free, and
  * enough to disambiguate handles. This is an OPAQUE REFERENCE, not a
- * commitment: unforgeability is the attestation layer's job, not the token's.
+ * commitment: the handle only disambiguates secrets and is not relied upon to
+ * be unforgeable.
  */
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;

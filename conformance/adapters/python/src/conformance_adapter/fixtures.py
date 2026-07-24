@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 Phase = Literal["request", "response"]
 HookPhases = Literal["request", "response", "both"]
-Mode = Literal["enforce", "audit"]
+Mode = Literal["active", "audit"]
 Decision = Literal["allow", "deny"]
 StepOp = Literal["list", "invoke", "chain"]
 
@@ -54,7 +54,7 @@ class FixtureInterceptor:
     behavior: str
     events: tuple[str, ...]
     phases: HookPhases
-    #: Absent on the wire when the default (``enforce``).
+    #: Absent on the wire when the default (``active``).
     mode: Mode | None
     #: Absent on the wire when the default (``False``).
     fail_open: bool | None

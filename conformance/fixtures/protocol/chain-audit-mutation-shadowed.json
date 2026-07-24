@@ -17,7 +17,7 @@
   ],
   "steps": [
     {
-      "op": "chain",
+      "op": "apply",
       "event": "tools/call",
       "phase": "request",
       "payload": {

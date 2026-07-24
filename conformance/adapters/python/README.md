@@ -51,8 +51,10 @@ fixtures pin, each bridged in exactly one marked place in
 `src/conformance_adapter/adapter.py` and pinned executable in
 `tests/test_conformance.py`:
 
-1. **Mode vocabulary** - the WG SDK spells the enforcing mode `active`; the
-   SEP (as amended) spells it `enforce`.
+1. **Mode vocabulary (aligned)** - SEP-2624 as amended (PR #17) and the WG SDK
+   agree on `active` as the enforcing mode; the fixtures now pin the same. What
+   the `raw` adapter still fails on the list descriptors is default EMISSION of
+   `mode: "active"` (finding 2), not the vocabulary itself.
 2. **Default emission** - the WG SDK serializes `mode` and `failOpen` on
    every `interceptors/list` descriptor; the SEP wire shape omits defaults.
 3. **Chain direction** - the WG `Chain` derives request→receiving (validate

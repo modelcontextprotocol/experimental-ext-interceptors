@@ -7,7 +7,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_run:
-    workflows: ["C# CI", "Python CI", "Go CI", "TypeScript CI", "Conformance CI", "Integrations CI"]
+    workflows: ["C# CI", "Python CI", "Go CI", "TypeScript CI", "Conformance CI"]
     types: [completed]
 
 permissions:
@@ -57,9 +57,6 @@ jobs:
             conformance:
               - 'conformance/**'
               - '.github/workflows/conformance.yml'
-            integrations:
-              - 'integrations/**'
-              - '.github/workflows/integrations.yml'
 
       - name: Check required statuses
         uses: actions/github-script@v7
@@ -93,17 +90,11 @@ jobs:
               typescript: [
                 'TypeScript CI / Linting',
                 'TypeScript CI / Unit Tests (20)',
-                'TypeScript CI / Unit Tests (22)',
-                'TypeScript CI / Attested Validation (20)',
-                'TypeScript CI / Attested Validation (22)'
+                'TypeScript CI / Unit Tests (22)'
               ],
               conformance: [
                 'Conformance CI / Suite + Determinism',
                 'Conformance CI / Python adapter (cross-language matrix)'
-              ],
-              integrations: [
-                'Integrations CI / LangGraph binding (20)',
-                'Integrations CI / LangGraph binding (22)'
               ]
             };
 
@@ -113,8 +104,7 @@ jobs:
               python: ${{ steps.changed-files.outputs.python }} === 'true',
               go: ${{ steps.changed-files.outputs.go }} === 'true',
               typescript: ${{ steps.changed-files.outputs.typescript }} === 'true',
-              conformance: ${{ steps.changed-files.outputs.conformance }} === 'true',
-              integrations: ${{ steps.changed-files.outputs.integrations }} === 'true'
+              conformance: ${{ steps.changed-files.outputs.conformance }} === 'true'
             };
 
             // Collect all required checks based on changes

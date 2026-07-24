@@ -71,15 +71,15 @@
       "id": "protocol/chain-validation-blocks",
       "kind": "protocol",
       "file": "fixtures/protocol/chain-validation-blocks.json",
-      "requirement": "SEP-2624/chain.enforce-blocks",
-      "description": "An enforce-mode validator returning severity=error aborts the chain."
+      "requirement": "SEP-2624/chain.active-blocks",
+      "description": "An active-mode validator returning severity=error aborts the chain."
     },
     {
       "id": "protocol/chain-audit-never-blocks",
       "kind": "protocol",
       "file": "fixtures/protocol/chain-audit-never-blocks.json",
       "requirement": "SEP-2624/chain.audit-nonblocking",
-      "description": "An audit-mode validator NEVER blocks: the same denial that aborts in enforce mode passes through in audit mode."
+      "description": "An audit-mode validator NEVER blocks: the same denial that aborts in active mode passes through in audit mode."
     },
     {
       "id": "protocol/chain-audit-mutation-shadowed",

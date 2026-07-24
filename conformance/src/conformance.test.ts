@@ -77,7 +77,7 @@ describe("generator", () => {
         }[];
       };
       for (const step of fixture.steps) {
-        if (step.op === "chain") {
+        if (step.op === "apply") {
           if ("finalPayload" in step.expect) {
             expect(typeof step.expect.finalPayloadCanonical).toBe("string");
           }

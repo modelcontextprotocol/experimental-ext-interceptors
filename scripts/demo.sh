@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 #
-# One-command walkthrough of the MCP interceptors conformance + attestation work.
-# Three beats, each self-verifying:
+# One-command walkthrough of the MCP interceptors conformance work.
+# Two beats, each self-verifying:
 #
 #   1. The conformance suite is a deterministic, discriminating oracle.
 #   2. The same fixtures certify a Python implementation, cross-language.
-#   3. A denial is an Ed25519 receipt anyone verifies offline; forgery is rejected.
 #
-# Usage:  scripts/demo.sh            (runs all three beats)
-#         scripts/demo.sh 1          (runs a single beat: 1, 2, or 3)
+# Usage:  scripts/demo.sh            (runs both beats)
+#         scripts/demo.sh 1          (runs a single beat: 1 or 2)
 #
 # Requirements: Node >= 22, npm. Beat 2 also needs `uv` and the WG python-sdk
 # branch fetched (git fetch upstream feature/python-sdk). Beat 2 self-skips with
@@ -75,28 +74,9 @@ beat2() {
   cd "$ROOT"
 }
 
-beat3() {
-  banner "BEAT 3  ·  A denial is an offline-verifiable receipt (and forgery is rejected)"
-  cd "$ROOT/typescript/attested-validation"
-  [ -d node_modules ] || { step "npm install"; npm install >/dev/null 2>&1; }
-  step "npm test   # Ed25519 sign/verify, tamper + forgery rejection, canonical independence"
-  npm test
-  cd "$ROOT/typescript/sdk"
-  [ -d dist ] || { step "npm install && npm run build   # (integration consumes the built SDK)"; npm install >/dev/null 2>&1; npm run build >/dev/null 2>&1; }
-  cd "$ROOT/integrations/langgraph"
-  [ -d node_modules ] || { step "npm install"; npm install >/dev/null 2>&1; }
-  step "npm run demo   # LangGraph agent: relaybleed denied, receipt verified offline"
-  npm run demo | tee /tmp/fc-demo-lg.txt
-  grep -q "the secret never crossed the boundary under interceptors." /tmp/fc-demo-lg.txt \
-    || die "langgraph demo did not confirm containment"
-  ok "guard denies the cross-server exfil; the denial receipt verifies offline and rejects a forged key"
-  cd "$ROOT"
-}
-
 case "$WHICH" in
   1) beat1 ;;
   2) beat2 ;;
-  3) beat3 ;;
-  all) beat1; beat2; beat3; banner "ALL THREE BEATS GREEN"; ok "deterministic oracle · cross-language certification · offline-verifiable denials" ;;
-  *) die "usage: scripts/demo.sh [1|2|3]" ;;
+  all) beat1; beat2; banner "BOTH BEATS GREEN"; ok "deterministic oracle · cross-language certification" ;;
+  *) die "usage: scripts/demo.sh [1|2]" ;;
 esac

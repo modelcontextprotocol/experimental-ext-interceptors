@@ -3,16 +3,15 @@
  * traceability manifest. RULE 20/21: the suite is generated, one fixture per
  * catalog entry; nothing under `fixtures/` is hand-authored.
  *
- * Canonical strings are derived with the RFC-8785-aligned `canonicalize` from
- * `@formalcore/mcp-attested-validation` - the SAME canonicalization that
- * attested validation signs over - so byte-equality is one string comparison
- * in any language, and a runner never needs deep-equality logic.
+ * Canonical strings are derived with the RFC-8785 `canonicalize` in
+ * `./canonical.ts` (vendored into this suite) - so byte-equality is one string
+ * comparison in any language, and a runner never needs deep-equality logic.
  *
  * The generator is deterministic: same catalog → identical bytes. The
  * conformance meta-test regenerates in-memory and diffs against disk, so a
  * stale or edited fixture fails CI.
  */
-import { canonicalize } from "@formalcore/mcp-attested-validation";
+import { canonicalize } from "./canonical.ts";
 import { CATALOG } from "./catalog.ts";
 import { fixtureFile, isErrorExpectation, STEP_OP } from "./fixture-types.ts";
 import type {
@@ -44,8 +43,8 @@ const ENRICH_BY_OP: Record<FixtureStep["op"], StepEnricher> = {
           ...step,
           expect: { ...step.expect, canonical: canonicalize(step.expect.result) },
         },
-  [STEP_OP.Chain]: (step) =>
-    step.op !== STEP_OP.Chain || step.expect.finalPayload === undefined
+  [STEP_OP.Apply]: (step) =>
+    step.op !== STEP_OP.Apply || step.expect.finalPayload === undefined
       ? step
       : {
           ...step,

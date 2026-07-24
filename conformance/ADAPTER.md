@@ -18,7 +18,7 @@ session.chain(event, phase, payload, sessionId | null)
 
 - `createSession` registers each fixture interceptor: bind its `behavior`
   (table below) and honor `name`, `events`, `phases` (`both` = request AND
-  response hooks), `mode` (default `enforce`), `failOpen` (default `false`).
+  response hooks), `mode` (default `active`), `failOpen` (default `false`).
 - `list` returns exactly what your `interceptors/list` puts on the wire.
 - `invoke` returns exactly what your `interceptor/invoke` puts on the wire;
   an RPC failure becomes `{ ok: false, errorCode }`.

@@ -1,7 +1,9 @@
 {
   // Typecheck-only package (fixtures are the shipped artifact, not JS).
-  // The reference adapter consumes the TypeScript SDK and the attestation
-  // package AS SOURCE via paths; vitest.config.ts mirrors these aliases.
+  // The reference adapter consumes the TypeScript SDK AS SOURCE via paths;
+  // vitest.config.ts mirrors this alias. The JCS canonicalizer is vendored
+  // in src/canonical.ts (formerly imported from the attested-validation
+  // package, which was removed from the tree).
   "compilerOptions": {
     "target": "esnext",
     "module": "NodeNext",
@@ -18,8 +20,7 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@formalcore/mcp-interceptors-sdk": ["../typescript/sdk/src/index.ts"],
-      "@formalcore/mcp-attested-validation": ["../typescript/attested-validation/src/index.ts"]
+      "@formalcore/mcp-interceptors-sdk": ["../typescript/sdk/src/index.ts"]
     }
   },
   "include": ["src/**/*", "scripts/**/*", "vitest.config.ts"],

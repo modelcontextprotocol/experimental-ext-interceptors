@@ -52,7 +52,7 @@
         },
         "events": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "phases": { "enum": ["request", "response", "both"] },
-        "mode": { "enum": ["enforce", "audit"], "description": "Omitted when the default (enforce)." },
+        "mode": { "enum": ["active", "audit"], "description": "Canonical enforcing mode is 'active' (SEP-2624 as amended, PR #17); omitted when the default ('active'). Adapters accept legacy 'enforce' read-only and normalize it to 'active'." },
         "failOpen": { "const": true, "description": "Omitted when the default (false)." }
       }
     },
@@ -101,7 +101,7 @@
       "oneOf": [
         { "$ref": "#/$defs/listStep" },
         { "$ref": "#/$defs/invokeStep" },
-        { "$ref": "#/$defs/chainStep" }
+        { "$ref": "#/$defs/applyStep" }
       ]
     },
     "listStep": {
@@ -139,12 +139,12 @@
         }
       }
     },
-    "chainStep": {
+    "applyStep": {
       "type": "object",
       "required": ["op", "event", "phase", "payload", "context", "expect"],
       "additionalProperties": false,
       "properties": {
-        "op": { "const": "chain" },
+        "op": { "const": "apply" },
         "event": { "type": "string" },
         "phase": { "$ref": "#/$defs/phase" },
         "payload": {},

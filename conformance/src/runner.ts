@@ -12,10 +12,10 @@
  * Behavior expectations additionally check decision equality and
  * forbids/requires substrings over the canonical final payload.
  */
-import { canonicalize } from "@formalcore/mcp-attested-validation";
+import { canonicalize } from "./canonical.ts";
 import { isErrorExpectation, STEP_OP } from "./fixture-types.ts";
 import type {
-  ChainStep,
+  ApplyStep,
   DecisionExpectation,
   Fixture,
   FixtureInterceptor,
@@ -195,8 +195,8 @@ function checkDecision(
   return { passed: true, detail: `decision '${expect.decision}' as required` };
 }
 
-async function runChainStep(
-  step: ChainStep,
+async function runApplyStep(
+  step: ApplyStep,
   session: AdapterSession,
   fixture: Fixture,
   index: number,
@@ -214,7 +214,7 @@ async function runChainStep(
 const RUN_BY_OP: Record<FixtureStep["op"], StepRunner> = {
   [STEP_OP.List]: (step, ...rest) => runListStep(step as ListStep, ...rest),
   [STEP_OP.Invoke]: (step, ...rest) => runInvokeStep(step as InvokeStep, ...rest),
-  [STEP_OP.Chain]: (step, ...rest) => runChainStep(step as ChainStep, ...rest),
+  [STEP_OP.Apply]: (step, ...rest) => runApplyStep(step as ApplyStep, ...rest),
 };
 
 // ── fixture + suite execution ────────────────────────────────────────────────

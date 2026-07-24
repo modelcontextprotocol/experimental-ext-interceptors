@@ -42,7 +42,7 @@ export function serializeInterceptor(i: Interceptor): Json {
     hooks: i.hooks.map(serializeHook),
     version: i.version,
     description: i.description,
-    // `enforce` is the SEP default; only emit when it differs.
+    // `active` is the SEP default; only emit when it differs (i.e. `audit`).
     mode: i.mode === INTERCEPTOR_MODE.Enforce ? null : i.mode,
     // `false` is the default; only emit when opting into fail-open.
     failOpen: i.failOpen ? true : null,

@@ -27,10 +27,12 @@ FINDINGS - divergences of feature/python-sdk from the SEP-2624 wire shape the
 fixtures (and the TS SDK's serializer) pin. Each is bridged in exactly one
 place below, marked ``FINDING n``:
 
-1. Mode vocabulary: the WG Python SDK spells the enforcing mode ``active``
-   (``types.Mode = Literal["active", "audit"]``); SEP-2624 as amended spells
-   it ``enforce``. Bridged at registration (``_MODE_TO_WG``) and in the list
-   shape (finding 2).
+1. Mode vocabulary (ALIGNED): SEP-2624 as amended (PR #17) and the WG Python
+   SDK (``types.Mode = Literal["active", "audit"]``) agree on ``active`` as
+   the enforcing mode; the conformance fixtures, once corrected, pin the same.
+   ``_MODE_TO_WG`` is therefore an identity map that additionally accepts the
+   legacy ``enforce`` spelling read-only (normalizing it to ``active``). The
+   wire divergence that remains is default EMISSION, folded into finding 2.
 2. Default emission on ``interceptors/list``: the WG SDK serializes
    ``mode: "active"`` and ``failOpen: false`` on every descriptor; the SEP
    wire shape OMITS defaults. Bridged by ``_sep_descriptor``.
@@ -94,8 +96,14 @@ class _InvokeRequest(mcp_types.Request[InvokeInterceptorParams, Literal["interce
     params: InvokeInterceptorParams
 
 
-# FINDING 1: fixture mode vocabulary (SEP `enforce`) → WG spelling (`active`).
-_MODE_TO_WG: dict[str | None, str] = {None: "active", "enforce": "active", "audit": "audit"}
+# FINDING 1 (ALIGNED): SEP + WG SDK both use `active`; this is an identity map
+# that also accepts the legacy `enforce` spelling read-only → `active`.
+_MODE_TO_WG: dict[str | None, str] = {
+    None: "active",
+    "active": "active",
+    "audit": "audit",
+    "enforce": "active",  # legacy read-only (pre-amendment SEP / Go SDK)
+}
 
 # FINDING 3: the SEP trust-boundary order for a client-side chain, stated as
 # the WG Chain's explicit `direction` parameter.

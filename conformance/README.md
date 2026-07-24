@@ -28,7 +28,7 @@ conformance/
 ## The two fixture kinds
 
 - **`protocol/`** - exact `interceptors/list`, `interceptor/invoke`, and chain
-  semantics (trust-boundary ordering, enforce vs audit, fail-open vs
+  semantics (trust-boundary ordering, active vs audit, fail-open vs
   fail-closed, unknown-name errors). Expectations are exact SEP wire JSON with
   a precomputed RFC 8785 (JCS) canonical string, so comparison in any language
   is: scrub volatile keys → canonicalize → compare one string.

@@ -6,7 +6,7 @@
  * The wire boundary (FUNCTIONAL_PATTERNS RULE 7): the ONE place untrusted
  * JSON from another SDK/server is read and normalized into the trusted
  * interior shape. Optionals collapse to `null`, defaults are applied
- * (`mode=enforce`, `failOpen=false`), and result parsing dispatches on `type`
+ * (`mode=active`, `failOpen=false`), and result parsing dispatches on `type`
  * through a `Record` table (RULE 2) - never a `switch`. The interior
  * (types.ts) is trusted after this point and never re-validates.
  */
@@ -64,10 +64,22 @@ function interceptorType(v: unknown): InterceptorType {
   if (typeof v === "string" && TYPES.has(v)) return v as InterceptorType;
   throw new WireError(`invalid interceptor type: ${String(v)}`);
 }
+/**
+ * Legacy wire spellings accepted READ-ONLY and normalized to a canonical mode.
+ * A pre-amendment draft of the SEP (and the Go SDK) spelled the enforcing mode
+ * `enforce`; it maps to the canonical `active`. These are never emitted (see
+ * serialize.ts), so the interior only ever holds a canonical mode value.
+ */
+const LEGACY_MODE_ALIASES: Readonly<Record<string, InterceptorMode>> = {
+  enforce: INTERCEPTOR_MODE.Enforce, // key `Enforce` carries the canonical value `active`
+};
 function mode(v: unknown): InterceptorMode {
-  return typeof v === "string" && MODES.has(v)
-    ? (v as InterceptorMode)
-    : INTERCEPTOR_MODE.Enforce;
+  if (typeof v === "string") {
+    if (MODES.has(v)) return v as InterceptorMode;
+    const legacy = LEGACY_MODE_ALIASES[v];
+    if (legacy !== undefined) return legacy;
+  }
+  return INTERCEPTOR_MODE.Enforce;
 }
 function severity(v: unknown): ValidationSeverity | null {
   return typeof v === "string" && SEVERITIES.has(v)

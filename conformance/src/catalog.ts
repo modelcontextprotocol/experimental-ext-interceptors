@@ -44,7 +44,7 @@ function toolResultText(text: string): unknown {
 
 /**
  * SEP wire shape of a registered fixture interceptor, as `interceptors/list`
- * MUST return it: defaults (`enforce`, `failOpen:false`) omitted, absent
+ * MUST return it: defaults (`active`, `failOpen:false`) omitted, absent
  * optionals omitted, `both` expanded request-then-response. This mapping is
  * conformance's own statement of the SEP serialization rules.
  */
@@ -189,7 +189,7 @@ function validationPass(name: string, phase: (typeof PHASE)[keyof typeof PHASE])
 function relaybleedSteps(secret: string, sessionId: string): readonly FixtureStep[] {
   return [
     {
-      op: STEP_OP.Chain,
+      op: STEP_OP.Apply,
       event: EVENT_TOOLS_CALL,
       phase: PHASE.Request,
       payload: toolCall("read_file", { path: "/workspace/.env" }),
@@ -197,7 +197,7 @@ function relaybleedSteps(secret: string, sessionId: string): readonly FixtureSte
       expect: allow(),
     },
     {
-      op: STEP_OP.Chain,
+      op: STEP_OP.Apply,
       event: EVENT_TOOLS_CALL,
       phase: PHASE.Response,
       payload: toolResultText(`STRIPE_KEY=${secret}`),
@@ -205,7 +205,7 @@ function relaybleedSteps(secret: string, sessionId: string): readonly FixtureSte
       expect: allow(),
     },
     {
-      op: STEP_OP.Chain,
+      op: STEP_OP.Apply,
       event: EVENT_TOOLS_CALL,
       phase: PHASE.Request,
       payload: toolCall("write_query", {
@@ -395,7 +395,7 @@ const PROTOCOL_FIXTURES: readonly Fixture[] = [
     interceptors: [REQUIRE_UPPERCASE_NOTE, UPPERCASE_NOTE],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("echo", { note: "hello" }),
@@ -414,7 +414,7 @@ const PROTOCOL_FIXTURES: readonly Fixture[] = [
     interceptors: [REQUIRE_UPPERCASE_NOTE, UPPERCASE_NOTE],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Response,
         payload: toolCall("echo", { note: "hello" }),
@@ -427,12 +427,12 @@ const PROTOCOL_FIXTURES: readonly Fixture[] = [
   {
     id: "protocol/chain-validation-blocks",
     kind: FIXTURE_KIND.Protocol,
-    requirement: "SEP-2624/chain.enforce-blocks",
-    description: "An enforce-mode validator returning severity=error aborts the chain.",
+    requirement: "SEP-2624/chain.active-blocks",
+    description: "An active-mode validator returning severity=error aborts the chain.",
     interceptors: [DENY_ALL],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("echo", { note: "hi" }),
@@ -447,11 +447,11 @@ const PROTOCOL_FIXTURES: readonly Fixture[] = [
     kind: FIXTURE_KIND.Protocol,
     requirement: "SEP-2624/chain.audit-nonblocking",
     description:
-      "An audit-mode validator NEVER blocks: the same denial that aborts in enforce mode passes through in audit mode.",
+      "An audit-mode validator NEVER blocks: the same denial that aborts in active mode passes through in audit mode.",
     interceptors: [DENY_ALL_AUDIT],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("echo", { note: "hi" }),
@@ -470,7 +470,7 @@ const PROTOCOL_FIXTURES: readonly Fixture[] = [
     interceptors: [{ ...UPPERCASE_NOTE, mode: MODE.Audit }],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("echo", { note: "hello" }),
@@ -489,7 +489,7 @@ const PROTOCOL_FIXTURES: readonly Fixture[] = [
     interceptors: [CRASH_CLOSED],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("echo", { note: "hi" }),
@@ -507,7 +507,7 @@ const PROTOCOL_FIXTURES: readonly Fixture[] = [
     interceptors: [CRASH_OPEN],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("echo", { note: "hi" }),
@@ -545,7 +545,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
     interceptors: [GUARD],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("read_file", { path: "/workspace/.env" }),
@@ -553,7 +553,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
         expect: allow(),
       },
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Response,
         payload: toolResultText(`KEY=${STRIPE_SECRET.value}`),
@@ -561,7 +561,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
         expect: allow(),
       },
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("write_file", {
@@ -583,7 +583,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
     interceptors: [GUARD],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("write_query", {
@@ -604,7 +604,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
     interceptors: [GUARD],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("read_file", { path: "/workspace/.env" }),
@@ -612,7 +612,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
         expect: allow(),
       },
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Response,
         payload: toolResultText(AWS_ACCESS_KEY.value),
@@ -620,7 +620,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
         expect: allow(),
       },
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("write_query", { query: AWS_ACCESS_KEY.value }),
@@ -643,7 +643,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
       interceptors: [REDACTOR],
       steps: [
         {
-          op: STEP_OP.Chain,
+          op: STEP_OP.Apply,
           event: EVENT_TOOLS_CALL,
           phase: PHASE.Request,
           payload: toolCall("write_query", {
@@ -665,7 +665,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
     interceptors: [GUARD, REDACTOR],
     steps: [
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("read_file", { path: "/workspace/.env" }),
@@ -673,7 +673,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
         expect: allow(),
       },
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Response,
         payload: toolResultText(STRIPE_SECRET.value),
@@ -681,7 +681,7 @@ const BEHAVIOR_FIXTURES: readonly Fixture[] = [
         expect: allow(),
       },
       {
-        op: STEP_OP.Chain,
+        op: STEP_OP.Apply,
         event: EVENT_TOOLS_CALL,
         phase: PHASE.Request,
         payload: toolCall("write_query", {

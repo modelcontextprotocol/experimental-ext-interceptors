@@ -25,7 +25,7 @@
   ],
   "steps": [
     {
-      "op": "chain",
+      "op": "apply",
       "event": "tools/call",
       "phase": "request",
       "payload": {
@@ -42,7 +42,7 @@
       }
     },
     {
-      "op": "chain",
+      "op": "apply",
       "event": "tools/call",
       "phase": "response",
       "payload": {
@@ -61,7 +61,7 @@
       }
     },
     {
-      "op": "chain",
+      "op": "apply",
       "event": "tools/call",
       "phase": "request",
       "payload": {

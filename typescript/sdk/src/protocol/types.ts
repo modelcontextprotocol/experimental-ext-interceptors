@@ -44,7 +44,7 @@ export interface Interceptor {
   readonly description: string | null;
   readonly type: InterceptorType;
   readonly hooks: readonly InterceptorHook[];
-  /** Default `enforce`; always present in the interior. */
+  /** Default `active`; always present in the interior. */
   readonly mode: InterceptorMode;
   /** Default `false` (fail-closed); always present in the interior. */
   readonly failOpen: boolean;

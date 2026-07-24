@@ -15,7 +15,7 @@
 // ── vocabularies ─────────────────────────────────────────────────────────────
 
 export const FIXTURE_KIND = {
-  /** Exact wire-protocol byte agreement: list / invoke / chain semantics. */
+  /** Exact wire-protocol byte agreement: list / invoke / apply semantics. */
   Protocol: "protocol",
   /** Security behavior a conformant security interceptor MUST exhibit. */
   Behavior: "behavior",
@@ -27,8 +27,8 @@ export const STEP_OP = {
   List: "list",
   /** `interceptor/invoke` of one named interceptor. */
   Invoke: "invoke",
-  /** One chain execution over the fixture's interceptors. */
-  Chain: "chain",
+  /** One ordered application of the fixture's interceptors (no chain primitive). */
+  Apply: "apply",
 } as const;
 export type StepOp = (typeof STEP_OP)[keyof typeof STEP_OP];
 
@@ -42,7 +42,10 @@ export const HOOK_PHASES = {
 } as const;
 export type HookPhases = (typeof HOOK_PHASES)[keyof typeof HOOK_PHASES];
 
-export const MODE = { Enforce: "enforce", Audit: "audit" } as const;
+// Canonical SEP-2624 (as amended, PR #17) enforcing mode is `active`; `audit`
+// is non-blocking. Legacy `enforce` is accepted read-only by adapters and
+// normalized to `active` (it is never emitted; the default is omitted).
+export const MODE = { Active: "active", Audit: "audit" } as const;
 export type Mode = (typeof MODE)[keyof typeof MODE];
 
 export const DECISION = { Allow: "allow", Deny: "deny" } as const;
@@ -88,7 +91,7 @@ export interface FixtureInterceptor {
   readonly behavior: Behavior;
   readonly events: readonly string[];
   readonly phases: HookPhases;
-  /** Omitted on the wire when the default (`enforce`). */
+  /** Omitted on the wire when the default (`active`). */
   readonly mode?: Mode;
   /** Omitted on the wire when the default (`false`). */
   readonly failOpen?: boolean;
@@ -150,8 +153,8 @@ export interface InvokeStep {
   readonly expect: ResultExpectation | ErrorExpectation;
 }
 
-export interface ChainStep {
-  readonly op: (typeof STEP_OP)["Chain"];
+export interface ApplyStep {
+  readonly op: (typeof STEP_OP)["Apply"];
   readonly event: string;
   readonly phase: Phase;
   readonly payload: unknown;
@@ -160,7 +163,7 @@ export interface ChainStep {
   readonly expect: DecisionExpectation;
 }
 
-export type FixtureStep = ListStep | InvokeStep | ChainStep;
+export type FixtureStep = ListStep | InvokeStep | ApplyStep;
 
 // ── the fixture envelope ─────────────────────────────────────────────────────
 

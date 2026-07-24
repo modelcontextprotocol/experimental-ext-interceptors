@@ -2,7 +2,7 @@
   "id": "protocol/chain-audit-never-blocks",
   "kind": "protocol",
   "requirement": "SEP-2624/chain.audit-nonblocking",
-  "description": "An audit-mode validator NEVER blocks: the same denial that aborts in enforce mode passes through in audit mode.",
+  "description": "An audit-mode validator NEVER blocks: the same denial that aborts in active mode passes through in audit mode.",
   "interceptors": [
     {
       "name": "conf/deny-all",
@@ -17,7 +17,7 @@
   ],
   "steps": [
     {
-      "op": "chain",
+      "op": "apply",
       "event": "tools/call",
       "phase": "request",
       "payload": {

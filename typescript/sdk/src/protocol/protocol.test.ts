@@ -61,15 +61,24 @@ describe("constant sets (RULE 1)", () => {
     ]);
   });
 
-  it("mode uses the SEP wire value `enforce`, not the C# `active`", () => {
-    expect(INTERCEPTOR_MODE.Enforce).toBe("enforce");
-    expect(Object.values(INTERCEPTOR_MODE)).not.toContain("active");
+  it("mode uses the SEP canonical wire value `active` (enforce is legacy read-only)", () => {
+    expect(INTERCEPTOR_MODE.Enforce).toBe("active");
+    expect(Object.values(INTERCEPTOR_MODE)).toContain("active");
+    expect(Object.values(INTERCEPTOR_MODE)).not.toContain("enforce");
+    // Legacy `enforce` on the wire is accepted read-only and normalized to `active`.
+    const legacy = normalizeInterceptor({
+      name: "g",
+      type: "validation",
+      hooks: [{ events: ["tools/call"], phase: "request" }],
+      mode: "enforce",
+    });
+    expect(legacy.mode).toBe(INTERCEPTOR_MODE.Enforce);
   });
 });
 
 /** RULE 7: the wire boundary applies defaults and collapses optionals to null. */
 describe("normalizeInterceptor (RULE 7 boundary)", () => {
-  it("applies enforce/failOpen=false defaults and nulls absent optionals", () => {
+  it("applies active/failOpen=false defaults and nulls absent optionals", () => {
     const i = normalizeInterceptor({
       name: "guard",
       type: "validation",
