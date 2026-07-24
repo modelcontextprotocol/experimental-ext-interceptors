@@ -423,10 +423,11 @@ interface SinkResult {
   info?: Record<string, unknown>; // Additional interceptor-specific data
 
   // Sink-specific fields
-  recorded: boolean; // Whether the sink successfully reacted to the event
-  metrics?: Record<string, number>; // Optional metrics emitted by the sink
+  recorded: boolean; // Whether the sink accepted the event (see below)
 }
 ```
+
+Because sinks perform their work asynchronously, `recorded: true` is an acknowledgment that the sink accepted the event, not a guarantee that any downstream processing completed. `recorded: false` signals that the sink definitively did not record the event.
 
 See [Execution Model](#execution-model) for sink execution semantics.
 
@@ -1300,7 +1301,6 @@ interface ChainExecutionResult {
     messages?: Array<{ message: string; severity: "error" | "warn" | "info" }>;
     // Sink-specific fields
     recorded?: boolean;
-    metrics?: Record<string, number>;
     // Audit mode (mutation / validation only)
     mode?: "audit";
     info?: Record<string, unknown>;
