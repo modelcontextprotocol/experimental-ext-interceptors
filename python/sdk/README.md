@@ -20,18 +20,22 @@ from mcp_ext_interceptors import Interceptors, Invocation, MutationResult, SinkR
 
 interceptors = Interceptors()
 
+
 @interceptors.validator("block-dangerous", events=["tools/call"], phase="request")
 async def check(inv: Invocation) -> ValidationResult:
     return ValidationResult(valid="rm -rf" not in str(inv.payload))
+
 
 @interceptors.mutator("pii-redactor", events=["tools/call"], phase="request", priority_hint=-1000)
 async def redact(inv: Invocation) -> MutationResult:
     return MutationResult(modified=True, payload=redact_pii(inv.payload))
 
+
 @interceptors.sink("audit-log", events=["tools/call"], phase="response")  # fire-and-forget, observe-only
 async def record(inv: Invocation) -> SinkResult:
     log_to_bus(inv.payload)
     return SinkResult(recorded=True)
+
 
 server = MCPServer("demo", extensions=[interceptors])
 ```
