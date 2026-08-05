@@ -398,6 +398,37 @@ async def test_chain_timeout() -> None:
     assert result.final_payload is None
 
 
+async def test_chain_timeout_not_blamed_on_fail_open_mutator() -> None:
+    """A mutator that failed open is no longer in flight, so a chain timeout in a
+    later stage must not name it in `abortedAt`."""
+    ext = Interceptors()
+
+    @ext.mutator("boom", events=["tools/call"], phase="request", fail_open=True)
+    async def boom(inv: Invocation) -> MutationResult:
+        raise RuntimeError("kaboom")
+
+    @ext.validator("slow", events=["tools/call"], phase="request")
+    async def slow(inv: Invocation) -> ValidationResult:
+        await anyio.sleep(5)
+        return ValidationResult(valid=True)
+
+    async with Client(MCPServer("s", extensions=[ext])) as client:
+        chain = Chain()
+        await chain.add_server(client)
+        # Sending direction: the fail-open mutator runs (and fails) before the
+        # slow validator stage where the chain timeout fires.
+        result = await chain.execute(
+            ChainExecutionParams(
+                event="tools/call", phase="request", payload={}, direction="sending", timeout_ms=200
+            )
+        )
+
+    assert result.status == "timeout"
+    assert result.aborted_at is not None
+    assert result.aborted_at.type == "timeout"
+    assert result.aborted_at.interceptor == ""
+
+
 async def test_chain_timeout_during_parallel_stage_names_the_stage() -> None:
     """A chain timeout in a parallel stage has no single in-flight entry, but is
     still attributable via the abort reason (interceptor stays empty)."""
