@@ -2,15 +2,13 @@
 
 Python implementation of the Model Context Protocol interceptor framework ([SEP-2624](../../docs/sep.md)): validators, mutators, and sinks that govern context operations, hosted on MCP servers and orchestrated through `interceptors/list` and `interceptor/invoke`.
 
-Built on the [MCP Python SDK v2 beta](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.0.0b1), which serves both the 2025-11-25 (handshake) and 2026-07-28 (modern) protocol revisions from one package. The interceptor methods work on every connection mode; see the capability note below for what differs.
+Built on the [MCP Python SDK v2](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.0.0), which serves both the 2025-11-25 (handshake) and 2026-07-28 (modern) protocol revisions from one package. The interceptor methods work on every connection mode; see the capability note below for what differs.
 
 ## Installation
 
 ```bash
 pip install mcp-ext-interceptors
 ```
-
-This SDK depends on `mcp>=2.0.0b1`, which is a pre-release: `pip` resolves it automatically because the bound names the beta, while `uv` needs pre-releases enabled (this project's `pyproject.toml` sets `tool.uv.prerelease = "allow"`; downstream `uv` users need the same setting or `--prerelease allow`). Until mcp v2 goes stable, pin the exact beta in applications.
 
 ## Hosting interceptors on a server
 
@@ -87,7 +85,7 @@ Servers advertise `capabilities.extensions["io.modelcontextprotocol/interceptors
 ## Development
 
 ```bash
-uv sync          # creates .venv with the mcp 2.0.0b1 beta
+uv sync          # creates .venv with mcp v2
 uv run pytest    # exercises both protocol eras over in-memory transport
 uv run ruff check && uv run mypy src
 ```
