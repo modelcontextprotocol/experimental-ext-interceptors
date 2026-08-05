@@ -362,9 +362,7 @@ async def test_chain_timeout_not_blamed_on_fail_open_mutator() -> None:
         # Sending direction: the fail-open mutator runs (and fails) before the
         # slow validator stage where the chain timeout fires.
         result = await chain.execute(
-            ChainExecutionParams(
-                event="tools/call", phase="request", payload={}, direction="sending", timeout_ms=200
-            )
+            ChainExecutionParams(event="tools/call", phase="request", payload={}, direction="sending", timeout_ms=200)
         )
 
     assert result.status == "timeout"

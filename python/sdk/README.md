@@ -20,13 +20,16 @@ from mcp_ext_interceptors import Interceptors, Invocation, MutationResult, Valid
 
 interceptors = Interceptors()
 
+
 @interceptors.validator("block-dangerous", events=["tools/call"], phase="request")
 async def check(inv: Invocation) -> ValidationResult:
     return ValidationResult(valid="rm -rf" not in str(inv.payload))
 
+
 @interceptors.mutator("pii-redactor", events=["tools/call"], phase="request", priority_hint=-1000)
 async def redact(inv: Invocation) -> MutationResult:
     return MutationResult(modified=True, payload=redact_pii(inv.payload))
+
 
 server = MCPServer("demo", extensions=[interceptors])
 ```
