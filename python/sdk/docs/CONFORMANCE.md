@@ -52,4 +52,4 @@ PR #28 (reintroducing a third `sink` interceptor type) is unreviewed, so this SD
 
 ## Test coverage
 
-`uv run pytest` — 79 tests: wire-shape round-trips (`test_types.py`), server hosting incl. error codes, timeouts, and both protocol eras via `Client(mode=...)` parametrization (`test_server_extension.py`, `test_client.py`), and the full chain matrix — ordering, parallelism, blocking, audit, failOpen, atomicity, timeouts, overrides (`test_chain.py`).
+`uv run pytest` — wire-shape round-trips (`test_types.py`), server hosting incl. error codes, timeouts, and both protocol eras via `Client(mode=...)` parametrization (`test_server_extension.py`, `test_client.py`), and the full chain matrix — ordering, parallelism, blocking, audit, failOpen, atomicity, timeouts, overrides (`test_chain.py`).

@@ -314,6 +314,9 @@ class Chain:
                 invoke_result = await self._invoke(entry, params, state.payload)
             except Exception as exc:  # recorded per fail-open policy; cancellation propagates
                 if audit or entry.effective_fail_open():
+                    # A failed-open entry is no longer in flight; without this a
+                    # chain timeout in a later stage would be blamed on it.
+                    state.in_flight = None
                     logger.warning("mutator %r failed open: %s", entry.interceptor.name, exc)
                     continue
                 self._abort(result, entry, f"mutator failed: {exc}", "mutation", "mutation_failed")
