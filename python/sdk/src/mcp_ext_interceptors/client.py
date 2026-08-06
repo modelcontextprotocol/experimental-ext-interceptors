@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-import mcp_types
+import mcp.types as mcp_types
 from mcp.client.client import Client
 from mcp.client.session import ClientSession
 from pydantic import TypeAdapter

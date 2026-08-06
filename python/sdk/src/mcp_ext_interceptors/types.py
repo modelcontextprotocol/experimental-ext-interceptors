@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Final, Literal
 
-import mcp_types
+import mcp.types as mcp_types
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
