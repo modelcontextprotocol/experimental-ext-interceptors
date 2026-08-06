@@ -43,39 +43,30 @@ internal sealed class InterceptorChainRunner
     }
 
     /// <summary>
-    /// Runs the interceptor chain across all configured interceptor clients sequentially.
-    /// Each client's <see cref="McpClientInterceptorExtensions.ExecuteChainAsync"/> (SDK-level chain
-    /// orchestration via list + invoke) receives the original or last successful payload from the
-    /// previous one. Any non-success result stops the chain immediately.
+    /// Runs the interceptor chain phase across all configured interceptor clients as a single
+    /// merged chain per the SEP: interceptors discovered from every client are combined, sorted
+    /// globally by priority hint (alphabetical tie-break), and each is invoked on the client that
+    /// hosts it via <see cref="InterceptorChain.ExecuteAsync(IEnumerable{McpClient}, ExecuteChainRequestParams, CancellationToken)"/>.
     /// </summary>
-    /// <returns>The payload after the last successful client and the final chain status.</returns>
+    /// <returns>The final payload (the original on failure) and the chain status.</returns>
     internal async ValueTask<(JsonNode payload, InterceptorChainStatus status)> RunChainPhaseAsync(
         string eventName, InterceptorPhase phase, JsonNode payload, CancellationToken ct)
     {
-        var currentPayload = payload;
-
-        foreach (var client in _interceptorClients)
-        {
-            var chainResult = await client.ExecuteChainAsync(
-                new ExecuteChainRequestParams
-                {
-                    Event = eventName,
-                    Phase = phase,
-                    Payload = currentPayload,
-                    TimeoutMs = _timeoutMs,
-                    Context = _defaultContext,
-                },
-                ct);
-
-            if (chainResult.Status != InterceptorChainStatus.Success)
+        var chainResult = await InterceptorChain.ExecuteAsync(
+            _interceptorClients,
+            new ExecuteChainRequestParams
             {
-                return (currentPayload, chainResult.Status);
-            }
+                Event = eventName,
+                Phase = phase,
+                Payload = payload,
+                TimeoutMs = _timeoutMs,
+                Context = _defaultContext,
+            },
+            ct);
 
-            currentPayload = chainResult.FinalPayload ?? currentPayload;
-        }
-
-        return (currentPayload, InterceptorChainStatus.Success);
+        return chainResult.Status == InterceptorChainStatus.Success
+            ? (chainResult.FinalPayload ?? payload, InterceptorChainStatus.Success)
+            : (payload, chainResult.Status);
     }
 
     /// <summary>

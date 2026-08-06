@@ -565,7 +565,188 @@ public class InterceptorChainOrchestratorTests
         Assert.Equal(1, result.ValidationSummary.Infos);
     }
 
+    // ── Multi-server chains ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MultiServer_MutationsOrderByGlobalPriorityAcrossServers()
+    {
+        var executionOrder = new List<string>();
+
+        TestEntry Mut(string name, PriorityHint hint) => CreateInterceptor(name, InterceptorType.Mutation, (req, _) =>
+        {
+            executionOrder.Add(name);
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: hint);
+
+        // Server A hosts the high-priority mutation, server B the low-priority one.
+        // The merged chain must run B's mutation first regardless of server order.
+        var serverA = Server(Mut("server-a-late", 100));
+        var serverB = Server(Mut("server-b-early", -100));
+
+        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+            [.. serverA, .. serverB],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(["server-b-early", "server-a-late"], executionOrder);
+    }
+
+    [Fact]
+    public async Task MultiServer_MutationsTieBreakAlphabeticallyAcrossServers()
+    {
+        var executionOrder = new List<string>();
+
+        TestEntry Mut(string name) => CreateInterceptor(name, InterceptorType.Mutation, (req, _) =>
+        {
+            executionOrder.Add(name);
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = false });
+        }, priorityHint: 0);
+
+        var serverA = Server(Mut("zulu"));
+        var serverB = Server(Mut("alpha"));
+
+        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+            [.. serverA, .. serverB],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(["alpha", "zulu"], executionOrder);
+    }
+
+    [Fact]
+    public async Task MultiServer_PayloadChainsAcrossServersInOneMutationPass()
+    {
+        var serverA = Server(CreateInterceptor("a-first", InterceptorType.Mutation, (req, _) =>
+        {
+            var obj = req.Payload.AsObject();
+            obj["fromA"] = true;
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = obj });
+        }, priorityHint: -1));
+
+        var serverB = Server(CreateInterceptor("b-second", InterceptorType.Mutation, (req, _) =>
+        {
+            Assert.True(req.Payload["fromA"]!.GetValue<bool>()); // Receives server A's output
+            var obj = req.Payload.AsObject();
+            obj["fromB"] = true;
+            return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = obj });
+        }, priorityHint: 1));
+
+        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+            [.. serverB, .. serverA],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{"original":true}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.True(result.FinalPayload!["original"]!.GetValue<bool>());
+        Assert.True(result.FinalPayload["fromA"]!.GetValue<bool>());
+        Assert.True(result.FinalPayload["fromB"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task MultiServer_ValidationsFromAllServersSeePostMutationPayload()
+    {
+        var validatedPayloads = new List<JsonNode>();
+
+        var serverA = Server(
+            CreateInterceptor("mutator", InterceptorType.Mutation, (req, _) =>
+            {
+                var obj = req.Payload.AsObject();
+                obj["mutated"] = true;
+                return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = obj });
+            }),
+            CreateInterceptor("val-a", InterceptorType.Validation, (req, _) =>
+            {
+                lock (validatedPayloads) validatedPayloads.Add(req.Payload);
+                return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+            }));
+
+        var serverB = Server(CreateInterceptor("val-b", InterceptorType.Validation, (req, _) =>
+        {
+            lock (validatedPayloads) validatedPayloads.Add(req.Payload);
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        }));
+
+        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+            [.. serverA, .. serverB],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(2, validatedPayloads.Count);
+        // Both servers' validations run after the mutation from server A, against its output.
+        Assert.All(validatedPayloads, p => Assert.True(p["mutated"]!.GetValue<bool>()));
+    }
+
+    [Fact]
+    public async Task MultiServer_DuplicateNamesInvokeOncePerHostingServer()
+    {
+        var serverAInvocations = 0;
+        var serverBInvocations = 0;
+
+        var serverA = Server(CreateInterceptor("shared-name", InterceptorType.Validation, (req, _) =>
+        {
+            Interlocked.Increment(ref serverAInvocations);
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        }));
+
+        var serverB = Server(CreateInterceptor("shared-name", InterceptorType.Validation, (req, _) =>
+        {
+            Interlocked.Increment(ref serverBInvocations);
+            return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
+        }));
+
+        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+            [.. serverA, .. serverB],
+            new ExecuteChainRequestParams
+            {
+                Event = InterceptionEvents.ToolsCall,
+                Phase = InterceptorPhase.Request,
+                Payload = JsonNode.Parse("""{}""")!,
+            },
+            CancellationToken.None);
+
+        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        // Each entry routes to its own host: one invocation per server, two results.
+        Assert.Equal(1, serverAInvocations);
+        Assert.Equal(1, serverBInvocations);
+        Assert.Equal(2, result.Results.Count);
+        Assert.All(result.Results, r => Assert.Equal("shared-name", r.InterceptorName));
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Models one fake server: each of its entries gets an invoker bound to that server's own
+    /// handler, so duplicate names across servers stay distinct.
+    /// </summary>
+    private static List<InterceptorChainOrchestrator.ChainExecutionEntry> Server(params TestEntry[] entries)
+    {
+        return entries.Select(e => new InterceptorChainOrchestrator.ChainExecutionEntry(
+            e.Descriptor,
+            (req, ct) => e.Handler(req, ct))).ToList();
+    }
 
     private static ValueTask<InterceptorChainResult> RunAsync(
         IEnumerable<TestEntry> entries,
