@@ -11,7 +11,7 @@ This maps the SEP's normative requirements to their implementation, records the 
 | `priorityHint: number \| {request?, response?}` | `types.PriorityHint = int \| PhasePriority`; resolution in `types.resolve_priority` per the SEP's `resolvePriority` |
 | Invoke result is the flat `ValidationResult` / `MutationResult` body | `server.Interceptors._handle_invoke` returns the flat model; asserted byte-for-byte in `tests/test_server_extension.py::TestInvoke::test_wire_shape_is_flat` |
 | Timeout error `-32000`, validation failure `-32602`, execution failure `-32603` | `types.INTERCEPTOR_TIMEOUT` / `INTERCEPTOR_VALIDATION_FAILED` / `INTERCEPTOR_MUTATION_FAILED`; raised in `_handle_invoke` |
-| `timeoutMs` MUST cancel execution | `anyio.fail_after` in `_handle_invoke` (server side) and `chain.Chain._send` (invoker side, guarding against servers that don't enforce it) |
+| `timeoutMs` MUST cancel execution | `anyio.move_on_after` in `_handle_invoke` (server side; only a deadline expiry maps to `-32000`, a handler-raised `TimeoutError` is an execution failure) and `anyio.fail_after` in `chain.Chain._send` (invoker side, guarding against servers that don't enforce it) |
 | Capability `capabilities.extensions["io.modelcontextprotocol/interceptors"] = {supportedEvents}` (PR #25 shape) | `Interceptors.settings()`; delivered by the mcp v2 extension mechanism |
 
 ## Execution model (chain)
