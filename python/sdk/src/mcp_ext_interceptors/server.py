@@ -263,16 +263,19 @@ class Interceptors(Extension):
         start = time.monotonic()
         try:
             if params.timeout_ms is not None:
-                with anyio.fail_after(params.timeout_ms / 1000):
+                # move_on_after rather than fail_after: only a deadline expiry
+                # becomes INTERCEPTOR_TIMEOUT; a TimeoutError raised by the
+                # handler itself is an ordinary execution failure below.
+                with anyio.move_on_after(params.timeout_ms / 1000) as scope:
                     result = await interceptor.handler(invocation)
+                if scope.cancelled_caught:
+                    raise MCPError(
+                        code=INTERCEPTOR_TIMEOUT,
+                        message="Interceptor execution timeout",
+                        data={"interceptor": params.name, "timeoutMs": params.timeout_ms, "phase": params.phase},
+                    )
             else:
                 result = await interceptor.handler(invocation)
-        except TimeoutError:
-            raise MCPError(
-                code=INTERCEPTOR_TIMEOUT,
-                message="Interceptor execution timeout",
-                data={"interceptor": params.name, "timeoutMs": params.timeout_ms, "phase": params.phase},
-            ) from None
         except MCPError:
             raise
         except Exception as exc:
