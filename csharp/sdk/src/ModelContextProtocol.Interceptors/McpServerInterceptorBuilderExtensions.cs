@@ -185,7 +185,6 @@ internal sealed class InterceptorServerOptionsSetup : IConfigureOptions<McpServe
         // Advertise interceptor capability via Extensions
         options.Capabilities ??= new();
 
-#pragma warning disable MCPEXP001 // We intentionally use the experimental Extensions API for protocol extensions
         options.Capabilities.Extensions ??= new Dictionary<string, object>();
         // Serialize to JsonElement so the SDK's own serializer (which doesn't know about
         // InterceptorsCapability) can write it without type-info issues.
@@ -195,6 +194,5 @@ internal sealed class InterceptorServerOptionsSetup : IConfigureOptions<McpServe
         };
         options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
             capability, InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
     }
 }

@@ -46,7 +46,7 @@ Changes:
 
 1. Extract capability composition into a dedicated internal component or helper
 2. Start from the backend `ServerCapabilities` rather than hand-mirroring only selected properties
-3. Mirror standard and experimental capability surfaces, including `Experimental`, `Extensions`, and `Tasks` where present
+3. Mirror standard and experimental capability surfaces, including `Experimental` and `Extensions` where present
 4. Overlay interceptor capability only when `ExposeInterceptorProtocol = true`
 
 Expected result:
