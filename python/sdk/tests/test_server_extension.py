@@ -196,6 +196,23 @@ class TestInvoke:
                 )
         assert exc_info.value.code == INTERCEPTOR_TIMEOUT
 
+    async def test_handler_raised_timeout_error_is_execution_failure(self) -> None:
+        """Only a deadline expiry maps to INTERCEPTOR_TIMEOUT; a TimeoutError
+        raised by the handler itself is an ordinary execution failure."""
+        ext = Interceptors()
+
+        @ext.validator("impatient", events=["tools/call"], phase="request")
+        async def impatient(inv: Invocation) -> ValidationResult:
+            raise TimeoutError("upstream fetch timed out")
+
+        async with Client(MCPServer("s", extensions=[ext])) as client:
+            for timeout_ms in (None, 1000):
+                with pytest.raises(MCPError) as exc_info:
+                    await invoke_interceptor(
+                        client, name="impatient", event="tools/call", phase="request", payload={}, timeout_ms=timeout_ms
+                    )
+                assert exc_info.value.code == INTERCEPTOR_MUTATION_FAILED
+
     async def test_wrong_result_type(self, server: MCPServer) -> None:
         async with Client(server) as client:
             with pytest.raises(MCPError) as exc_info:
