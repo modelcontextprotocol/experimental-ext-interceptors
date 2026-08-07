@@ -14,7 +14,8 @@ public sealed class McpInterceptorGatewayOptions
     public required McpClient BackendClient { get; set; }
 
     /// <summary>
-    /// Gets or sets the clients connected to interceptor servers, executed in order.
+    /// Gets or sets the clients connected to interceptor servers. Their interceptors are merged
+    /// into a single chain ordered globally by priority hint (alphabetical tie-break).
     /// Use this when the interceptor clients are already connected.
     /// </summary>
     public IReadOnlyList<McpClient>? InterceptorClients { get; set; }
