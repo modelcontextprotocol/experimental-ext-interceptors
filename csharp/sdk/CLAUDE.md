@@ -6,7 +6,7 @@ C# implementation of gateway-level interceptors from [SEP-2624](https://github.c
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 87 tests across the interceptor test project
+dotnet test    # 98 tests across the interceptor test project
 ```
 
 ## Key architectural constraints
@@ -55,7 +55,7 @@ Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
 
 **`McpInterceptorGateway`**: Configures an `McpServer` as a transparent proxy. Reads backend `ServerCapabilities`, registers handler delegates (`CallToolHandler`, `ListToolsHandler`, etc.) that route through interceptor chains before forwarding to the backend. By default the gateway is transparent-only; SEP passthrough is opt-in via `ExposeInterceptorProtocol = true`. To connecting clients, the proxy appears to be the backend server.
 
-**`InterceptorChainRunner`** (internal): Shared interception logic used by both `InterceptingMcpClient` and `McpInterceptorGateway`. Supports multiple interceptor clients executed sequentially — each client's `ExecuteChainAsync` (SDK-level orchestration via list + invoke) receives the mutated payload from the previous one.
+**`InterceptorChainRunner`** (internal): Shared interception logic used by both `InterceptingMcpClient` and `McpInterceptorGateway`. Multiple interceptor clients form a single merged chain per the SEP: interceptors discovered from every client (parallel `interceptors/list`, fail-closed) are sorted globally by priority hint (alphabetical tie-break) and each is invoked on the client hosting it. Public API: `Client/InterceptorChain.cs` (`DiscoverAsync` + `ExecuteAsync` over `IEnumerable<McpClient>`); duplicate names across servers are not deduplicated.
 
 **Gateway split**: `GatewayProxyConfigurator` owns transparent MCP proxy wiring, `GatewayInterceptorProtocolBridge` owns optional SEP passthrough wiring, and `GatewayConnectionForwardingRegistrar` owns connection-bound notification forwarding registration.
 

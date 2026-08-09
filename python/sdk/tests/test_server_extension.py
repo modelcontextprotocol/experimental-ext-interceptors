@@ -218,6 +218,26 @@ class TestInvoke:
                     )
                 assert exc_info.value.code == INTERCEPTOR_MUTATION_FAILED
 
+    async def test_timeout_enforced_when_handler_swallows_cancellation(self) -> None:
+        """The deadline is enforced even if the handler absorbs the cancellation
+        and returns a result: cancel_called fires on expiry regardless."""
+        ext = Interceptors()
+
+        @ext.validator("absorber", events=["tools/call"], phase="request")
+        async def absorber(inv: Invocation) -> ValidationResult:
+            try:
+                await anyio.sleep(5)
+            except BaseException:  # deliberately misbehaving handler
+                pass
+            return ValidationResult(valid=True)
+
+        async with Client(MCPServer("s", extensions=[ext])) as client:
+            with pytest.raises(MCPError) as exc_info:
+                await invoke_interceptor(
+                    client, name="absorber", event="tools/call", phase="request", payload={}, timeout_ms=50
+                )
+        assert exc_info.value.code == INTERCEPTOR_TIMEOUT
+
     async def test_wrong_result_type(self, server: MCPServer) -> None:
         async with Client(server) as client:
             with pytest.raises(MCPError) as exc_info:

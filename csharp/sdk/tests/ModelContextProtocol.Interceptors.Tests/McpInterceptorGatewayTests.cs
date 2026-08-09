@@ -432,13 +432,76 @@ public class McpInterceptorGatewayTests
                 })],
             ]);
 
-        // Call tool — both interceptors should run (A first, then B)
+        // Call tool — both interceptors should run (A first, then B: equal priority,
+        // alphabetical tie-break in the merged chain)
         var result = await fixture.ProxyClient.CallToolAsync("echo",
             new Dictionary<string, object?> { ["message"] = "hello" });
 
-        // Both interceptor chains ran in order: A prepended first, then B
+        // A prepended first, then B
         var text = result.Content[0].ToString()!;
         Assert.Contains("B:A:hello", text);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_OrdersMutationsByGlobalPriorityAcrossInterceptorClients()
+    {
+        // The first server hosts the higher-priority-value (later) mutation, the second server
+        // the lower-priority-value (earlier) one. The merged chain must run the second server's
+        // mutation first — under per-server sequencing it would run last.
+        static McpServerInterceptor PrependMutator(string name, int priority, string prefix) =>
+            new TestInterceptor(
+                new Interceptor
+                {
+                    Name = name,
+                    Type = InterceptorType.Mutation,
+                    PriorityHint = priority,
+                    Hooks = [new InterceptorHook { Events = [InterceptionEvents.All], Phase = InterceptorPhase.Request }],
+                },
+                (req, _, _, _) =>
+                {
+                    var obj = JsonNode.Parse(req.Payload!.ToJsonString())!.AsObject();
+                    if (obj["arguments"]?["message"] is JsonNode msgNode)
+                    {
+                        obj["arguments"]!["message"] = prefix + msgNode.GetValue<string>();
+                    }
+                    return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                    {
+                        Modified = true,
+                        Payload = obj,
+                    });
+                });
+
+        await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "echo", Description = "Echo" }],
+                    });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                {
+                    var msg = request.Params!.Arguments?["message"];
+                    return new ValueTask<CallToolResult>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = $"echo: {msg}" }],
+                    });
+                };
+            },
+            interceptorConfigs:
+            [
+                [PrependMutator("late-mutator", priority: 1000, prefix: "LATE:")],
+                [PrependMutator("early-mutator", priority: -1000, prefix: "EARLY:")],
+            ]);
+
+        var result = await fixture.ProxyClient.CallToolAsync("echo",
+            new Dictionary<string, object?> { ["message"] = "hello" });
+
+        // early (server 2) ran first, late (server 1) ran second and prepended last.
+        var text = result.Content[0].ToString()!;
+        Assert.Contains("LATE:EARLY:hello", text);
     }
 
     [Fact]

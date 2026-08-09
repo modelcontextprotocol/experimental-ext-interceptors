@@ -240,7 +240,9 @@ class Chain:
         if params.timeout_ms is not None:
             with anyio.move_on_after(params.timeout_ms / 1000) as scope:
                 await body()
-            if scope.cancelled_caught:
+            # cancel_called rather than cancelled_caught: the deadline is
+            # enforced even if an invocation absorbs the cancellation.
+            if scope.cancel_called:
                 result.status = "timeout"
                 where = state.in_flight or (f"{state.stage} stage" if state.stage else "chain")
                 result.aborted_at = AbortInfo(

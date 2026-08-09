@@ -21,8 +21,10 @@ from mcp_ext_interceptors.chain import (
 from mcp_ext_interceptors.interceptor import Invocation
 from mcp_ext_interceptors.server import Interceptors
 from mcp_ext_interceptors.types import (
+    AnyInvokeResult,
     Hook,
     InterceptorInfo,
+    InvokeInterceptorParams,
     MutationResult,
     PhasePriority,
     SinkResult,
@@ -450,6 +452,34 @@ async def test_chain_timeout_during_parallel_stage_names_the_stage() -> None:
     assert result.aborted_at.interceptor == ""
     assert "validation" in result.aborted_at.reason
     assert result.final_payload is None
+
+
+async def test_chain_timeout_enforced_when_cancellation_swallowed() -> None:
+    """The chain deadline is enforced even if an invocation absorbs the
+    cancellation and completes normally: cancel_called fires on expiry."""
+    ext = Interceptors()
+
+    @ext.mutator("stubborn", events=["tools/call"], phase="request")
+    async def stubborn(inv: Invocation) -> MutationResult:
+        return MutationResult(modified=False, payload=inv.payload)
+
+    async def swallowing(entry: ChainEntry, params: InvokeInterceptorParams, send: Any) -> AnyInvokeResult:
+        try:
+            await anyio.sleep(5)
+        except BaseException:  # deliberately absorbs the chain's cancellation
+            pass
+        return MutationResult(modified=False, payload=params.payload)
+
+    async with Client(MCPServer("s", extensions=[ext])) as client:
+        chain = Chain(execution_handler=swallowing)
+        await chain.add_server(client)
+        result = await chain.execute(
+            ChainExecutionParams(event="tools/call", phase="request", payload={}, timeout_ms=200)
+        )
+
+    assert result.status == "timeout"
+    assert result.aborted_at is not None
+    assert result.aborted_at.type == "timeout"
 
 
 async def test_per_entry_timeout_override() -> None:
