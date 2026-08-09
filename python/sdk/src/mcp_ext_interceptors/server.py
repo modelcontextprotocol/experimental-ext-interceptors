@@ -224,9 +224,11 @@ class Interceptors(Extension):
                 # move_on_after rather than fail_after: only a deadline expiry
                 # becomes INTERCEPTOR_TIMEOUT; a TimeoutError raised by the
                 # handler itself is an ordinary execution failure below.
+                # cancel_called rather than cancelled_caught: the deadline is
+                # enforced even if the handler absorbs the cancellation.
                 with anyio.move_on_after(params.timeout_ms / 1000) as scope:
                     result = await interceptor.handler(invocation)
-                if scope.cancelled_caught:
+                if scope.cancel_called:
                     raise MCPError(
                         code=INTERCEPTOR_TIMEOUT,
                         message="Interceptor execution timeout",

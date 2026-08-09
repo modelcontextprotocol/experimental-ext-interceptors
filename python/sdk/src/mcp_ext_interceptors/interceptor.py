@@ -5,8 +5,9 @@
 """Author-side API for writing interceptors (SEP-2624).
 
 Handlers receive an :class:`Invocation` and return the type-specific result
-fields; the hosting side stamps the common wire fields (`interceptor`,
-`phase`, `durationMs`) before returning them to the invoker.
+model (:class:`ValidationResult` or :class:`MutationResult`); the hosting side
+stamps the common wire fields (`interceptor`, `phase`, `durationMs`) on it
+before returning it to the invoker.
 """
 
 from __future__ import annotations
