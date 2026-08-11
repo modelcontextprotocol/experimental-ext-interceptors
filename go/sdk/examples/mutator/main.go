@@ -77,7 +77,9 @@ func main() {
 	// resources via interceptors/list and interceptor/invoke).
 	ext := extension.New()
 	ext.AddInterceptor(m)
-	ext.Install(mcpServer)
+	if err := ext.Install(mcpServer); err != nil {
+		log.Fatal(err)
+	}
 
 	// Create a chain connected via in-memory transport.
 	chain, err := ext.LocalChain(context.Background(), mcpServer)

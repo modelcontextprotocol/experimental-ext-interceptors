@@ -16,7 +16,9 @@
 //	ext := extension.New(extension.WithLogger(logger))
 //	ext.AddInterceptor(myValidator)
 //	ext.AddInterceptor(myMutator)
-//	ext.Install(mcpServer)
+//	if err := ext.Install(mcpServer); err != nil {
+//	    return err
+//	}
 //
 // At this point any connected MCP client can call interceptors/list
 // and interceptor/invoke.

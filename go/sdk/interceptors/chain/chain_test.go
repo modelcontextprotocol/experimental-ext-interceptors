@@ -17,6 +17,7 @@ import (
 
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors"
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/chain"
+	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/extension"
 )
 
 // setupChainWithInterceptors creates an MCP server with the given
@@ -34,7 +35,7 @@ func setupChainWithOpts(t *testing.T, opts []chain.ChainOption, is ...intercepto
 		Version: "0.1.0",
 	}, nil)
 
-	registerInterceptorMethods(mcpServer, is)
+	registerInterceptorMethods(t, mcpServer, is)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 
@@ -46,6 +47,7 @@ func setupChainWithOpts(t *testing.T, opts []chain.ChainOption, is ...intercepto
 		Name:    "chain-test-client",
 		Version: "0.1.0",
 	}, nil)
+	require.NoError(t, extension.RegisterSendingMethods(client))
 	cs, err := client.Connect(context.Background(), clientTransport, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { cs.Close() })
@@ -60,12 +62,13 @@ func setupChainWithOpts(t *testing.T, opts []chain.ChainOption, is ...intercepto
 
 // registerInterceptorMethods adds interceptors/list and interceptor/invoke
 // custom methods to the server, backed by the given interceptor list.
-func registerInterceptorMethods(server *mcp.Server, is []interceptors.Interceptor) {
-	mcp.AddReceivingCustomMethod(server, interceptors.MethodList,
-		func(_ context.Context, req *mcp.ServerRequest[*interceptors.ListParams]) (*interceptors.ListResult, error) {
+func registerInterceptorMethods(t *testing.T, server *mcp.Server, is []interceptors.Interceptor) {
+	t.Helper()
+	require.NoError(t, mcp.AddReceivingCustomMethod(server, interceptors.MethodList,
+		func(_ context.Context, _ *mcp.ServerSession, params *interceptors.ListParams) (*interceptors.ListResult, error) {
 			var event string
-			if req.Params != nil {
-				event = req.Params.Event
+			if params != nil {
+				event = params.Event
 			}
 			infos := make([]interceptors.InterceptorInfo, 0, len(is))
 			for _, i := range is {
@@ -87,14 +90,13 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 			}
 			return &interceptors.ListResult{Interceptors: infos}, nil
 		},
-	)
+	))
 
-	mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke,
-		func(ctx context.Context, req *mcp.ServerRequest[*interceptors.InvokeParams]) (*interceptors.InvokeResult, error) {
-			if req.Params == nil {
+	require.NoError(t, mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke,
+		func(ctx context.Context, _ *mcp.ServerSession, params *interceptors.InvokeParams) (*interceptors.InvokeResult, error) {
+			if params == nil {
 				return nil, fmt.Errorf("params required")
 			}
-			params := req.Params
 			var target interceptors.Interceptor
 			for _, i := range is {
 				if i.GetMetadata().Name == params.Name {
@@ -137,7 +139,7 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 			}
 			return result, nil
 		},
-	)
+	))
 }
 
 func TestChain_ExecutionHandler(t *testing.T) {

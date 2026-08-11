@@ -116,11 +116,17 @@ type ExecutionResult struct {
 // AddMCPServer discovers interceptors from an MCP server via
 // interceptors/list and adds entries for each. The client session's
 // transport determines how interceptor/invoke calls are made
-// (in-memory, stdio, HTTP, etc.).
+// (in-memory, stdio, HTTP, etc.). The session's client must have been
+// configured with the interceptor extension's sending methods before connecting.
 func (c *Chain) AddMCPServer(ctx context.Context, cs *mcp.ClientSession) error {
-	var result interceptors.ListResult
-	if err := cs.CallCustom(ctx, interceptors.MethodList, nil, &result); err != nil {
+	result, err := mcp.CallCustomMethod[*interceptors.ListParams, *interceptors.ListResult](
+		ctx, cs, interceptors.MethodList, nil,
+	)
+	if err != nil {
 		return err
+	}
+	if result == nil {
+		return nil
 	}
 
 	c.mu.Lock()
@@ -142,7 +148,7 @@ func (c *Chain) AddMCPServer(ctx context.Context, cs *mcp.ClientSession) error {
 //   - Sort mutators by priorityHint (ascending, alphabetical tiebreak)
 //   - Request phase: validate (parallel) then mutate (sequential)
 //   - Response phase: mutate (sequential) then validate (parallel)
-//   - Call interceptor/invoke via CallCustom for each entry
+//   - Call interceptor/invoke via the MCP SDK custom-method API for each entry
 //   - For mutators: pass mutated payload from previous to next
 //   - Handle abort, timeout, fail-open
 func (c *Chain) Execute(ctx context.Context, params *ExecutionParams) (*ExecutionResult, error) {
@@ -443,9 +449,13 @@ func (c *Chain) callInvoke(
 	}
 
 	next := func(ctx context.Context, p *interceptors.InvokeParams) (interceptors.InvokeResult, error) {
-		var result interceptors.InvokeResult
-		err := entry.Server.CallCustom(ctx, interceptors.MethodInvoke, p, &result)
-		return result, err
+		result, err := mcp.CallCustomMethod[*interceptors.InvokeParams, *interceptors.InvokeResult](
+			ctx, entry.Server, interceptors.MethodInvoke, p,
+		)
+		if result == nil {
+			return interceptors.InvokeResult{}, err
+		}
+		return *result, err
 	}
 
 	if c.handler != nil {

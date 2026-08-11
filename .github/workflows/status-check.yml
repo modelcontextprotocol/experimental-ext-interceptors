@@ -79,9 +79,8 @@ jobs:
               ],
               go: [
                 'Go CI / Linting',
-                'Go CI / Unit Tests (1.23)',
-                'Go CI / Unit Tests (1.24)',
                 'Go CI / Unit Tests (1.25)',
+                'Go CI / Unit Tests (1.26)',
                 'Go CI / Race Detection'
               ],
               typescript: [

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -22,8 +23,9 @@ func TestListInterceptors(t *testing.T) {
 		blockToolValidator("dangerous"),
 	)
 
-	var result interceptors.ListResult
-	err := cs.CallCustom(context.Background(), interceptors.MethodList, nil, &result)
+	result, err := mcp.CallCustomMethod[*interceptors.ListParams, *interceptors.ListResult](
+		context.Background(), cs, interceptors.MethodList, nil,
+	)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Interceptors, 2)
@@ -56,25 +58,28 @@ func TestListWithEventFilter(t *testing.T) {
 	cs := setupRPCServer(t, toolsValidator, promptsValidator)
 
 	// Filter for tools/call — should only return tools-v
-	var result interceptors.ListResult
-	err := cs.CallCustom(context.Background(), interceptors.MethodList,
-		&interceptors.ListParams{Event: interceptors.EventToolsCall}, &result)
+	result, err := mcp.CallCustomMethod[*interceptors.ListParams, *interceptors.ListResult](
+		context.Background(), cs, interceptors.MethodList,
+		&interceptors.ListParams{Event: interceptors.EventToolsCall},
+	)
 	require.NoError(t, err)
 	assert.Len(t, result.Interceptors, 1)
 	assert.Equal(t, "tools-v", result.Interceptors[0].Name)
 
 	// Filter for prompts/get — should only return prompts-v
-	var result2 interceptors.ListResult
-	err = cs.CallCustom(context.Background(), interceptors.MethodList,
-		&interceptors.ListParams{Event: interceptors.EventPromptsGet}, &result2)
+	result2, err := mcp.CallCustomMethod[*interceptors.ListParams, *interceptors.ListResult](
+		context.Background(), cs, interceptors.MethodList,
+		&interceptors.ListParams{Event: interceptors.EventPromptsGet},
+	)
 	require.NoError(t, err)
 	assert.Len(t, result2.Interceptors, 1)
 	assert.Equal(t, "prompts-v", result2.Interceptors[0].Name)
 
 	// Filter for non-existent event — empty
-	var result3 interceptors.ListResult
-	err = cs.CallCustom(context.Background(), interceptors.MethodList,
-		&interceptors.ListParams{Event: "nonexistent/method"}, &result3)
+	result3, err := mcp.CallCustomMethod[*interceptors.ListParams, *interceptors.ListResult](
+		context.Background(), cs, interceptors.MethodList,
+		&interceptors.ListParams{Event: "nonexistent/method"},
+	)
 	require.NoError(t, err)
 	assert.Empty(t, result3.Interceptors)
 }
@@ -87,14 +92,15 @@ func TestInvokeValidator(t *testing.T) {
 	cs := setupRPCServer(t, allowAllValidator("v1"))
 
 	payload, _ := json.Marshal(map[string]any{"name": "echo", "arguments": map[string]any{"text": "hello"}})
-	var result interceptors.InvokeResult
-	err := cs.CallCustom(context.Background(), interceptors.MethodInvoke,
+	result, err := mcp.CallCustomMethod[*interceptors.InvokeParams, *interceptors.InvokeResult](
+		context.Background(), cs, interceptors.MethodInvoke,
 		&interceptors.InvokeParams{
 			Name:    "v1",
 			Event:   interceptors.EventToolsCall,
 			Phase:   interceptors.PhaseRequest,
 			Payload: payload,
-		}, &result)
+		},
+	)
 	require.NoError(t, err)
 
 	assert.Equal(t, "v1", result.Interceptor)
@@ -131,14 +137,15 @@ func TestInvokeValidatorRejects(t *testing.T) {
 	cs := setupRPCServer(t, rejectAll)
 
 	payload, _ := json.Marshal(map[string]any{"name": "echo"})
-	var result interceptors.InvokeResult
-	err := cs.CallCustom(context.Background(), interceptors.MethodInvoke,
+	result, err := mcp.CallCustomMethod[*interceptors.InvokeParams, *interceptors.InvokeResult](
+		context.Background(), cs, interceptors.MethodInvoke,
 		&interceptors.InvokeParams{
 			Name:    "reject-all",
 			Event:   interceptors.EventToolsCall,
 			Phase:   interceptors.PhaseRequest,
 			Payload: payload,
-		}, &result)
+		},
+	)
 	require.NoError(t, err)
 
 	assert.Equal(t, "reject-all", result.Interceptor)
@@ -182,14 +189,15 @@ func TestInvokeMutator(t *testing.T) {
 	cs := setupRPCServer(t, mutator)
 
 	payload, _ := json.Marshal(map[string]any{"name": "echo"})
-	var result interceptors.InvokeResult
-	err := cs.CallCustom(context.Background(), interceptors.MethodInvoke,
+	result, err := mcp.CallCustomMethod[*interceptors.InvokeParams, *interceptors.InvokeResult](
+		context.Background(), cs, interceptors.MethodInvoke,
 		&interceptors.InvokeParams{
 			Name:    "add-field",
 			Event:   interceptors.EventToolsCall,
 			Phase:   interceptors.PhaseRequest,
 			Payload: payload,
-		}, &result)
+		},
+	)
 	require.NoError(t, err)
 
 	assert.Equal(t, "add-field", result.Interceptor)
@@ -212,14 +220,15 @@ func TestInvokeUnknownName(t *testing.T) {
 	cs := setupRPCServer(t, allowAllValidator("v1"))
 
 	payload, _ := json.Marshal(map[string]any{})
-	var result interceptors.InvokeResult
-	err := cs.CallCustom(context.Background(), interceptors.MethodInvoke,
+	_, err := mcp.CallCustomMethod[*interceptors.InvokeParams, *interceptors.InvokeResult](
+		context.Background(), cs, interceptors.MethodInvoke,
 		&interceptors.InvokeParams{
 			Name:    "nonexistent",
 			Event:   interceptors.EventToolsCall,
 			Phase:   interceptors.PhaseRequest,
 			Payload: payload,
-		}, &result)
+		},
+	)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nonexistent")
@@ -250,15 +259,16 @@ func TestInvokeTimeout(t *testing.T) {
 	cs := setupRPCServer(t, slowValidator)
 
 	payload, _ := json.Marshal(map[string]any{})
-	var result interceptors.InvokeResult
-	err := cs.CallCustom(context.Background(), interceptors.MethodInvoke,
+	_, err := mcp.CallCustomMethod[*interceptors.InvokeParams, *interceptors.InvokeResult](
+		context.Background(), cs, interceptors.MethodInvoke,
 		&interceptors.InvokeParams{
 			Name:      "slow-v",
 			Event:     interceptors.EventToolsCall,
 			Phase:     interceptors.PhaseRequest,
 			Payload:   payload,
 			TimeoutMs: 50,
-		}, &result)
+		},
+	)
 
 	require.Error(t, err)
 }

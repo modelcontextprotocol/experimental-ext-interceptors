@@ -8,8 +8,8 @@ Analysis of per-request costs and allocation patterns.
 
 The interceptor chain follows the SEP execution model: each interceptor
 is invoked via `interceptor/invoke` JSON-RPC calls through an MCP client
-session. For in-process interceptors, `Server.LocalChain()` creates an
-in-memory transport, so the JSON-RPC overhead is minimal (no network I/O).
+session. For in-process interceptors, `Extension.LocalChain(ctx, server)`
+creates an in-memory transport, so there is no network I/O.
 
 Payloads are `json.RawMessage` at the protocol level. The middleware
 marshals request params and response results once per phase, and
@@ -37,7 +37,7 @@ With interceptors active, each active phase incurs:
 | 1 | Marshal request params / response result | 1 `json.RawMessage` | 1 marshal |
 | 2 | `ChainExecutionResult` struct (with pre-allocated `Results` slice) | 1 struct + 1 slice | 0 |
 | 3 | Per-interceptor `interceptor/invoke` RPC | 1 `InvokeParams` + 1 `InvokeResult` per interceptor | 1 marshal + 1 unmarshal per interceptor (handled by go-sdk JSON-RPC layer) |
-| 4 | Validator execution (N=1 inline, N>1 goroutines) | 0 (N=1) / goroutines (N>1) | Handler-specific |
+| 4 | Validator execution | 1 goroutine per validator | Handler-specific |
 | 5 | Mutator payload threading | 0 | Payload passed as `json.RawMessage` between mutators |
 | 6 | Unmarshal mutated payload back to params/result | 0 | 1 unmarshal (if mutated) |
 
