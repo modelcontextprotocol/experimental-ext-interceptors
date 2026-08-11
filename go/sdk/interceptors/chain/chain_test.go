@@ -407,3 +407,87 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 		require.Len(t, cr.Results, 2)
 	})
 }
+
+func TestChain_AuditModeErrorsDoNotAbort(t *testing.T) {
+	t.Parallel()
+
+	t.Run("audit validator error is recorded without aborting", func(t *testing.T) {
+		t.Parallel()
+		auditValidator := &interceptors.Validator{
+			Metadata: interceptors.Metadata{
+				Name: "audit-validator",
+				Hooks: []interceptors.Hook{{
+					Events: []string{"test/event"},
+					Phase:  interceptors.PhaseRequest,
+				}},
+				Mode: interceptors.ModeAudit,
+			},
+			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
+				return nil, fmt.Errorf("audit sink failed")
+			},
+		}
+
+		ch := setupChainWithInterceptors(t, auditValidator)
+
+		payload, _ := json.Marshal(map[string]any{"value": "hello"})
+		cr, err := ch.Execute(context.Background(), &chain.ExecutionParams{
+			Event:   "test/event",
+			Phase:   interceptors.PhaseRequest,
+			Payload: payload,
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, chain.ChainSuccess, cr.Status)
+		assert.Empty(t, cr.AbortedAt)
+		require.Len(t, cr.Results, 1)
+		assert.Equal(t, "audit-validator", cr.Results[0].Interceptor)
+	})
+
+	t.Run("audit mutator error is recorded without aborting", func(t *testing.T) {
+		t.Parallel()
+		auditMutator := &interceptors.Mutator{
+			Metadata: interceptors.Metadata{
+				Name: "audit-mutator",
+				Hooks: []interceptors.Hook{{
+					Events: []string{"test/event"},
+					Phase:  interceptors.PhaseResponse,
+				}},
+				Mode:         interceptors.ModeAudit,
+				PriorityHint: interceptors.NewPriority(10),
+			},
+			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
+				return nil, fmt.Errorf("shadow mutation failed")
+			},
+		}
+		passingMutator := &interceptors.Mutator{
+			Metadata: interceptors.Metadata{
+				Name: "passing-mutator",
+				Hooks: []interceptors.Hook{{
+					Events: []string{"test/event"},
+					Phase:  interceptors.PhaseResponse,
+				}},
+				Mode:         interceptors.ModeEnforce,
+				PriorityHint: interceptors.NewPriority(20),
+			},
+			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
+				modified, _ := json.Marshal(map[string]any{"value": "mutated"})
+				return &interceptors.MutationResult{Modified: true, Payload: modified}, nil
+			},
+		}
+
+		ch := setupChainWithInterceptors(t, auditMutator, passingMutator)
+
+		payload, _ := json.Marshal(map[string]any{"value": "hello"})
+		cr, err := ch.Execute(context.Background(), &chain.ExecutionParams{
+			Event:   "test/event",
+			Phase:   interceptors.PhaseResponse,
+			Payload: payload,
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, chain.ChainSuccess, cr.Status)
+		assert.Empty(t, cr.AbortedAt)
+		require.Len(t, cr.Results, 2)
+		require.NotNil(t, cr.FinalPayload)
+	})
+}

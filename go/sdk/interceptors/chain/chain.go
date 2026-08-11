@@ -303,7 +303,7 @@ func (c *Chain) recordValidation(entry ChainEntry, result invokeOutcome, cr *Exe
 			Type:        interceptors.TypeValidation,
 			Phase:       cr.Phase,
 		})
-		if !entry.Interceptor.FailOpen {
+		if result.mode != interceptors.ModeAudit && !entry.Interceptor.FailOpen {
 			cr.AbortedAt = append(cr.AbortedAt, AbortInfo{
 				Interceptor: entry.Interceptor.Name,
 				Reason:      result.err.Error(),
@@ -383,7 +383,7 @@ func (c *Chain) runMutators(
 				Type:        interceptors.TypeMutation,
 				Phase:       params.Phase,
 			})
-			if !m.Interceptor.FailOpen {
+			if result.mode != interceptors.ModeAudit && !m.Interceptor.FailOpen {
 				cr.AbortedAt = append(cr.AbortedAt, AbortInfo{
 					Interceptor: m.Interceptor.Name,
 					Reason:      result.err.Error(),
