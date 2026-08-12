@@ -16,11 +16,13 @@
 //
 // # Usage
 //
-//	// Create interceptor extension (registers interceptors as resources)
+//	// Create interceptor extension (exposes interceptors as custom methods)
 //	ext := extension.New()
 //	ext.AddInterceptor(myValidator)
 //	ext.AddInterceptor(myMutator)
-//	ext.Install(mcpServer)
+//	if err := ext.Install(mcpServer); err != nil {
+//	    return err
+//	}
 //
 //	// Create chain via in-memory transport
 //	chain, err := ext.LocalChain(ctx, mcpServer)

@@ -26,6 +26,14 @@
 // A [Chain] is created with [NewChain] and populated by adding MCP
 // servers via [Chain.AddMCPServer]:
 //
+//	client := mcp.NewClient(clientImpl, nil)
+//	if err := extension.RegisterSendingMethods(client); err != nil {
+//	    return err
+//	}
+//	clientSession, err := client.Connect(ctx, transport, nil)
+//	if err != nil {
+//	    return err
+//	}
 //	chain := chain.NewChain()
 //	chain.AddMCPServer(ctx, clientSession)
 //	mcpServer.AddReceivingMiddleware(

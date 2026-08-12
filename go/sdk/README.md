@@ -3,8 +3,6 @@
 Go implementation of the MCP Interceptor Extension based on
 [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624).
 
-Note: Currently the MCP SDK is vendored, in-order to add the Protocol Methods needed for interceptors.
-
 ## Quick Start
 
 ```go
@@ -36,7 +34,9 @@ ext.AddInterceptor(&interceptors.Validator{
 })
 
 // Install on the server and create a chain for middleware.
-ext.Install(mcpServer)
+if err := ext.Install(mcpServer); err != nil {
+    log.Fatal(err)
+}
 chain, err := ext.LocalChain(ctx, mcpServer)
 mcpServer.AddReceivingMiddleware(gomiddleware.Middleware(chain))
 

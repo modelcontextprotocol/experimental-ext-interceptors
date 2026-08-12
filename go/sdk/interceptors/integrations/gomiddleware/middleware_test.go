@@ -41,7 +41,7 @@ func setup(t *testing.T, is ...interceptors.Interceptor) *mcp.ClientSession {
 	for _, i := range is {
 		ext.AddInterceptor(i)
 	}
-	ext.Install(mcpServer)
+	require.NoError(t, ext.Install(mcpServer))
 
 	// Create chain via LocalChain (in-memory transport).
 	chain, err := ext.LocalChain(context.Background(), mcpServer)
@@ -267,7 +267,7 @@ func TestMiddlewareWithContextProvider(t *testing.T) {
 
 	ext := extension.New()
 	ext.AddInterceptor(principalCheck)
-	ext.Install(mcpServer)
+	require.NoError(t, ext.Install(mcpServer))
 
 	chain, err := ext.LocalChain(context.Background(), mcpServer)
 	require.NoError(t, err)

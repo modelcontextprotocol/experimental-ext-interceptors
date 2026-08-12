@@ -637,20 +637,23 @@ func TestCustomMethodsFlowThroughMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, count.Swap(0), int64(0), "middleware must fire for tools/call")
 
-	var listResult interceptors.ListResult
-	err = cs.CallCustom(context.Background(), interceptors.MethodList, nil, &listResult)
+	listResult, err := mcp.CallCustomMethod[*interceptors.ListParams, *interceptors.ListResult](
+		context.Background(), cs, interceptors.MethodList, nil,
+	)
 	require.NoError(t, err)
 	assert.Len(t, listResult.Interceptors, 1)
 	assert.Greater(t, count.Swap(0), int64(0), "middleware must fire for interceptors/list")
 
 	payload, _ := json.Marshal(map[string]any{"name": "echo", "arguments": map[string]any{}})
-	var invokeResult interceptors.InvokeResult
-	err = cs.CallCustom(context.Background(), interceptors.MethodInvoke, &interceptors.InvokeParams{
-		Name:    "v1",
-		Event:   interceptors.EventToolsCall,
-		Phase:   interceptors.PhaseRequest,
-		Payload: payload,
-	}, &invokeResult)
+	_, err = mcp.CallCustomMethod[*interceptors.InvokeParams, *interceptors.InvokeResult](
+		context.Background(), cs, interceptors.MethodInvoke,
+		&interceptors.InvokeParams{
+			Name:    "v1",
+			Event:   interceptors.EventToolsCall,
+			Phase:   interceptors.PhaseRequest,
+			Payload: payload,
+		},
+	)
 	require.NoError(t, err)
 	assert.Greater(t, count.Swap(0), int64(0), "middleware must fire for interceptor/invoke")
 }
@@ -676,8 +679,9 @@ func TestMiddlewareCanRejectCustomMethods(t *testing.T) {
 	mcpServer.AddReceivingMiddleware(blockingMiddleware)
 	cs := connectHTTPClient(t, mcpServer)
 
-	var listResult interceptors.ListResult
-	err := cs.CallCustom(context.Background(), interceptors.MethodList, nil, &listResult)
+	_, err := mcp.CallCustomMethod[*interceptors.ListParams, *interceptors.ListResult](
+		context.Background(), cs, interceptors.MethodList, nil,
+	)
 	assert.Error(t, err, "blockingMiddleware should reject interceptors/list")
 	assert.True(t, rejected.Load())
 }

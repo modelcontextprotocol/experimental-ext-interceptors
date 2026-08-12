@@ -22,7 +22,9 @@
 //	ext := extension.New()
 //	ext.AddInterceptor(myValidator)
 //	ext.AddInterceptor(myMutator)
-//	ext.Install(mcpServer)
+//	if err := ext.Install(mcpServer); err != nil {
+//	    return err
+//	}
 //
 //	chain, err := ext.LocalChain(ctx, mcpServer)
 //	mcpServer.AddReceivingMiddleware(
@@ -64,8 +66,8 @@
 //
 // A [Mutator] transforms the payload. Mutators run sequentially in
 // priority order (see [Priority]). Each mutator receives the payload
-// as [json.RawMessage], unmarshals it, modifies it, and sets the
-// updated JSON back on inv.Payload. If any mutator fails (and is not
+// as [json.RawMessage], unmarshals it, modifies it, and returns the
+// updated JSON in [MutationResult.Payload]. If any mutator fails (and is not
 // configured with FailOpen), the chain aborts. FailOpen mutators
 // record an [InvokeResult] (with the error captured) for
 // observability but do not block.

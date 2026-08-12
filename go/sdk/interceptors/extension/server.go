@@ -6,6 +6,7 @@ package extension
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -30,9 +31,9 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 // Extension manages interceptors and can install them on one or more
-// *mcp.Server instances. Interceptors are registered as first-class
-// MCP resources discoverable via the "interceptors/list" JSON-RPC
-// method and invocable via "interceptor/invoke".
+// *mcp.Server instances. Interceptors are exposed as custom MCP methods:
+// discoverable via the "interceptors/list" JSON-RPC method and invocable
+// via "interceptor/invoke".
 //
 // Extension is a pure interceptor container — it does not hold a
 // reference to any particular server. Call [Extension.Install] to
@@ -59,11 +60,16 @@ func New(opts ...Option) *Extension {
 // JSON-RPC methods and installs a receiving middleware to enrich the
 // initialize response with interceptor capabilities on the given
 // server. It can be called on multiple servers.
-func (e *Extension) Install(server *mcp.Server) {
+func (e *Extension) Install(server *mcp.Server) error {
 	// Register JSON-RPC methods for interceptor discovery and invocation.
-	mcp.AddReceivingCustomMethod(server, interceptors.MethodList, e.handleList)
-	mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke, e.handleInvoke)
+	if err := mcp.AddReceivingCustomMethod(server, interceptors.MethodList, e.handleList); err != nil {
+		return fmt.Errorf("interceptors: register %q: %w", interceptors.MethodList, err)
+	}
+	if err := mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke, e.handleInvoke); err != nil {
+		return fmt.Errorf("interceptors: register %q: %w", interceptors.MethodInvoke, err)
+	}
 	server.AddReceivingMiddleware(e.initMiddleware())
+	return nil
 }
 
 // AddInterceptor registers an interceptor. It panics if the interceptor
@@ -128,6 +134,10 @@ func (e *Extension) LocalChain(ctx context.Context, server *mcp.Server) (*chain.
 		Name:    "interceptor-chain-client",
 		Version: "internal",
 	}, nil)
+	if err := RegisterSendingMethods(client); err != nil {
+		ss.Close()
+		return nil, err
+	}
 	cs, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		ss.Close()

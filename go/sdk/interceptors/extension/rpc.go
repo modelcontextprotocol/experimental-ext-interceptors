@@ -18,10 +18,10 @@ import (
 
 // handleList implements the "interceptors/list" JSON-RPC method.
 // It returns all registered interceptors, optionally filtered by event.
-func (e *Extension) handleList(_ context.Context, req *mcp.ServerRequest[*interceptors.ListParams]) (*interceptors.ListResult, error) {
+func (e *Extension) handleList(_ context.Context, _ *mcp.ServerSession, params *interceptors.ListParams) (*interceptors.ListResult, error) {
 	var event string
-	if req.Params != nil {
-		event = req.Params.Event
+	if params != nil {
+		event = params.Event
 	}
 
 	all := e.getInterceptors()
@@ -38,14 +38,13 @@ func (e *Extension) handleList(_ context.Context, req *mcp.ServerRequest[*interc
 
 // handleInvoke implements the "interceptor/invoke" JSON-RPC method.
 // It invokes a single interceptor by name and returns its result.
-func (e *Extension) handleInvoke(ctx context.Context, req *mcp.ServerRequest[*interceptors.InvokeParams]) (*interceptors.InvokeResult, error) {
-	if req.Params == nil || req.Params.Name == "" {
+func (e *Extension) handleInvoke(ctx context.Context, _ *mcp.ServerSession, params *interceptors.InvokeParams) (*interceptors.InvokeResult, error) {
+	if params == nil || params.Name == "" {
 		return nil, &jsonrpc.Error{
 			Code:    jsonrpc.CodeInvalidParams,
 			Message: "name is required",
 		}
 	}
-	params := req.Params
 
 	// Look up the interceptor by name.
 	i := e.findByName(params.Name)
