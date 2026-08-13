@@ -47,7 +47,7 @@ func setupWithTools(t *testing.T, tools []testTool, is ...interceptors.Intercept
 	for _, i := range is {
 		ext.AddInterceptor(i)
 	}
-	ext.Install(mcpServer)
+	require.NoError(t, ext.Install(mcpServer))
 
 	// Create a chain via LocalChain (in-memory transport).
 	chain, err := ext.LocalChain(context.Background(), mcpServer)
@@ -64,6 +64,7 @@ func setupWithTools(t *testing.T, tools []testTool, is ...interceptors.Intercept
 	t.Cleanup(httpServer.Close)
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"}, nil)
+	require.NoError(t, extension.RegisterSendingMethods(client))
 	cs, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint: httpServer.URL,
 	}, nil)
@@ -148,7 +149,7 @@ func buildServer(t *testing.T, is ...interceptors.Interceptor) *mcp.Server {
 	for _, i := range is {
 		ext.AddInterceptor(i)
 	}
-	ext.Install(mcpServer)
+	require.NoError(t, ext.Install(mcpServer))
 
 	return mcpServer
 }
@@ -164,6 +165,7 @@ func connectHTTPClient(t *testing.T, srv *mcp.Server) *mcp.ClientSession {
 	httpServer := httptest.NewServer(handler)
 	t.Cleanup(httpServer.Close)
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"}, nil)
+	require.NoError(t, extension.RegisterSendingMethods(client))
 	cs, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint: httpServer.URL,
 	}, nil)

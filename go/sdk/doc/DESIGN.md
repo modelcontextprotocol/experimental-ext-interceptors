@@ -38,9 +38,10 @@ server via in-memory transport. Under the hood it:
 1. Creates an `InMemoryTransport` pair via `mcp.NewInMemoryTransports()`
 2. Connects the server side via `mcp.Server.Connect(ctx, serverTransport)`
 3. Creates an MCP client and connects via the client transport
-4. Calls `chain.AddMCPServer(ctx, clientSession)` which discovers
+4. Registers the interceptor custom sending methods on the client
+5. Calls `chain.AddMCPServer(ctx, clientSession)` which discovers
    interceptors via `interceptors/list`
-5. Returns the ready-to-use chain
+6. Returns the ready-to-use chain
 
 This means interceptors are invoked through the full MCP JSON-RPC
 pathway — even when running in the same process — ensuring the same
@@ -59,22 +60,24 @@ The capability payload includes:
 
 ## Request/Response Lifecycle
 
-When a JSON-RPC request arrives, `gomiddleware.Middleware` runs:
+When a JSON-RPC request or notification reaches the server receiving
+middleware, `gomiddleware.Middleware` runs:
 
 ```
-0.  If method is skipped (initialize, notifications/*, interceptor/*) → passthrough
+0.  If method is skipped → passthrough
 1.  Marshal request params to json.RawMessage
 2.  chain.Execute(ctx, {event, PhaseRequest, payload})
     → For each interceptor: interceptor/invoke RPC via ClientSession
 3.  If aborted → return JSON-RPC error
 4.  Unmarshal mutated payload back into request params
 5.  Call next handler                        next(ctx, method, req)
-6.  Marshal response result to json.RawMessage
-7.  chain.Execute(ctx, {event, PhaseResponse, payload})
+6.  If the handler returns nil result (notification) → return
+7.  Marshal response result to json.RawMessage
+8.  chain.Execute(ctx, {event, PhaseResponse, payload})
     → For each interceptor: interceptor/invoke RPC via ClientSession
-8.  If aborted → return JSON-RPC error
-9.  Unmarshal mutated payload back into response result
-10. Return result
+9.  If aborted → return JSON-RPC error
+10. Unmarshal mutated payload back into response result
+11. Return result
 ```
 
 ### JSON-RPC Payload Model
@@ -82,7 +85,8 @@ When a JSON-RPC request arrives, `gomiddleware.Middleware` runs:
 Interceptor handlers receive `json.RawMessage` as `inv.Payload` when
 invoked via `interceptor/invoke`. This is the SEP-correct behavior —
 payloads are JSON at the protocol level. Handlers unmarshal, inspect or
-modify, and (for mutators) set the updated JSON back on `inv.Payload`:
+modify, and (for mutators) return the updated JSON in
+`MutationResult.Payload`:
 
 ```go
 // Validator — unmarshal, inspect, return:
@@ -118,7 +122,9 @@ avoid intercepting lifecycle events:
 
 ### Intercepted
 
-All JSON-RPC **method calls** routed through the server's receiving middleware:
+All JSON-RPC messages routed through the server's receiving middleware
+except the skipped methods above. The current integration is server-side
+receiving middleware only.
 
 | Method | Event |
 |--------|-------|
@@ -130,8 +136,9 @@ All JSON-RPC **method calls** routed through the server's receiving middleware:
 | `resources/list` | `EventResourcesList` |
 | `resources/subscribe` | `EventResourcesSubscribe` |
 
-Unknown methods pass through the middleware and are intercepted normally
-(the JSON-RPC method name is used as the event name).
+Custom methods registered with the Go SDK's receiving custom-method API
+also pass through the middleware and are intercepted using the JSON-RPC
+method name as the event name.
 
 ### Not Intercepted
 
@@ -175,9 +182,9 @@ Response-phase validators see the post-mutation payload.
 ### Mutator execution
 - Mutators run sequentially, ordered by `PriorityHint.Resolve(phase)`
   (ascending), with alphabetical name tiebreak.
-- Each mutator receives `json.RawMessage`, unmarshals, modifies, and sets
-  the updated JSON back on `inv.Payload`. The chain passes the mutated
-  payload from each mutator to the next.
+- Each mutator receives `json.RawMessage`, unmarshals, modifies, and
+  returns updated JSON in `MutationResult.Payload`. The chain passes the
+  returned payload from each mutator to the next.
 - If any mutator fails (and is not `FailOpen`), the chain aborts.
 - In `ModeAudit`, the mutated payload is not propagated to subsequent
   interceptors.
@@ -198,7 +205,7 @@ Response-phase validators see the post-mutation payload.
 |------|---------------|
 | `interceptor.go` | Interceptor interface, enums (Phase, Mode, InterceptorType, Severity), Metadata/Compat/Hook, Validator/Mutator structs and handler types, Invocation/InvocationContext/Principal, result types (ValidationResult, MutationResult) |
 | `priority.go` | Priority struct, NewPriority, Resolve, MarshalJSON, UnmarshalJSON |
-| `wire.go` | JSON-RPC method/event constants, wire types (ListParams, ListResult, InvokeParams, InvokeResult, InterceptorInfo) |
+| `wire.go` | Interceptor JSON-RPC method names, public event constants for common server methods, wire types (ListParams, ListResult, InvokeParams, InvokeResult, InterceptorInfo) |
 
 ### `interceptors/chain/` — chain orchestrator
 
@@ -212,8 +219,8 @@ Response-phase validators see the post-mutation payload.
 | File | Responsibility |
 |------|---------------|
 | `server.go` | `Extension`, interceptor management, `Install`, `LocalChain`, capability declaration |
+| `client.go` | `RegisterSendingMethods`, which registers interceptor custom methods on an MCP client before connecting |
 | `rpc.go` | `handleList` and `handleInvoke` JSON-RPC method handlers |
-| `events.go` | Event name constants for standard MCP methods |
 
 ### `interceptors/integrations/gomiddleware/` — middleware
 

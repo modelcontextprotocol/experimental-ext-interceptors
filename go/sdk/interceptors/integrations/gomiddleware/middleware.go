@@ -66,7 +66,7 @@ var skipMethods = map[string]bool{
 // interceptor/invoke RPCs. Install it on an [mcp.Server] via
 // [mcp.Server.AddReceivingMiddleware]:
 //
-//	chain, _ := srv.LocalChain(ctx)
+//	chain, _ := ext.LocalChain(ctx, mcpServer)
 //	mcpServer.AddReceivingMiddleware(
 //	    gomiddleware.Middleware(chain, gomiddleware.WithLogger(logger)),
 //	)

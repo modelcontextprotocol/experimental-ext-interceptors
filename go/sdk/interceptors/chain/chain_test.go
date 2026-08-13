@@ -17,6 +17,7 @@ import (
 
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors"
 	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/chain"
+	"github.com/modelcontextprotocol/ext-interceptors/go/sdk/interceptors/extension"
 )
 
 // setupChainWithInterceptors creates an MCP server with the given
@@ -34,7 +35,7 @@ func setupChainWithOpts(t *testing.T, opts []chain.ChainOption, is ...intercepto
 		Version: "0.1.0",
 	}, nil)
 
-	registerInterceptorMethods(mcpServer, is)
+	registerInterceptorMethods(t, mcpServer, is)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 
@@ -46,6 +47,7 @@ func setupChainWithOpts(t *testing.T, opts []chain.ChainOption, is ...intercepto
 		Name:    "chain-test-client",
 		Version: "0.1.0",
 	}, nil)
+	require.NoError(t, extension.RegisterSendingMethods(client))
 	cs, err := client.Connect(context.Background(), clientTransport, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { cs.Close() })
@@ -60,12 +62,13 @@ func setupChainWithOpts(t *testing.T, opts []chain.ChainOption, is ...intercepto
 
 // registerInterceptorMethods adds interceptors/list and interceptor/invoke
 // custom methods to the server, backed by the given interceptor list.
-func registerInterceptorMethods(server *mcp.Server, is []interceptors.Interceptor) {
-	mcp.AddReceivingCustomMethod(server, interceptors.MethodList,
-		func(_ context.Context, req *mcp.ServerRequest[*interceptors.ListParams]) (*interceptors.ListResult, error) {
+func registerInterceptorMethods(t *testing.T, server *mcp.Server, is []interceptors.Interceptor) {
+	t.Helper()
+	require.NoError(t, mcp.AddReceivingCustomMethod(server, interceptors.MethodList,
+		func(_ context.Context, _ *mcp.ServerSession, params *interceptors.ListParams) (*interceptors.ListResult, error) {
 			var event string
-			if req.Params != nil {
-				event = req.Params.Event
+			if params != nil {
+				event = params.Event
 			}
 			infos := make([]interceptors.InterceptorInfo, 0, len(is))
 			for _, i := range is {
@@ -87,14 +90,13 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 			}
 			return &interceptors.ListResult{Interceptors: infos}, nil
 		},
-	)
+	))
 
-	mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke,
-		func(ctx context.Context, req *mcp.ServerRequest[*interceptors.InvokeParams]) (*interceptors.InvokeResult, error) {
-			if req.Params == nil {
+	require.NoError(t, mcp.AddReceivingCustomMethod(server, interceptors.MethodInvoke,
+		func(ctx context.Context, _ *mcp.ServerSession, params *interceptors.InvokeParams) (*interceptors.InvokeResult, error) {
+			if params == nil {
 				return nil, fmt.Errorf("params required")
 			}
-			params := req.Params
 			var target interceptors.Interceptor
 			for _, i := range is {
 				if i.GetMetadata().Name == params.Name {
@@ -137,7 +139,7 @@ func registerInterceptorMethods(server *mcp.Server, is []interceptors.Intercepto
 			}
 			return result, nil
 		},
-	)
+	))
 }
 
 func TestChain_ExecutionHandler(t *testing.T) {
@@ -405,5 +407,89 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 
 		// Both interceptors should have a result entry.
 		require.Len(t, cr.Results, 2)
+	})
+}
+
+func TestChain_AuditModeErrorsDoNotAbort(t *testing.T) {
+	t.Parallel()
+
+	t.Run("audit validator error is recorded without aborting", func(t *testing.T) {
+		t.Parallel()
+		auditValidator := &interceptors.Validator{
+			Metadata: interceptors.Metadata{
+				Name: "audit-validator",
+				Hooks: []interceptors.Hook{{
+					Events: []string{"test/event"},
+					Phase:  interceptors.PhaseRequest,
+				}},
+				Mode: interceptors.ModeAudit,
+			},
+			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
+				return nil, fmt.Errorf("audit sink failed")
+			},
+		}
+
+		ch := setupChainWithInterceptors(t, auditValidator)
+
+		payload, _ := json.Marshal(map[string]any{"value": "hello"})
+		cr, err := ch.Execute(context.Background(), &chain.ExecutionParams{
+			Event:   "test/event",
+			Phase:   interceptors.PhaseRequest,
+			Payload: payload,
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, chain.ChainSuccess, cr.Status)
+		assert.Empty(t, cr.AbortedAt)
+		require.Len(t, cr.Results, 1)
+		assert.Equal(t, "audit-validator", cr.Results[0].Interceptor)
+	})
+
+	t.Run("audit mutator error is recorded without aborting", func(t *testing.T) {
+		t.Parallel()
+		auditMutator := &interceptors.Mutator{
+			Metadata: interceptors.Metadata{
+				Name: "audit-mutator",
+				Hooks: []interceptors.Hook{{
+					Events: []string{"test/event"},
+					Phase:  interceptors.PhaseResponse,
+				}},
+				Mode:         interceptors.ModeAudit,
+				PriorityHint: interceptors.NewPriority(10),
+			},
+			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
+				return nil, fmt.Errorf("shadow mutation failed")
+			},
+		}
+		passingMutator := &interceptors.Mutator{
+			Metadata: interceptors.Metadata{
+				Name: "passing-mutator",
+				Hooks: []interceptors.Hook{{
+					Events: []string{"test/event"},
+					Phase:  interceptors.PhaseResponse,
+				}},
+				Mode:         interceptors.ModeEnforce,
+				PriorityHint: interceptors.NewPriority(20),
+			},
+			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
+				modified, _ := json.Marshal(map[string]any{"value": "mutated"})
+				return &interceptors.MutationResult{Modified: true, Payload: modified}, nil
+			},
+		}
+
+		ch := setupChainWithInterceptors(t, auditMutator, passingMutator)
+
+		payload, _ := json.Marshal(map[string]any{"value": "hello"})
+		cr, err := ch.Execute(context.Background(), &chain.ExecutionParams{
+			Event:   "test/event",
+			Phase:   interceptors.PhaseResponse,
+			Payload: payload,
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, chain.ChainSuccess, cr.Status)
+		assert.Empty(t, cr.AbortedAt)
+		require.Len(t, cr.Results, 2)
+		require.NotNil(t, cr.FinalPayload)
 	})
 }
