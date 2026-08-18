@@ -87,7 +87,8 @@ internal sealed class GatewayProxyConfigurator
             var backendNode = await _backend.SendRequestAsync<ListToolsRequestParams, JsonNode>(
                 RequestMethods.ToolsList, mutatedParams, _jsonOptions, cancellationToken: ct);
             EnsureToolInputSchemas(backendNode);
-            var result = JsonSerializer.Deserialize<ListToolsResult>(backendNode, _jsonOptions)!;
+            var result = JsonSerializer.Deserialize<ListToolsResult>(backendNode, _jsonOptions)
+                ?? throw new InvalidOperationException("The backend returned a null tools/list result.");
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
             {

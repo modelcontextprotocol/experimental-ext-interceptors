@@ -114,6 +114,8 @@ public class McpInterceptorGatewayTests
         var tools = await fixture.ProxyClient.ListToolsAsync();
         Assert.Single(tools);
         Assert.Equal("stripped-tool", tools[0].Name);
+        Assert.Equal(JsonValueKind.Object, tools[0].JsonSchema.ValueKind);
+        Assert.Equal("object", tools[0].JsonSchema.GetProperty("type").GetString());
     }
 
     [Fact]
@@ -1428,7 +1430,12 @@ public class McpInterceptorGatewayTests
 
             // Client writes to clientToServer, reads from clientFromServer
             var clientTransport = new StreamClientTransport(clientToServer, clientFromServer);
-            var clientOptions = protocolVersion is null ? null : new McpClientOptions { ProtocolVersion = protocolVersion };
+            var clientOptions = new McpClientOptions();
+            if (protocolVersion is not null)
+            {
+                clientOptions.ProtocolVersion = protocolVersion;
+            }
+
             var client = await McpClient.CreateAsync(clientTransport, clientOptions);
 
             return (server, client);
