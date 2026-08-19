@@ -28,14 +28,17 @@ jobs:
       - name: Get PR number
         id: pr
         run: |
-          if [ "${{ github.event_name }}" == "workflow_run" ]; then
-            PR_NUMBER=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number')
+          if [ "$EVENT_NAME" == "workflow_run" ]; then
+            PR_NUMBER=$(gh pr list --head "$HEAD_BRANCH" --json number --jq '.[0].number')
             echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
           else
-            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "number=$PR_NUMBER_INPUT" >> $GITHUB_OUTPUT
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          PR_NUMBER_INPUT: ${{ github.event.pull_request.number }}
 
       - name: Get changed files
         id: changed-files
