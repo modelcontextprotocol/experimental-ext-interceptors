@@ -15,7 +15,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
-    <PackageReference Include="ModelContextProtocol" Version="1.1.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.1.0" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Interceptors\ModelContextProtocol.Interceptors.csproj" />
   </ItemGroup>
 

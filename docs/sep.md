@@ -7,7 +7,7 @@
 - **Sponsor**: Sambhav Kothari (@sambhav)
 - **PR**: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624
 
-> **NOTE:** This SEP has been submitted to the main MCP repository as [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624); future review and comments happen there. This repo-local copy is the working draft maintained by the [Interceptors Working Group](https://github.com/modelcontextprotocol/experimental-ext-interceptors) and may be revised as upstream review feedback is incorporated. Additional discussion welcome via [GitHub Issues](https://github.com/modelcontextprotocol/experimental-ext-interceptros/issues) or [Discord #interceptors-wg](https://discord.com/channels/1358869848138059966/1474446054291279933).
+> **NOTE:** This SEP has been submitted to the main MCP repository as [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624); future review and comments happen there. This repo-local copy is the working draft maintained by the [Interceptors Working Group](https://github.com/modelcontextprotocol/experimental-ext-interceptors) and may be revised as upstream review feedback is incorporated. Additional discussion welcome via [GitHub Issues](https://github.com/modelcontextprotocol/experimental-ext-interceptors/issues) or [Discord #interceptors-wg](https://discord.com/channels/1358869848138059966/1474446054291279933).
 
 ## Abstract
 

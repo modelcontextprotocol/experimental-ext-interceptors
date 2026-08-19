@@ -34,7 +34,6 @@ internal sealed class GatewayInterceptorProtocolBridge
 
         foreach (var client in _interceptorClients)
         {
-#pragma warning disable MCPEXP001
             if (client.ServerCapabilities?.Extensions is { } extensions &&
                 extensions.TryGetValue(InterceptorProtocolConstants.ExtensionCapabilityKey, out var capObj))
             {
@@ -59,7 +58,6 @@ internal sealed class GatewayInterceptorProtocolBridge
                 {
                 }
             }
-#pragma warning restore MCPEXP001
         }
 
         if (!anyInterceptorCapabilityFound)
@@ -67,13 +65,11 @@ internal sealed class GatewayInterceptorProtocolBridge
             return;
         }
 
-#pragma warning disable MCPEXP001
         serverOptions.Capabilities ??= new ServerCapabilities();
         serverOptions.Capabilities.Extensions ??= new Dictionary<string, object>();
         serverOptions.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
             new InterceptorsCapability { SupportedEvents = allEvents.ToList() },
             InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
     }
 
     private void ConfigurePassthroughFilter(McpServerOptions serverOptions)

@@ -195,12 +195,10 @@ public class InterceptorChainTests
             options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
 
             options.Capabilities ??= new();
-#pragma warning disable MCPEXP001
             options.Capabilities.Extensions ??= new Dictionary<string, object>();
             options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                 new InterceptorsCapability { SupportedEvents = [InterceptionEvents.All] },
                 InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
         }
 
         public async ValueTask DisposeAsync()

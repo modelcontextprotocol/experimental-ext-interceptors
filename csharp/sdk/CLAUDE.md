@@ -1,21 +1,27 @@
 # MCP Interceptors - C# SDK
 
 ## What this is
-C# implementation of gateway-level interceptors from [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624). NuGet package additive to the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (v1.1.0). Focus is on the protocol-level extension (client → interceptor server → server), NOT in-process middleware.
+C# implementation of gateway-level interceptors from [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624). NuGet package additive to the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (v2.1.0, MCP spec 2026-07-28). Focus is on the protocol-level extension (client → interceptor server → server), NOT in-process middleware.
 
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 98 tests across the interceptor test project
+dotnet test    # 105 tests across the interceptor test project
 ```
 
 ## Key architectural constraints
 
 **Why message filter, not handlers**: `McpServerHandlers` and `McpServerImpl` are `internal` in the SDK. We can't register handlers for new JSON-RPC methods from outside. Instead we use `McpServerOptions.Filters.Message.IncomingFilters` to intercept `interceptors/list` and `interceptor/invoke`, handle them, send `JsonRpcResponse` via `context.Server.SendMessageAsync()`, and skip calling `next`. See `InterceptorMessageFilter.cs`. Chain execution is no longer a wire method — it's SDK orchestration in `Client/InterceptorChainOrchestrator.cs`.
 
-**Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions. Requires `#pragma warning disable MCPEXP001`. We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["io.modelcontextprotocol/interceptors"]`.
+**Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions (stable since SDK 2.x — no experimental pragma needed). We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["io.modelcontextprotocol/interceptors"]`.
 
-**Client `SendRequestAsync`**: The public overload (`McpSession.Methods.cs:24`) takes `JsonSerializerOptions`. We pass `InterceptorJsonUtilities.DefaultOptions` which chains `McpJsonUtilities.DefaultOptions` + our `InterceptorJsonContext`. The internal overload takes `JsonTypeInfo<T>` — we can't use it.
+**Client `SendRequestAsync`**: The public `SendRequestAsync<TParameters, TResult>` endpoint extension takes `JsonSerializerOptions` (call it with named `cancellationToken:` — 2.x inserted an optional `RequestId` parameter before it). We pass `InterceptorJsonUtilities.DefaultOptions` which chains `McpJsonUtilities.DefaultOptions` + our `InterceptorJsonContext`. The internal overload takes `JsonTypeInfo<T>` — we can't use it.
+
+**SDK 2.x / spec 2026-07-28 notes**:
+- Tasks moved out of SDK core into a separate, wire-incompatible `ModelContextProtocol.Extensions.Tasks` package; the gateway no longer needs to suppress a backend `Tasks` capability.
+- Logging (`logging/setLevel`) and `resources/subscribe` are deprecated by the spec (SEP-2577 / SEP-2575) and rejected on `2026-07-28` connections, but the gateway intentionally keeps proxying them for down-level clients/backends (`#pragma warning disable MCP9005` at those sites; tests pin `protocolVersion: "2025-06-18"`).
+- `Tool.inputSchema` is required and validated on deserialization; the gateway fetches `tools/list` as raw JSON and coerces missing/invalid schemas to `{"type":"object"}` (`GatewayProxyConfigurator.EnsureToolInputSchemas`) so down-level backends and schema-stripping interceptors can't fail the request.
+- MRTR (multi-round-trip requests) is not forwarded; the gateway's server reports `IsMrtrSupported == false`.
 
 **`InterceptingMcpClient` is composition**: `McpClient` has an internal constructor; subclassing is `[Experimental]`. We wrap it as a concrete class exposing `.Inner` for direct access.
 
