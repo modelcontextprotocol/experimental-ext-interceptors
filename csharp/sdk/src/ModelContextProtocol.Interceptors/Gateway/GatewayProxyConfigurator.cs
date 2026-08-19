@@ -49,11 +49,6 @@ internal sealed class GatewayProxyConfigurator
             ? CloneCapabilities(backendCaps)
             : serverOptions.Capabilities ?? new ServerCapabilities();
 
-        // Task passthrough is not implemented yet, so do not advertise backend task support.
-#pragma warning disable MCPEXP001
-        serverOptions.Capabilities.Tasks = null;
-#pragma warning restore MCPEXP001
-
         ConfigureTools(serverOptions, backendCaps);
         ConfigurePrompts(serverOptions, backendCaps);
         ConfigureResources(serverOptions, backendCaps);
@@ -85,15 +80,23 @@ internal sealed class GatewayProxyConfigurator
 
             var mutatedParams = JsonSerializer.Deserialize<ListToolsRequestParams>(requestPayload, _jsonOptions)
                 ?? request.Params!;
-            var result = await _backend.ListToolsAsync(mutatedParams, ct);
+
+            // Fetch the backend result as raw JSON: deserializing into ListToolsResult rejects
+            // tools whose inputSchema is missing or invalid, which would fail the whole request
+            // for a down-level backend before the proxy could compensate.
+            var backendNode = await _backend.SendRequestAsync<ListToolsRequestParams, JsonNode>(
+                RequestMethods.ToolsList, mutatedParams, _jsonOptions, cancellationToken: ct);
+            EnsureToolInputSchemas(backendNode);
+            var result = JsonSerializer.Deserialize<ListToolsResult>(backendNode, _jsonOptions)
+                ?? throw new InvalidOperationException("The backend returned a null tools/list result.");
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
             {
-                var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
                 var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ToolsList, InterceptorPhase.Response, responsePayload, ct);
+                    InterceptionEvents.ToolsList, InterceptorPhase.Response, backendNode, ct);
                 if (responseStatus != InterceptorChainStatus.Success)
                     InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Response, responseStatus);
+                EnsureToolInputSchemas(processed);
                 result = JsonSerializer.Deserialize<ListToolsResult>(processed, _jsonOptions) ?? result;
             }
 
@@ -321,6 +324,9 @@ internal sealed class GatewayProxyConfigurator
             await _backend.CompleteAsync(request.Params!, ct);
     }
 
+    // Logging is deprecated upstream (SEP-2577) but the gateway intentionally keeps proxying it
+    // for down-level clients/backends.
+#pragma warning disable MCP9005
     private void ConfigureLogging(McpServerOptions serverOptions, ServerCapabilities? backendCaps)
     {
         if (backendCaps?.Logging is null)
@@ -333,6 +339,38 @@ internal sealed class GatewayProxyConfigurator
             await _backend.SetLoggingLevelAsync(request.Params!, ct);
             return new EmptyResult();
         };
+    }
+#pragma warning restore MCP9005
+
+    /// <summary>
+    /// SDK 2.x requires tools/list entries to carry an inputSchema that is a JSON object with
+    /// "type":"object"; missing schemas throw during deserialization and invalid ones are
+    /// rejected by the Tool setter. As a transparent proxy we coerce missing or invalid schemas
+    /// from down-level backends or interceptor mutations to the spec-default {"type":"object"}.
+    /// </summary>
+    internal static void EnsureToolInputSchemas(JsonNode? listToolsPayload)
+    {
+        if (listToolsPayload?["tools"] is not JsonArray tools)
+        {
+            return;
+        }
+
+        foreach (var node in tools)
+        {
+            if (node is not JsonObject tool)
+            {
+                continue;
+            }
+
+            var valid = tool["inputSchema"] is JsonObject schema
+                && schema["type"] is JsonValue typeValue
+                && typeValue.TryGetValue<string>(out var type)
+                && type == "object";
+            if (!valid)
+            {
+                tool["inputSchema"] = new JsonObject { ["type"] = "object" };
+            }
+        }
     }
 
     private ServerCapabilities CloneCapabilities(ServerCapabilities capabilities)

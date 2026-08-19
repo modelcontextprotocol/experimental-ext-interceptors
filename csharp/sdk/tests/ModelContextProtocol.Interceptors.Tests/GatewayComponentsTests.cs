@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.IO.Pipes;
 using System.Security.Claims;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,10 +31,46 @@ public class GatewayComponentsTests
 
         bridge.Configure(serverOptions);
 
-#pragma warning disable MCPEXP001
         Assert.NotNull(serverOptions.Capabilities.Extensions);
         Assert.True(serverOptions.Capabilities.Extensions!.ContainsKey(InterceptorProtocolConstants.ExtensionCapabilityKey));
-#pragma warning restore MCPEXP001
+    }
+
+    [Theory]
+    [InlineData("""{"name":"t"}""")] // missing inputSchema
+    [InlineData("""{"name":"t","inputSchema":{}}""")] // empty object, no "type"
+    [InlineData("""{"name":"t","inputSchema":{"type":"string"}}""")] // wrong type
+    [InlineData("""{"name":"t","inputSchema":"not-an-object"}""")] // not a JSON object
+    public void EnsureToolInputSchemas_CoercesMissingOrInvalidSchemaToSpecDefault(string toolJson)
+    {
+        var payload = JsonNode.Parse($$"""{"tools":[{{toolJson}}]}""");
+
+        GatewayProxyConfigurator.EnsureToolInputSchemas(payload);
+
+        var schema = payload!["tools"]![0]!["inputSchema"];
+        Assert.Equal("object", schema!["type"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void EnsureToolInputSchemas_LeavesValidSchemaUntouched()
+    {
+        var payload = JsonNode.Parse(
+            """{"tools":[{"name":"t","inputSchema":{"type":"object","properties":{"x":{"type":"string"}},"required":["x"]}}]}""");
+        var original = payload!["tools"]![0]!["inputSchema"]!.ToJsonString();
+
+        GatewayProxyConfigurator.EnsureToolInputSchemas(payload);
+
+        Assert.Equal(original, payload["tools"]![0]!["inputSchema"]!.ToJsonString());
+    }
+
+    [Fact]
+    public void EnsureToolInputSchemas_IgnoresPayloadWithoutToolsArray()
+    {
+        var payload = JsonNode.Parse("""{"resources":[]}""");
+
+        GatewayProxyConfigurator.EnsureToolInputSchemas(payload);
+
+        Assert.Null(payload!["tools"]);
+        GatewayProxyConfigurator.EnsureToolInputSchemas(null);
     }
 
     [Fact]
@@ -93,9 +130,7 @@ public class GatewayComponentsTests
         var serverOptions = new McpServerOptions();
         gateway.ConfigureServerOptions(serverOptions);
 
-#pragma warning disable MCPEXP001
         Assert.True(serverOptions.Capabilities?.Extensions?.ContainsKey(InterceptorProtocolConstants.ExtensionCapabilityKey) ?? false);
-#pragma warning restore MCPEXP001
     }
 
     [Fact]
@@ -262,12 +297,10 @@ public class GatewayComponentsTests
                         var filter = new InterceptorMessageFilter(collection);
                         options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
                         options.Capabilities ??= new();
-#pragma warning disable MCPEXP001
                         options.Capabilities.Extensions ??= new Dictionary<string, object>();
                         options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                             new InterceptorsCapability { SupportedEvents = [InterceptionEvents.ToolsCall] },
                             InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
                     });
                 disposables.Add(interceptorServer);
                 disposables.Add(interceptorClient);
@@ -301,12 +334,10 @@ public class GatewayComponentsTests
                     var filter = new InterceptorMessageFilter(collection);
                     serverOptions.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
                     serverOptions.Capabilities ??= new();
-#pragma warning disable MCPEXP001
                     serverOptions.Capabilities.Extensions ??= new Dictionary<string, object>();
                     serverOptions.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                         new InterceptorsCapability { SupportedEvents = [InterceptionEvents.ToolsCall] },
                         InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
 
                     var serverTransport = new StreamServerTransport(serverFromClient, serverToClient);
                     var server = McpServer.Create(serverTransport, serverOptions);
@@ -360,7 +391,10 @@ public class GatewayComponentsTests
         public override Implementation? ClientInfo => null;
         public override McpServerOptions ServerOptions => new();
         public override IServiceProvider? Services => null;
+        // Logging is deprecated upstream (SEP-2577) but remains part of the abstract surface.
+#pragma warning disable MCP9005, CS0672
         public override LoggingLevel? LoggingLevel => null;
+#pragma warning restore MCP9005, CS0672
         public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
         public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) => throw new NotSupportedException();
         public override Task RunAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -384,6 +418,7 @@ public class GatewayComponentsTests
         public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) => throw new NotSupportedException();
         public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public override ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(IDictionary<string, InputRequest> inputRequests, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class TestInterceptor : McpServerInterceptor

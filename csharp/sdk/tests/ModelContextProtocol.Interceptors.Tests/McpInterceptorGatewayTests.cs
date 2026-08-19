@@ -50,6 +50,75 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
+    public async Task Gateway_NegotiatesLatestProtocolVersion()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            });
+
+        Assert.Equal("2026-07-28", fixture.ProxyClient.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task ListTools_InjectsDefaultInputSchemaWhenInterceptorStripsIt()
+    {
+        await using var fixture = await GatewayTestFixture.CreateAsync(
+            backendConfigure: (options) =>
+            {
+                options.Capabilities ??= new();
+                options.Capabilities.Tools ??= new();
+                options.Handlers.ListToolsHandler = (request, ct) =>
+                {
+                    return new ValueTask<ListToolsResult>(new ListToolsResult
+                    {
+                        Tools = [new Tool { Name = "stripped-tool", Description = "Loses its schema" }],
+                    });
+                };
+                options.Handlers.CallToolHandler = (request, ct) =>
+                    new ValueTask<CallToolResult>(new CallToolResult());
+            },
+            interceptors: [CreateMutationInterceptor("schema-stripper", (req, _, _, _) =>
+            {
+                // Only the response phase carries a tools array; pass the request phase through.
+                if (req.Payload?["tools"] is not JsonArray)
+                {
+                    return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                    {
+                        Modified = false,
+                        Payload = req.Payload,
+                    });
+                }
+
+                var payload = req.Payload!.DeepClone();
+                foreach (var tool in payload["tools"]!.AsArray())
+                {
+                    tool!.AsObject().Remove("inputSchema");
+                }
+
+                return new ValueTask<InterceptorResult>(new MutationInterceptorResult
+                {
+                    Modified = true,
+                    Payload = payload,
+                });
+            }, events: [InterceptionEvents.ToolsList])]);
+
+        // Without the gateway coercing the stripped inputSchema back to the spec default,
+        // deserializing the mutated payload would fail and the request would error out.
+        var tools = await fixture.ProxyClient.ListToolsAsync();
+        Assert.Single(tools);
+        Assert.Equal("stripped-tool", tools[0].Name);
+        Assert.Equal(JsonValueKind.Object, tools[0].JsonSchema.ValueKind);
+        Assert.Equal("object", tools[0].JsonSchema.GetProperty("type").GetString());
+    }
+
+    [Fact]
     public async Task CallToolAsync_PassesThroughInterceptors()
     {
         var interceptorInvoked = false;
@@ -224,33 +293,6 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task ConfigureServerOptions_DoesNotAdvertiseBackendTasksCapability()
-    {
-        await using var fixture = await GatewayTestFixture.CreateAsync(
-            backendConfigure: (options) =>
-            {
-                options.Capabilities ??= new();
-                options.Capabilities.Tools ??= new();
-#pragma warning disable MCPEXP001
-                options.Capabilities.Tasks = new McpTasksCapability
-                {
-                    List = new ListMcpTasksCapability(),
-                    Cancel = new CancelMcpTasksCapability(),
-                };
-#pragma warning restore MCPEXP001
-                options.Handlers.ListToolsHandler = (request, ct) =>
-                    new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
-                options.Handlers.CallToolHandler = (request, ct) =>
-                    new ValueTask<CallToolResult>(new CallToolResult());
-            });
-
-        var caps = fixture.ProxyClient.ServerCapabilities;
-#pragma warning disable MCPEXP001
-        Assert.Null(caps.Tasks);
-#pragma warning restore MCPEXP001
-    }
-
-    [Fact]
     public async Task ConfigureServerOptions_MirrorsBackendExtensionsInTransparentMode()
     {
         await using var fixture = await GatewayTestFixture.CreateAsync(
@@ -258,22 +300,18 @@ public class McpInterceptorGatewayTests
             {
                 options.Capabilities ??= new();
                 options.Capabilities.Tools ??= new();
-#pragma warning disable MCPEXP001
                 options.Capabilities.Extensions ??= new Dictionary<string, object>();
                 options.Capabilities.Extensions["com.example/backend"] = JsonSerializer.SerializeToElement(new { version = 1 });
-#pragma warning restore MCPEXP001
                 options.Handlers.ListToolsHandler = (request, ct) =>
                     new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
                 options.Handlers.CallToolHandler = (request, ct) =>
                     new ValueTask<CallToolResult>(new CallToolResult());
             });
 
-#pragma warning disable MCPEXP001
         var caps = fixture.ProxyClient.ServerCapabilities;
         Assert.NotNull(caps.Extensions);
         Assert.True(caps.Extensions!.ContainsKey("com.example/backend"));
         Assert.False(caps.Extensions.ContainsKey("io.modelcontextprotocol/interceptors"));
-#pragma warning restore MCPEXP001
     }
 
     [Fact]
@@ -290,10 +328,8 @@ public class McpInterceptorGatewayTests
                     new ValueTask<CallToolResult>(new CallToolResult());
             });
 
-#pragma warning disable MCPEXP001
         var caps = fixture.ProxyClient.ServerCapabilities;
         Assert.False(caps?.Extensions?.ContainsKey("io.modelcontextprotocol/interceptors") ?? false);
-#pragma warning restore MCPEXP001
     }
 
     [Fact]
@@ -304,10 +340,8 @@ public class McpInterceptorGatewayTests
             {
                 options.Capabilities ??= new();
                 options.Capabilities.Tools ??= new();
-#pragma warning disable MCPEXP001
                 options.Capabilities.Extensions ??= new Dictionary<string, object>();
                 options.Capabilities.Extensions["com.example/backend"] = JsonSerializer.SerializeToElement(new { version = 1 });
-#pragma warning restore MCPEXP001
                 options.Handlers.ListToolsHandler = (request, ct) =>
                     new ValueTask<ListToolsResult>(new ListToolsResult { Tools = [] });
                 options.Handlers.CallToolHandler = (request, ct) =>
@@ -315,12 +349,10 @@ public class McpInterceptorGatewayTests
             },
             exposeInterceptorProtocol: true);
 
-#pragma warning disable MCPEXP001
         var caps = fixture.ProxyClient.ServerCapabilities;
         Assert.NotNull(caps?.Extensions);
         Assert.True(caps!.Extensions!.ContainsKey("io.modelcontextprotocol/interceptors"));
         Assert.True(caps.Extensions.ContainsKey("com.example/backend"));
-#pragma warning restore MCPEXP001
     }
 
     [Fact]
@@ -538,7 +570,10 @@ public class McpInterceptorGatewayTests
                     Modified = true,
                     Payload = JsonNode.Parse(payloadStr),
                 });
-            }, events: [InterceptionEvents.ResourcesSubscribe])]);
+            }, events: [InterceptionEvents.ResourcesSubscribe])],
+            // resources/subscribe was replaced by subscriptions/listen in spec 2026-07-28;
+            // the gateway keeps proxying it for down-level connections, so pin one here.
+            protocolVersion: "2025-06-18");
 
         await fixture.ProxyClient.SubscribeToResourceAsync("resource://original");
 
@@ -773,9 +808,7 @@ public class McpInterceptorGatewayTests
             },
             exposeInterceptorProtocol: true);
 
-#pragma warning disable MCPEXP001
         Assert.True(fixture.ProxyClient.ServerCapabilities.Extensions?.ContainsKey(InterceptorProtocolConstants.ExtensionCapabilityKey) ?? false);
-#pragma warning restore MCPEXP001
 
         var tools = await fixture.ProxyClient.ListToolsAsync();
         Assert.Single(tools);
@@ -934,6 +967,9 @@ public class McpInterceptorGatewayTests
         Assert.Contains("alpha", result.Completion.Values);
     }
 
+    // Logging is deprecated upstream (SEP-2577) but the gateway intentionally keeps proxying it
+    // for down-level clients/backends.
+#pragma warning disable MCP9005
     [Fact]
     public async Task SetLoggingLevelAsync_ProxiesToBackend()
     {
@@ -949,7 +985,10 @@ public class McpInterceptorGatewayTests
                     receivedLevel = request.Params!.Level;
                     return new ValueTask<EmptyResult>(new EmptyResult());
                 };
-            });
+            },
+            // logging/setLevel was replaced by per-request _meta log levels in spec 2026-07-28;
+            // the gateway keeps proxying it for down-level connections, so pin one here.
+            protocolVersion: "2025-06-18");
 
         var caps = fixture.ProxyClient.ServerCapabilities;
         Assert.NotNull(caps?.Logging);
@@ -957,6 +996,7 @@ public class McpInterceptorGatewayTests
         await fixture.ProxyClient.SetLoggingLevelAsync(LoggingLevel.Warning);
         Assert.Equal(LoggingLevel.Warning, receivedLevel);
     }
+#pragma warning restore MCP9005
 
     // ── Test helpers ──────────────────────────────────────────────────
 
@@ -1042,7 +1082,8 @@ public class McpInterceptorGatewayTests
             Action<McpServerOptions> backendConfigure,
             McpServerInterceptor[]? interceptors = null,
             int? timeoutMs = null,
-            bool exposeInterceptorProtocol = false)
+            bool exposeInterceptorProtocol = false,
+            string? protocolVersion = null)
         {
             var disposables = new List<IAsyncDisposable>();
 
@@ -1051,7 +1092,8 @@ public class McpInterceptorGatewayTests
                 // 1. Create backend server + client via pipes
                 var (backendServer, backendClient) = await CreateServerClientPair(
                     "test-backend",
-                    backendConfigure);
+                    backendConfigure,
+                    protocolVersion: protocolVersion);
                 disposables.Add(backendServer);
                 disposables.Add(backendClient);
 
@@ -1079,12 +1121,10 @@ public class McpInterceptorGatewayTests
                         options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
 
                         options.Capabilities ??= new();
-#pragma warning disable MCPEXP001
                         options.Capabilities.Extensions ??= new Dictionary<string, object>();
                         options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                             new InterceptorsCapability { SupportedEvents = allEvents.ToList() },
                             InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
                     });
                 disposables.Add(interceptorServer);
                 disposables.Add(interceptorClient);
@@ -1105,7 +1145,8 @@ public class McpInterceptorGatewayTests
                     options =>
                     {
                         gateway.ConfigureServerOptions(options);
-                    });
+                    },
+                    protocolVersion: protocolVersion);
                 disposables.Add(proxyServer);
                 disposables.Add(proxyClient);
 
@@ -1159,12 +1200,10 @@ public class McpInterceptorGatewayTests
                             var filter = new InterceptorMessageFilter(collection);
                             options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
                             options.Capabilities ??= new();
-#pragma warning disable MCPEXP001
                             options.Capabilities.Extensions ??= new Dictionary<string, object>();
                             options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                                 new InterceptorsCapability { SupportedEvents = allEvents.ToList() },
                                 InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
                         });
                     disposables.Add(server);
                     disposables.Add(client);
@@ -1225,12 +1264,10 @@ public class McpInterceptorGatewayTests
                         options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
 
                         options.Capabilities ??= new();
-#pragma warning disable MCPEXP001
                         options.Capabilities.Extensions ??= new Dictionary<string, object>();
                         options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                             new InterceptorsCapability { SupportedEvents = [] },
                             InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
                     });
                 disposables.Add(interceptorServer);
                 disposables.Add(interceptorClient);
@@ -1302,12 +1339,10 @@ public class McpInterceptorGatewayTests
                         options.Filters.Message.IncomingFilters.Add(filter.CreateFilter);
 
                         options.Capabilities ??= new();
-#pragma warning disable MCPEXP001
                         options.Capabilities.Extensions ??= new Dictionary<string, object>();
                         options.Capabilities.Extensions[InterceptorProtocolConstants.ExtensionCapabilityKey] = JsonSerializer.SerializeToElement(
                             new InterceptorsCapability { SupportedEvents = [] },
                             InterceptorJsonUtilities.DefaultOptions);
-#pragma warning restore MCPEXP001
                     });
                 disposables.Add(interceptorServer);
                 disposables.Add(interceptorClient);
@@ -1370,7 +1405,8 @@ public class McpInterceptorGatewayTests
         private static async Task<(McpServer server, McpClient client)> CreateServerClientPair(
             string name,
             Action<McpServerOptions> configure,
-            Action<string>? onRegisterNotificationHandler = null)
+            Action<string>? onRegisterNotificationHandler = null,
+            string? protocolVersion = null)
         {
             // Create anonymous pipes for communication
             var clientToServer = new AnonymousPipeServerStream(PipeDirection.Out);
@@ -1394,7 +1430,13 @@ public class McpInterceptorGatewayTests
 
             // Client writes to clientToServer, reads from clientFromServer
             var clientTransport = new StreamClientTransport(clientToServer, clientFromServer);
-            var client = await McpClient.CreateAsync(clientTransport);
+            var clientOptions = new McpClientOptions();
+            if (protocolVersion is not null)
+            {
+                clientOptions.ProtocolVersion = protocolVersion;
+            }
+
+            var client = await McpClient.CreateAsync(clientTransport, clientOptions);
 
             return (server, client);
         }
@@ -1437,6 +1479,8 @@ public class McpInterceptorGatewayTests
                 inner.SendMessageAsync(message, cancellationToken);
             public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default) =>
                 inner.SendRequestAsync(request, cancellationToken);
+            public override ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(IDictionary<string, InputRequest> inputRequests, CancellationToken cancellationToken) =>
+                inner.ResolveInputRequestsAsync(inputRequests, cancellationToken);
         }
 
         private sealed record NamedClient(string Name, McpClient Client);
