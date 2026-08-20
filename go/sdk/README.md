@@ -22,7 +22,7 @@ ext.AddInterceptor(&interceptors.Validator{
             Events: []string{interceptors.EventToolsCall},
             Phase:  interceptors.PhaseRequest,
         }},
-        Mode: interceptors.ModeEnforce,
+        Mode: interceptors.ModeActive,
     },
     Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
         raw := inv.Payload.(json.RawMessage)

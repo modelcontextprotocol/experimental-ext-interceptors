@@ -201,7 +201,7 @@ interface Interceptor {
   /**
    * Failure routing policy (default: false - fail-closed)
    *
-   * Enforce mode:
+   * Active mode:
    * - false (fail-closed): If the interceptor crashes or times out, block the message
    * - true (fail-open): If the interceptor fails, allow the message to proceed
    *

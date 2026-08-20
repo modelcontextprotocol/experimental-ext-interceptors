@@ -41,7 +41,7 @@ func main() {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
 			raw, ok := inv.Payload.(json.RawMessage)
