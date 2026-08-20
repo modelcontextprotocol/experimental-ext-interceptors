@@ -6,6 +6,8 @@ This repository provides a multi-language reference implementation of the propos
 
 **Charter:** [modelcontextprotocol.io/community/working-groups/interceptors](https://modelcontextprotocol.io/community/working-groups/interceptors) — the Interceptors Working Group's mission, scope, leadership, and active work items.
 
+**Meeting notes:** [Meeting Notes - Interceptors WG](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/categories/meeting-notes-interceptors-wg) in the spec repo. The April 30, 2026 meeting predates that category and is in [this repository's discussions](https://github.com/modelcontextprotocol/experimental-ext-interceptors/discussions), along with copies of the April 23 and May 14 notes.
+
 
 ## Implementations
 
