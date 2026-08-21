@@ -25,18 +25,6 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Get PR number
-        id: pr
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_run" ]; then
-            PR_NUMBER=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" --json number --jq '.[0].number')
-            echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          else
-            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Get changed files
         id: changed-files
         uses: dorny/paths-filter@v3
