@@ -35,7 +35,7 @@
 //
 // A [Validator] inspects the payload and decides whether the request
 // or response should proceed. All validators for a given event run
-// in parallel. If any validator in enforced mode ([ModeEnforce])
+// in parallel. If any validator in active mode ([ModeActive])
 // returns an error-severity message, the chain aborts before any
 // mutators run. Only error-severity messages cause an abort; warn
 // and info findings are recorded in the chain execution result but
@@ -51,7 +51,7 @@
 //	            Events: []string{"tools/call"},
 //	            Phase:  interceptors.PhaseRequest,
 //	        }},
-//	        Mode: interceptors.ModeEnforce,
+//	        Mode: interceptors.ModeActive,
 //	    },
 //	    Handler: func(ctx context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 //	        raw := inv.Payload.(json.RawMessage)
@@ -79,7 +79,7 @@
 //	            Events: []string{"tools/call"},
 //	            Phase:  interceptors.PhaseResponse,
 //	        }},
-//	        Mode: interceptors.ModeEnforce,
+//	        Mode: interceptors.ModeActive,
 //	    },
 //	    Handler: func(ctx context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
 //	        raw := inv.Payload.(json.RawMessage)
@@ -112,7 +112,7 @@
 // successful results, and a FailOpen flag that controls what happens
 // when the handler returns a Go error. These are orthogonal:
 //
-//   - [ModeEnforce]: fully enforced — validation failures block,
+//   - [ModeActive]: fully active — validation failures block,
 //     mutations are applied.
 //   - [ModeAudit]: the handler runs and results are recorded, but
 //     validation findings do not block and mutated payloads are
@@ -138,15 +138,15 @@
 //
 // Behavior matrix for validators:
 //
-//	Mode=Enforce,  FailOpen=false → error aborts, Valid=false+SeverityError aborts
-//	Mode=Enforce,  FailOpen=true  → error continues, Valid=false+SeverityError aborts
+//	Mode=Active,  FailOpen=false → error aborts, Valid=false+SeverityError aborts
+//	Mode=Active,  FailOpen=true  → error continues, Valid=false+SeverityError aborts
 //	Mode=Audit, FailOpen=false → error aborts, findings recorded only
 //	Mode=Audit, FailOpen=true  → error continues, findings recorded only
 //
 // Behavior matrix for mutators:
 //
-//	Mode=Enforce,  FailOpen=false → error aborts, mutations applied
-//	Mode=Enforce,  FailOpen=true  → error continues, mutations applied
+//	Mode=Active,  FailOpen=false → error aborts, mutations applied
+//	Mode=Active,  FailOpen=true  → error continues, mutations applied
 //	Mode=Audit, FailOpen=false → error aborts, mutations not propagated
 //	Mode=Audit, FailOpen=true  → error continues, mutations not propagated
 package interceptors

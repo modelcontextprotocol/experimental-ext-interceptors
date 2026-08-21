@@ -155,7 +155,7 @@ func TestChain_ExecutionHandler(t *testing.T) {
 		wantNoPayload bool
 	}{
 		{
-			name: "audit-to-enforce validator override aborts chain",
+			name: "audit-to-active validator override aborts chain",
 			interceptor: &interceptors.Validator{
 				Metadata: interceptors.Metadata{
 					Name:  "v",
@@ -169,18 +169,18 @@ func TestChain_ExecutionHandler(t *testing.T) {
 					}, nil
 				},
 			},
-			directive:   &chain.Directive{Mode: modePtr(interceptors.ModeEnforce)},
+			directive:   &chain.Directive{Mode: modePtr(interceptors.ModeActive)},
 			phase:       interceptors.PhaseRequest,
 			wantStatus:  chain.ChainValidationFailed,
 			wantAborted: true,
 		},
 		{
-			name: "enforce-to-audit validator override does not abort",
+			name: "active-to-audit validator override does not abort",
 			interceptor: &interceptors.Validator{
 				Metadata: interceptors.Metadata{
 					Name:  "v",
 					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
-					Mode:  interceptors.ModeEnforce,
+					Mode:  interceptors.ModeActive,
 				},
 				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 					return &interceptors.ValidationResult{
@@ -199,7 +199,7 @@ func TestChain_ExecutionHandler(t *testing.T) {
 				Metadata: interceptors.Metadata{
 					Name:  "m",
 					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseResponse}},
-					Mode:  interceptors.ModeEnforce,
+					Mode:  interceptors.ModeActive,
 				},
 				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
 					modified, _ := json.Marshal(map[string]any{"value": "mutated"})
@@ -217,7 +217,7 @@ func TestChain_ExecutionHandler(t *testing.T) {
 				Metadata: interceptors.Metadata{
 					Name:  "v",
 					Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
-					Mode:  interceptors.ModeEnforce,
+					Mode:  interceptors.ModeActive,
 				},
 				Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 					return &interceptors.ValidationResult{
@@ -275,7 +275,7 @@ func TestChain_ExecutionHandler_ShortCircuit(t *testing.T) {
 		Metadata: interceptors.Metadata{
 			Name:  "v",
 			Hooks: []interceptors.Hook{{Events: []string{"test/event"}, Phase: interceptors.PhaseRequest}},
-			Mode:  interceptors.ModeEnforce,
+			Mode:  interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			invoked = true
@@ -320,7 +320,7 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseRequest,
 				}},
-				Mode:     interceptors.ModeEnforce,
+				Mode:     interceptors.ModeActive,
 				FailOpen: true,
 			},
 			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
@@ -334,7 +334,7 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseRequest,
 				}},
-				Mode: interceptors.ModeEnforce,
+				Mode: interceptors.ModeActive,
 			},
 			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 				return &interceptors.ValidationResult{Valid: true}, nil
@@ -368,7 +368,7 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseResponse,
 				}},
-				Mode:         interceptors.ModeEnforce,
+				Mode:         interceptors.ModeActive,
 				FailOpen:     true,
 				PriorityHint: interceptors.NewPriority(10),
 			},
@@ -383,7 +383,7 @@ func TestChain_FailOpenRecordsExecutionResult(t *testing.T) {
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseResponse,
 				}},
-				Mode:         interceptors.ModeEnforce,
+				Mode:         interceptors.ModeActive,
 				PriorityHint: interceptors.NewPriority(20),
 			},
 			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
@@ -468,7 +468,7 @@ func TestChain_AuditModeErrorsDoNotAbort(t *testing.T) {
 					Events: []string{"test/event"},
 					Phase:  interceptors.PhaseResponse,
 				}},
-				Mode:         interceptors.ModeEnforce,
+				Mode:         interceptors.ModeActive,
 				PriorityHint: interceptors.NewPriority(20),
 			},
 			Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
