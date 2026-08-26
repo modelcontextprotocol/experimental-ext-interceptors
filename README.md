@@ -80,3 +80,4 @@ Apache License 2.0 - See LICENSE file for details
 - [Interceptor Framework Specification (SEP-2624)](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624) - Full specification and design details
 - [Model Context Protocol](https://modelcontextprotocol.io/specification)
 - [Interceptors for MCP: A Production-Tested Standard for Agentic Middleware](https://www.youtube.com/watch?v=YOv1d7PVi8U) - Kurt Degiorgio & Cannis Chan (Bloomberg), MCP Dev Summit North America
+- [Context Middleware for MCP: From Enterprise Needs To Protocol Extension](https://www.youtube.com/watch?v=-X5lx3IOu7M) - Peder Holdgaard Pedersen, MCP Dev Summit North America
