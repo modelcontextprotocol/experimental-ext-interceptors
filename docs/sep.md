@@ -720,7 +720,7 @@ interface InterceptorInvocationParams {
     sessionId?: string;
 
     // FUTURE: Interceptor state propagation
-    // Allows interceptor to share state through the chain
+    // Allows interceptor to share state across interceptors
     // This field is reserved for future enhancement
     interceptorState?: Record<string, unknown>;
   };
@@ -776,9 +776,9 @@ Interceptor invocation errors follow standard JSON-RPC error format:
 
 > **Execution Model Summary:**
 >
-> - **Sending**: Mutate → Validate → Send. A mutation error MUST halt the chain before validation runs.
+> - **Sending**: Mutate → Validate → Send. A mutation error MUST halt execution before validation runs.
 > - **Receiving**: Validate → Mutate → Process. A validation error MUST prevent mutations from running.
-> - **Mutations**: Sequential by `priorityHint` (alphabetical tie-break). MUST be atomic — the entire chain succeeds or none apply.
+> - **Mutations**: Sequential by `priorityHint` (alphabetical tie-break). MUST be atomic — all mutations succeed or none apply.
 > - **Validations**: Parallel. Only `severity: "error"` blocks; `"warn"` and `"info"` MUST NOT block.
 > - **Audit Mode**: Interceptors in audit mode MUST NOT block execution regardless of results.
 > - **failOpen: true**: If an interceptor fails (crash/timeout), the message MUST be allowed to proceed.
@@ -814,26 +814,27 @@ Implementations MUST follow this trust-boundary-aware ordering when executing in
 
 | Type           | Execution  | Failure Behavior                      | Ordering                                          | Audit Mode                                |
 | -------------- | ---------- | ------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
-| **Mutation**   | Sequential | Chain halts, returns last valid state | By `priorityHint` (low→high), then alphabetically | Shadow mutations: compute but don't apply |
+| **Mutation**   | Sequential | Execution halts, returns last valid state | By `priorityHint` (low→high), then alphabetically | Shadow mutations: compute but don't apply |
 | **Validation** | Parallel   | `severity: "error"` rejects request   | None (parallel)                                   | Log violations without blocking           |
 
 Key semantics:
 
-- Mutations MUST be atomic: the entire chain succeeds or none of the mutations apply
+- Mutations MUST be atomic: all mutations succeed or none of them apply
 - Validations with `severity: "warn"` or `"info"` MUST NOT block execution
 - Only validations with `severity: "error"` MUST block execution
 - Interceptors in audit mode MUST NOT block execution regardless of results
 
 #### Priority Resolution
 
-When ordering mutations, the invoker resolves phase-specific priorities. If the chain entry has `overrides.priorityHint`, it takes precedence over the interceptor's declared default:
+When ordering mutations, the invoker resolves phase-specific priorities. If the invoker's overrides for an interceptor include `priorityHint`, it takes precedence over the interceptor's declared default:
 
 ```typescript
 function resolvePriority(
-  entry: ChainEntry,
+  interceptor: Interceptor,
+  overrides: InterceptorOverrides | undefined,
   phase: "request" | "response",
 ): number {
-  const hint = entry.overrides?.priorityHint ?? entry.interceptor.priorityHint;
+  const hint = overrides?.priorityHint ?? interceptor.priorityHint;
   if (hint === undefined) return 0;
   if (typeof hint === "number") return hint;
   return hint[phase] ?? 0;
@@ -1044,20 +1045,20 @@ sequenceDiagram
     Note over App,Tool: Validation guards both sides of trust boundary
 ```
 
-#### Chain Execution
+#### Executing Multiple Interceptors
 
-Chain execution is a **convenience utility**, provided by SDKs to enforce the execution model defined above. Its purpose is to execute interceptors — potentially hosted across N MCP servers — in a way that enforces the trust-boundary-aware ordering, type-specific execution semantics, and failure behaviors.
+An invoker MAY apply zero or more interceptors, potentially hosted across N MCP servers, to a Lifecycle Event. How it applies them is local to the invoker: the set of interceptors, their order, and their resolved policy are invoker-owned state, not an MCP primitive. This SEP defines no chain resource, chain identifier, chain discovery method, or aggregate invocation method. Each interceptor MUST be invoked independently with `interceptor/invoke` on the server that advertised it via `interceptors/list`.
 
-> Important: The execution model defined above MUST be followed by all implementations, whether invoking interceptors individually via `interceptor/invoke` or using this convenience utility.
+> Important: The execution model defined above MUST be followed by all implementations. SDKs MAY provide orchestration helpers over these steps; such helpers are implementation conveniences, not wire protocol.
 
 ##### Capability vs Policy
 
-The chain distinguishes between two layers of interceptor configuration:
+The execution model distinguishes between two layers of interceptor configuration:
 
 - **Capability** (server-declared): The interceptor's type, hooks, and `configSchema` as advertised via `interceptors/list`. These describe what the interceptor *can* do.
-- **Policy** (invoker-declared): Execution parameters such as `failOpen`, `priorityHint`, `mode`, `timeoutMs`, and hook narrowing that the invoker provides via `overrides` on each chain entry. These describe how the interceptor *should* behave in a specific deployment.
+- **Policy** (invoker-declared): Execution parameters such as `failOpen`, `priorityHint`, `mode`, `timeoutMs`, and hook narrowing that the invoker provides via `overrides` for each interceptor. These describe how the interceptor *should* behave in a specific deployment.
 
-Interceptor servers declare **defaults** for policy fields (`failOpen`, `priorityHint`, `mode`) alongside their capabilities. Invokers MAY provide **overrides** per-interceptor in the chain to adjust execution policy. When an override is present, it takes precedence over the server-declared default. Hook overrides can only **narrow** the set of events (restrict to a subset of declared hooks), never **widen** (add events the interceptor does not declare). Implementations MUST reject override hooks that reference events not present in the interceptor's declared hooks.
+Interceptor servers declare **defaults** for policy fields (`failOpen`, `priorityHint`, `mode`) alongside their capabilities. Invokers MAY provide **overrides** per interceptor to adjust execution policy. When an override is present, it takes precedence over the server-declared default. Hook overrides can only **narrow** the set of events (restrict to a subset of declared hooks), never **widen** (add events the interceptor does not declare). Implementations MUST reject override hooks that reference events not present in the interceptor's declared hooks.
 
 This separation enables:
 
@@ -1070,7 +1071,7 @@ This separation enables:
 The orchestration pattern is as follows:
 
 1. **Discover:** Call `interceptors/list` on one or more MCP servers to collect all registered interceptors.
-2. **Resolve Policy:** For each chain entry, merge `overrides` with interceptor defaults (overrides take precedence). Filter entries whose override `hooks` exclude the current event/phase.
+2. **Resolve Policy:** For each discovered interceptor, merge `overrides` with interceptor defaults (overrides take precedence). Filter entries whose override `hooks` exclude the current event/phase.
 3. **Sort:** Order mutations by resolved `priorityHint` (ascending, with alphabetical tie-breaking by interceptor name).
 4. **Order by Trust Boundary:** Apply the trust-boundary-aware execution model — mutations before validations when sending, validations before mutations when receiving.
 5. **Execute:** Call `interceptor/invoke` on the appropriate MCP server for each interceptor, applying resolved `failOpen`, `mode`, and `timeoutMs`. Mutations MUST be invoked sequentially (each receiving the output of the previous). Validations MAY be invoked in parallel.
@@ -1078,56 +1079,11 @@ The orchestration pattern is as follows:
 
 SDK libraries are expected to provide reference implementations of this orchestration logic so that individual applications do not need to implement it from scratch.
 
-##### Interceptor Chain
+##### Invoker Overrides
 
-The chain is constructed from interceptor entries, each describing an interceptor and the server that hosts it:
+Overrides are invoker-local configuration associated with a discovered interceptor. They are never sent on the wire.
 
 ```typescript
-interface InterceptorChain {
-  /**
-   * All interceptor entries in the chain, collected from one or more servers.
-   * Entries are merged and ordered by the chain
-   * according to the execution model.
-   */
-  entries: ChainEntry[];
-
-  /**
-   * Execute the chain for a given event and phase.
-   */
-  execute(params: ChainExecutionParams): ChainExecutionResult;
-}
-
-interface ChainEntry {
-  /**
-   * The interceptor descriptor (as returned by interceptors/list).
-   * Contains the interceptor's capabilities and author-declared defaults.
-   */
-  interceptor: {
-    name: string;
-    type: "mutation" | "validation";
-    hooks: Array<{
-      events: InterceptionEvent[];
-      phase: "request" | "response";
-    }>;
-    priorityHint?: number | { request?: number; response?: number };
-    mode?: "active" | "audit";
-    failOpen?: boolean;
-  };
-
-  /**
-   * The MCP server that hosts this interceptor.
-   * Used to route interceptor/invoke calls to the correct server.
-   * The concrete type is implementation-specific.
-   */
-  server: MCPServerConnection;
-
-  /**
-   * Optional invoker-side overrides for this interceptor's execution policy.
-   * Fields present here take precedence over the interceptor's declared defaults.
-   */
-  overrides?: InterceptorOverrides;
-}
-
 interface InterceptorOverrides {
   /**
    * Override failure routing policy for this interceptor.
@@ -1171,118 +1127,7 @@ interface InterceptorOverrides {
 }
 ```
 
-###### ChainExecutionParams
-
-```typescript
-interface ChainExecutionParams {
-  /**
-   * Lifecycle event (hook) and phase for this chain
-   */
-  event: InterceptionEvent;
-  phase: "request" | "response";
-
-  /**
-   * The payload to pass through the interceptor chain
-   */
-  payload: unknown;
-
-  /**
-   * Optional: restrict chain to specific interceptors by name
-   */
-  interceptors?: string[];
-
-  /**
-   * Optional: per-interceptor configuration overrides
-   */
-  config?: Record<string, Record<string, unknown>>;
-
-  /**
-   * Optional: timeout for the entire chain in milliseconds
-   * implementations MUST cancel the entire chain if the aggregate timeout is exceeded.
-   */
-  timeoutMs?: number;
-
-  /**
-   * Optional: context passed to all interceptors
-   */
-  context?: {
-    principal?: {
-      type: "user" | "service" | "anonymous";
-      id?: string;
-    };
-    traceId?: string;
-    timestamp: string;
-  };
-}
-```
-
-###### ChainExecutionResult
-
-```typescript
-interface ChainExecutionResult {
-  /**
-   * Overall chain execution status
-   */
-  status: "success" | "validation_failed" | "mutation_failed" | "timeout";
-
-  /**
-   * Lifecycle event (hook) and phase for this chain
-   */
-  event: InterceptionEvent;
-  phase: "request" | "response";
-
-  /**
-   * Results from all executed interceptors
-   */
-  results: Array<{
-    interceptor: string;
-    type: "mutation" | "validation";
-    phase: "request" | "response";
-    // Mutation-specific fields
-    modified?: boolean;
-    payload?: unknown;
-    // Validation-specific fields
-    valid?: boolean;
-    severity?: "error" | "warn" | "info";
-    messages?: Array<{ message: string; severity: "error" | "warn" | "info" }>;
-    // Audit mode
-    mode?: "audit";
-    info?: Record<string, unknown>;
-    // Timing
-    durationMs: number;
-  }>;
-
-  /**
-   * Final payload after all mutations (if chain completed)
-   */
-  finalPayload?: unknown;
-
-  /**
-   * Validation summary
-   */
-  validationSummary: {
-    errors: number;
-    warnings: number;
-    infos: number;
-  };
-
-  /**
-   * Total execution time
-   */
-  totalDurationMs: number;
-
-  /**
-   * If chain was aborted, details about where and why
-   */
-  abortedAt?: {
-    interceptor: string;
-    reason: string;
-    type: "validation" | "mutation" | "timeout";
-  };
-}
-```
-
-##### Example Interceptor Chain
+##### Example: Interceptors for a `tools/call` Event
 
 For a `tools/call` event, assume the following interceptor are available:
 
@@ -1345,12 +1190,12 @@ For a `tools/call` event, assume the following interceptor are available:
 ];
 ```
 
-##### Example: Chain Entries with Overrides
+##### Example: Invoker Overrides
 
-The following example shows how invoker-side overrides adjust execution policy without modifying interceptor servers:
+The following example shows how invoker-side overrides adjust execution policy without modifying interceptor servers. Each entry pairs a discovered interceptor descriptor, the server that advertised it, and the invoker's overrides:
 
 ```typescript
-// Chain entries with invoker overrides applied:
+// Discovered interceptors with invoker overrides applied:
 [
   {
     interceptor: {
@@ -1446,10 +1291,10 @@ CLIENT RESPONSE (Receiving):
 
 ##### Error Handling
 
-Interceptor chains MUST handle errors based on type:
+Invokers MUST handle errors based on interceptor type:
 
 ```typescript
-// Mutation failure: Chain MUST halt immediately
+// Mutation failure: Execution MUST halt immediately
 {
   error: {
     code: -32603,
@@ -1507,10 +1352,10 @@ During initialization, servers declare interceptor support:
 
 **Status**: Reserved for future specification
 
-Inspired by gRPC interceptors and OpenTelemetry context propagation, future versions may support enrichable interceptor state that flows through the entire chain. This would enable:
+Inspired by gRPC interceptors and OpenTelemetry context propagation, future versions may support enrichable interceptor state that flows across all interceptors applied to an operation. This would enable:
 
 - **State Sharing**: Early interceptor can enrich context for downstream interceptor
-- **Cross-Cutting Data**: Authentication, rate limiting, and audit data flows through chain
+- **Cross-Cutting Data**: Authentication, rate limiting, and audit data flows across interceptors
 - **Trace Correlation**: Distributed tracing baggage propagates automatically
 - **Deadline Propagation**: Timeout context flows through nested operations
 
@@ -1518,7 +1363,7 @@ Inspired by gRPC interceptors and OpenTelemetry context propagation, future vers
 
 ```typescript
 // FUTURE: Enhanced context with state propagation
-interface InterceptorChainContext {
+interface InterceptorExecutionContext {
   // Immutable request context (set by initiator, read-only)
   readonly request: {
     principal?: {
@@ -1532,7 +1377,7 @@ interface InterceptorChainContext {
     sessionId?: string;
   };
 
-  // Mutable interceptor state (enriched by interceptor during chain execution)
+  // Mutable interceptor state (enriched by interceptors during execution)
   // Each interceptor can read and write to this shared state
   interceptorState?: Record<string, unknown>;
 
@@ -1688,7 +1533,7 @@ Alternative (global fixed ordering) rejected as too rigid for phase-aware operat
 
 **4. Separation of Capability and Policy**
 
-The chain separates interceptor **capability** (what the server advertises) from execution **policy** (what the invoker configures via `overrides`):
+The execution model separates interceptor **capability** (what the server advertises) from execution **policy** (what the invoker configures via `overrides`):
 
 - **Deployment flexibility**: The same interceptor can run in audit mode in staging and active mode in production without server changes
 - **SLO adaptation**: Platform teams adjust `failOpen` and `timeoutMs` per-deployment based on reliability requirements
@@ -1703,6 +1548,7 @@ Alternative (policy only at server side) rejected because enterprise deployments
 - **Severity Levels** (info/warn/error): Graduated response vs. binary pass/fail enables audit logging without blocking
 - **Replace vs. Patch**: Mutations replace entire payloads (vs. JSON Patch) for simplicity and atomicity
 - **Method Names**: `interceptor/list` and `interceptor/invoke` mirror MCP patterns (`tools/list`, etc.)
+- **No Chain Primitive**: Multi-interceptor execution is invoker-local. Earlier drafts defined a chain first as a protocol method and then as an SDK utility; both were removed because the wire protocol needs only `interceptors/list` and `interceptor/invoke`, and an aggregate chain object invited implementations to diverge
 - **"info" Field**: Used instead of "metadata" to avoid confusion with MCP's `_meta` protocol metadata
 - **Cross-Boundary Support**: Client and server interceptors enable defense-in-depth and zero-trust architecture
 
@@ -1760,13 +1606,13 @@ A compromised interceptor could:
 Attackers might try to bypass interceptor validation:
 
 - Send requests directly to underlying services
-- Exploit interceptor chain ordering
+- Exploit interceptor ordering
 
 **Mitigations:**
 
 - Interceptor enforcement must be at the transport layer
 - Server-side interceptor is mandatory for requests entering the trust boundary
-- Interceptor chain order must be explicitly configured and immutable
+- Interceptor order must be explicitly configured and immutable
 
 **3. Information Disclosure**
 
