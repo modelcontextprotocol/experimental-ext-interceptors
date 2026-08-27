@@ -686,7 +686,7 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 
 ##### Invocation Configuration and Context
 
-Interceptors MAY receive configuration and context. Configuration is passed on each invocation so that Interceptor Servers can remain stateless. If `config` is omitted, the Interceptor Server's own defaults apply. An Interceptor Server MAY omit `configSchema`, or declare `{ type: "object", additionalProperties: false }` with no properties, to indicate that it exposes no invoker-controlled settings.
+Interceptors MAY receive configuration and context. Configuration is passed on each invocation so that Interceptor Servers can remain stateless. If `config` is omitted, the interceptor's own defaults apply. An interceptor MAY omit `configSchema` from its descriptor, or declare `{ type: "object", additionalProperties: false }` with no properties, to indicate that it exposes no invoker-controlled settings.
 
 ```typescript
 interface InterceptorInvocationParams {
@@ -1754,7 +1754,7 @@ A compromised interceptor could:
 
 **Mitigations:**
 
-- Interceptors run out of process and receive only what is passed in `payload` and `context`; a local stdio interceptor still inherits the environment and filesystem access of the process that launches it, so it SHOULD be isolated accordingly
+- Interceptors run out of process and do not share the invoker's memory; they see what the invoker sends in each invocation (`payload`, `config`, `context`) and transport-level metadata. A local stdio interceptor still inherits the environment and filesystem access of the process that launches it, so it SHOULD be isolated accordingly
 - Organizations must vet interceptor before deployment
 - Interceptor should be sandboxed where possible
 - Audit logging of all interceptor invocations
