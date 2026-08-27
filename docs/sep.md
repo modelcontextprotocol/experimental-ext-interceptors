@@ -686,7 +686,7 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 
 ##### Invocation Configuration and Context
 
-Interceptors MAY receive configuration and context. Configuration is passed on each invocation so that Interceptor Servers can remain stateless. If `config` is omitted, the Interceptor Server's own defaults apply. An Interceptor Server MAY declare an empty `configSchema` (or none) to indicate that it exposes no invoker-controlled settings.
+Interceptors MAY receive configuration and context. Configuration is passed on each invocation so that Interceptor Servers can remain stateless. If `config` is omitted, the Interceptor Server's own defaults apply. An Interceptor Server MAY omit `configSchema`, or declare `{ type: "object", additionalProperties: false }` with no properties, to indicate that it exposes no invoker-controlled settings.
 
 ```typescript
 interface InterceptorInvocationParams {
@@ -1731,7 +1731,7 @@ This SEP is fully backward compatible:
 
 1. **Optional Capability**: Interceptors are an OPTIONAL server capability. Servers without interceptor support MUST continue to work unchanged.
 
-2. **No Protocol Changes**: Existing JSON-RPC methods MUST NOT be modified. Interceptors add new methods (`interceptors/list`, `interceptors/invoke`) without changing existing ones.
+2. **No Protocol Changes**: Existing JSON-RPC methods MUST NOT be modified. Interceptors add new methods (`interceptors/list`, `interceptor/invoke`) without changing existing ones.
 
 3. **Client Compatibility**: Clients that do not support interceptors MUST be able to communicate with interceptor-enabled servers. Interceptors MAY run transparently on the server side.
 
@@ -1754,7 +1754,7 @@ A compromised interceptor could:
 
 **Mitigations:**
 
-- Interceptors run out of process; a compromised interceptor cannot access the invoking process's memory or credentials beyond what is passed in `payload` and `context`
+- Interceptors run out of process and receive only what is passed in `payload` and `context`; a local stdio interceptor still inherits the environment and filesystem access of the process that launches it, so it SHOULD be isolated accordingly
 - Organizations must vet interceptor before deployment
 - Interceptor should be sandboxed where possible
 - Audit logging of all interceptor invocations
