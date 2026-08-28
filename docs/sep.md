@@ -54,7 +54,7 @@ Unlike framework-specific middleware (e.g., FastAPI middleware, Express.js middl
 
 **3. Sidecar and Service-Based Architecture**
 
-Traditional library-based middleware runs inside the client or server process and is tied to that SDK. Interceptors always run out of process, as MCP servers invoked over an MCP transport:
+Traditional library-based middleware runs inside the client or server process and is tied to that SDK. Interceptors are MCP servers invoked over an MCP transport, and the expected deployment is out of process:
 
 - **Local interceptors**: Deployed as stdio MCP servers on the same host as the invoking client, server, or proxy
 - **Remote interceptors**: Deployed as Streamable HTTP MCP servers that clients, servers, or proxies call out to
@@ -1754,7 +1754,7 @@ A compromised interceptor could:
 
 **Mitigations:**
 
-- Interceptors run out of process and do not share the invoker's memory; they see what the invoker sends in each invocation (`payload`, `config`, `context`) and transport-level metadata. A local stdio interceptor still inherits the environment and filesystem access of the process that launches it, so it SHOULD be isolated accordingly
+- Deploy interceptors out of process (stdio or Streamable HTTP), so they do not share the invoker's memory and see only what the invoker sends in each invocation (`payload`, `config`, `context`) and transport-level metadata. An Interceptor Server embedded over an in-memory transport shares the invoker's process and gets no such isolation. A local stdio interceptor still inherits the environment and filesystem access of the process that launches it, so it SHOULD be isolated accordingly
 - Organizations must vet interceptor before deployment
 - Interceptor should be sandboxed where possible
 - Audit logging of all interceptor invocations
