@@ -54,17 +54,17 @@ Unlike framework-specific middleware (e.g., FastAPI middleware, Express.js middl
 
 **3. Sidecar and Service-Based Architecture**
 
-While traditional library-based middleware requires code integration, interceptors support:
+Traditional library-based middleware runs inside the client or server process and is tied to that SDK. Interceptors are MCP servers invoked over an MCP transport, and the expected deployment is out of process:
 
-- **First-party interceptors**: Deployed as code running locally within the server process
-- **Third-party interceptors**: Deployed as separate services that servers call out to
+- **Local interceptors**: Deployed as stdio MCP servers on the same host as the invoking client, server, or proxy
+- **Remote interceptors**: Deployed as Streamable HTTP MCP servers that clients, servers, or proxies call out to
 - **Hybrid approaches**: Mix local and remote interceptors based on security, performance, and organizational requirements
 
 This flexibility is critical for:
 
 - **Security**: Sensitive validation logic can run in isolated, hardened services
 - **Compliance**: Audit logging can be centralized and immutable
-- **Performance**: High-throughput operations can use in-process interceptors while complex policies use dedicated services
+- **Performance**: Latency-sensitive interceptors can run as local stdio servers while complex policies use dedicated services
 
 **4. Well-Defined Invocation Lifecycle**
 
@@ -135,7 +135,9 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 >
 > Example of MCP Lifecycle Events include when `tools/call` is invoked, when `resources/read` returns data, or when `sampling/createMessage` is requested.
 
-An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable, and hosted on MCP servers.
+An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable, and hosted on MCP servers. Interceptors are always invoked over an MCP transport using `interceptors/list` and `interceptor/invoke`; this SEP defines no in-process interceptor API. The expected deployment is out of process, as a stdio or Streamable HTTP MCP server. An SDK MAY connect to an Interceptor Server over an in-memory transport, for example for testing or embedding, and the wire contract is unchanged.
+
+An MCP server that hosts interceptors is an **Interceptor Server**. An Interceptor Server SHOULD NOT also expose tools, prompts, or resources. It sits beside the client, server, or proxy that invokes it and is not in the request path between a client and the server whose traffic is being intercepted.
 
 Interceptors come in two types: **Validators** (see [Validator](#validator)) and **Mutators** (see [Mutator](#mutator)).
 
@@ -684,7 +686,7 @@ See [Execution Model](#execution-model) for mutator execution semantics.
 
 ##### Invocation Configuration and Context
 
-Interceptors MAY receive configuration and context:
+Interceptors MAY receive configuration and context. Configuration is passed on each invocation so that Interceptor Servers can remain stateless. If `config` is omitted, the interceptor's own defaults apply. An interceptor MAY omit `configSchema` from its descriptor, or declare `{ type: "object", additionalProperties: false }` with no properties, to indicate that it exposes no invoker-controlled settings.
 
 ```typescript
 interface InterceptorInvocationParams {
@@ -895,7 +897,7 @@ sequenceDiagram
 
     Note over App,Server: CLIENT REQUEST (Sending)
     App->>Client: tools/call request
-    Client->>Client: Discover interceptor via interceptor/list<br/>Order mutations by priority
+    Client->>Client: Discover interceptor via interceptors/list<br/>Order mutations by priority
 
     Note over Client,MW2: STEP 1: Mutations (Sequential)
     Client->>MW1: interceptor/invoke<br/>(pii-redactor, priority=10)
@@ -939,7 +941,7 @@ sequenceDiagram
     Note over Client,Tool: SERVER REQUEST (Receiving)
     Client->>Server: tools/call request
     Note over Client,Server: ═══ TRUST BOUNDARY ═══
-    Server->>Server: Discover interceptor via interceptor/list<br/>Order mutations by priority
+    Server->>Server: Discover interceptor via interceptors/list<br/>Order mutations by priority
 
     Note over Server,MW2: STEP 1: Validation (Parallel)<br/>Trust Boundary Check
     par Validation after receiving
@@ -1209,9 +1211,12 @@ interface ChainExecutionParams {
     principal?: {
       type: "user" | "service" | "anonymous";
       id?: string;
+      claims?: Record<string, unknown>;
     };
     traceId?: string;
+    spanId?: string;
     timestamp: string;
+    sessionId?: string;
   };
 }
 ```
@@ -1287,7 +1292,7 @@ interface ChainExecutionResult {
 For a `tools/call` event, assume the following interceptor are available:
 
 ```typescript
-// From interceptor/list response:
+// From interceptors/list response:
 [
   {
     name: "pii-redactor",
@@ -1702,7 +1707,7 @@ Alternative (policy only at server side) rejected because enterprise deployments
 - **Hook-Based Targeting**: Interceptors declare specific hooks (vs. all traffic) for performance and security
 - **Severity Levels** (info/warn/error): Graduated response vs. binary pass/fail enables audit logging without blocking
 - **Replace vs. Patch**: Mutations replace entire payloads (vs. JSON Patch) for simplicity and atomicity
-- **Method Names**: `interceptor/list` and `interceptor/invoke` mirror MCP patterns (`tools/list`, etc.)
+- **Method Names**: `interceptors/list` follows the plural namespace of `tools/list` and `resources/read`. `interceptor/invoke` is singular; aligning it to `interceptors/invoke` is under WG consideration
 - **"info" Field**: Used instead of "metadata" to avoid confusion with MCP's `_meta` protocol metadata
 - **Cross-Boundary Support**: Client and server interceptors enable defense-in-depth and zero-trust architecture
 
@@ -1726,7 +1731,7 @@ This SEP is fully backward compatible:
 
 1. **Optional Capability**: Interceptors are an OPTIONAL server capability. Servers without interceptor support MUST continue to work unchanged.
 
-2. **No Protocol Changes**: Existing JSON-RPC methods MUST NOT be modified. Interceptors add new methods (`interceptors/list`, `interceptors/invoke`) without changing existing ones.
+2. **No Protocol Changes**: Existing JSON-RPC methods MUST NOT be modified. Interceptors add new methods (`interceptors/list`, `interceptor/invoke`) without changing existing ones.
 
 3. **Client Compatibility**: Clients that do not support interceptors MUST be able to communicate with interceptor-enabled servers. Interceptors MAY run transparently on the server side.
 
@@ -1749,7 +1754,7 @@ A compromised interceptor could:
 
 **Mitigations:**
 
-- Interceptor runs in the same trust domain as the server/client
+- Deploy interceptors out of process (stdio or Streamable HTTP), so they do not share the invoker's memory and see only what the invoker sends in each invocation (`payload`, `config`, `context`) and transport-level metadata. An Interceptor Server embedded over an in-memory transport shares the invoker's process and gets no such isolation. A local stdio interceptor still inherits the environment and filesystem access of the process that launches it, so it SHOULD be isolated accordingly
 - Organizations must vet interceptor before deployment
 - Interceptor should be sandboxed where possible
 - Audit logging of all interceptor invocations
@@ -1859,7 +1864,7 @@ A universal interceptor runtime that enables teams to deploy and manage intercep
 ```yaml
 # interceptor-config.yaml
 interceptors:
-  # Local interceptor: runs in-process
+  # Local interceptor: stdio MCP server on the same host
   - name: pii-redactor
     type: mutation
     transport: local
@@ -1868,7 +1873,7 @@ interceptors:
     config:
       patterns: ["email", "ssn", "phone"]
 
-  # Remote interceptor: calls external service
+  # Remote interceptor: Streamable HTTP MCP server
   - name: security-scanner
     type: validation
     transport: remote
@@ -1877,7 +1882,7 @@ interceptors:
     headers:
       Authorization: "Bearer ${SECURITY_TOKEN}"
 
-  # Local TypeScript interceptor
+  # Local TypeScript interceptor: stdio MCP server
   - name: rate-limiter
     type: validation
     transport: local
