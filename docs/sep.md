@@ -1074,14 +1074,14 @@ The orchestration pattern is as follows:
 2. **Resolve Policy:** For each discovered interceptor, merge `overrides` with interceptor defaults (overrides take precedence). Filter entries whose override `hooks` exclude the current event/phase.
 3. **Sort:** Order mutations by resolved `priorityHint` (ascending, with alphabetical tie-breaking by interceptor name).
 4. **Order by Trust Boundary:** Apply the trust-boundary-aware execution model — mutations before validations when sending, validations before mutations when receiving.
-5. **Execute:** Call `interceptor/invoke` on the appropriate MCP server for each interceptor, applying resolved `failOpen`, `mode`, and `timeoutMs`. Mutations MUST be invoked sequentially (each receiving the output of the previous). Validations MAY be invoked in parallel.
+5. **Execute:** Call `interceptor/invoke` on the appropriate MCP server for each interceptor, applying resolved `failOpen`, `mode`, and `timeoutMs`. Mutations MUST be invoked sequentially (each receiving the output of the previous). Validations MAY be invoked in parallel. The invoker MAY also impose an aggregate timeout covering all interceptors applied to one operation; if it is exceeded, the invoker MUST cancel the remaining invocations and treat the operation as timed out.
 6. **Aggregate:** Collect all results, assembling the final payload and validation summary.
 
 SDK libraries are expected to provide reference implementations of this orchestration logic so that individual applications do not need to implement it from scratch.
 
 ##### Invoker Overrides
 
-Overrides are invoker-local configuration associated with a discovered interceptor. They are never sent on the wire.
+Overrides are invoker-local configuration associated with a discovered interceptor. The overrides object itself is not sent to the interceptor server; the invoker applies the resolved values, and the resolved `timeoutMs` is passed as `InterceptorInvocationParams.timeoutMs` on each invocation so that the server-side cancellation behavior in [Invocation Configuration and Context](#invocation-configuration-and-context) applies.
 
 ```typescript
 interface InterceptorOverrides {
