@@ -1,24 +1,31 @@
 {
-  "name": "@ext-modelcontextprotocol/interceptors",
+  "name": "mcp-ext-interceptors",
   "version": "0.1.0",
   "description": "TypeScript SDK for Model Context Protocol interceptors",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts",
+    "example:interceptor-server": "npm run build && tsx examples/interceptor-server/src/index.ts",
+    "example:interceptor-client": "npm run build && tsx examples/interceptor-client/src/index.ts",
+    "example:gateway": "npm run build && tsx examples/gateway/src/index.ts",
+    "example:transparent-proxy": "npm run build && tsx examples/transparent-proxy/src/index.ts",
+    "example:gateway-chain": "npm run build && tsx examples/gateway-chain/src/index.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -43,14 +50,22 @@
     "README.md"
   ],
   "peerDependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/core": "^2.0.0",
+    "zod": "^4.2.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
     "typescript": "^5.0.0",
+    "tsx": "^4.19.0",
     "vitest": "^2.0.0"
   }
 }

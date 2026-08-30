@@ -24,15 +24,16 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install dependencies
         run: |
           cd typescript/sdk
-          npm install
+          npm ci
       - name: Run TypeScript compiler check
         run: |
           cd typescript/sdk
           npm run build
+          npm run typecheck
       - name: Run ESLint
         run: |
           cd typescript/sdk
@@ -43,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: ["20", "22"]
+        node-version: ["22", "24"]
     steps:
       - name: Check out code
         uses: actions/checkout@v6
@@ -54,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd typescript/sdk
-          npm install
+          npm ci
       - name: Run tests
         run: |
           cd typescript/sdk
