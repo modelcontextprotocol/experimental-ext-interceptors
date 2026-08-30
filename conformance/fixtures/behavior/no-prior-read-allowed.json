@@ -1,0 +1,41 @@
+{
+  "id": "behavior/no-prior-read-allowed",
+  "kind": "behavior",
+  "requirement": "SEC/cross-boundary-exfiltration.causality",
+  "description": "A secret-shaped value sent WITHOUT a strictly-prior cross-boundary read must be allowed: the guard tracks flows, not values (no false positive).",
+  "interceptors": [
+    {
+      "name": "security/cross-boundary-guard",
+      "type": "validation",
+      "behavior": "cross-boundary-guard",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "apply",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "write_query",
+        "arguments": {
+          "query": "INSERT INTO notes (body) VALUES ('ghp_Xa2bC3dEf4gH5iJk6Lm7nN8oP')"
+        }
+      },
+      "context": {
+        "sessionId": "no-prior-read"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

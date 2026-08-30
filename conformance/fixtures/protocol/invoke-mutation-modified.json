@@ -1,0 +1,53 @@
+{
+  "id": "protocol/invoke-mutation-modified",
+  "kind": "protocol",
+  "requirement": "SEP-2624/interceptor-invoke.mutation",
+  "description": "interceptor/invoke of a mutator that changes the payload returns modified=true and the transformed payload.",
+  "interceptors": [
+    {
+      "name": "conf/uppercase-note",
+      "type": "mutation",
+      "behavior": "uppercase-note",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "invoke",
+      "params": {
+        "name": "conf/uppercase-note",
+        "event": "tools/call",
+        "phase": "request",
+        "payload": {
+          "name": "echo",
+          "arguments": {
+            "note": "hello"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "interceptor": "conf/uppercase-note",
+          "type": "mutation",
+          "phase": "request",
+          "modified": true,
+          "payload": {
+            "name": "echo",
+            "arguments": {
+              "note": "HELLO"
+            }
+          }
+        },
+        "canonical": "{\"interceptor\":\"conf/uppercase-note\",\"modified\":true,\"payload\":{\"arguments\":{\"note\":\"HELLO\"},\"name\":\"echo\"},\"phase\":\"request\",\"type\":\"mutation\"}"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

@@ -43,6 +43,10 @@ Thumbs.db
 # env file
 .env
 
+# Local, uncommitted PR drafts and scratch notes (never shipped)
+.pr-drafts/
+_vendor/
+
 # Node.js / TypeScript
 node_modules/
 dist/

@@ -1,0 +1,29 @@
+{
+  "name": "@formalcore/mcp-interceptors-conformance",
+  "version": "0.1.0",
+  "description": "Language-neutral conformance suite for MCP interceptors (SEP-2624): programmatically generated golden fixtures, a fixture runner, and a ~50-line adapter contract so any SDK (TypeScript, Python, C#, Go) plugs in without re-authoring tests.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "generate": "node --experimental-strip-types scripts/generate.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "interceptors",
+    "sep-2624",
+    "conformance",
+    "golden-fixtures"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}

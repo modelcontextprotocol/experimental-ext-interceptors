@@ -1,0 +1,47 @@
+{
+  "id": "protocol/invoke-validation-pass",
+  "kind": "protocol",
+  "requirement": "SEP-2624/interceptor-invoke.validation",
+  "description": "interceptor/invoke of a passing validator returns a SEP ValidationResult with valid=true and no severity.",
+  "interceptors": [
+    {
+      "name": "conf/allow-all",
+      "type": "validation",
+      "behavior": "allow-all",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "invoke",
+      "params": {
+        "name": "conf/allow-all",
+        "event": "tools/call",
+        "phase": "request",
+        "payload": {
+          "name": "echo",
+          "arguments": {
+            "note": "hi"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "interceptor": "conf/allow-all",
+          "type": "validation",
+          "phase": "request",
+          "valid": true
+        },
+        "canonical": "{\"interceptor\":\"conf/allow-all\",\"phase\":\"request\",\"type\":\"validation\",\"valid\":true}"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}
