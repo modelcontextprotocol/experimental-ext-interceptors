@@ -16,13 +16,22 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp>=2.0.0,<3",
+    "anyio>=4.9",
+    "pydantic>=2.12.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.8",
+    "ruff>=0.5",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/modelcontextprotocol/ext-interceptors"
-"Bug Reports" = "https://github.com/modelcontextprotocol/ext-interceptors/issues"
-"Source" = "https://github.com/modelcontextprotocol/ext-interceptors"
+"Homepage" = "https://github.com/modelcontextprotocol/experimental-ext-interceptors"
+"Bug Reports" = "https://github.com/modelcontextprotocol/experimental-ext-interceptors/issues"
+"Source" = "https://github.com/modelcontextprotocol/experimental-ext-interceptors"
 
 [build-system]
 requires = ["hatchling"]
