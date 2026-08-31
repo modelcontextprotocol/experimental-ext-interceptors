@@ -1,0 +1,39 @@
+# Dependabot version-update configuration.
+#
+# Note: security updates (CVE-driven PRs) are enabled at the repository level
+# and do NOT depend on this file — they already cover every ecosystem. This
+# config adds *scheduled version updates* ("keep dependencies current" PRs).
+#
+# Python (python/sdk) is intentionally omitted until a real Python SDK exists;
+# it is currently alpha scaffolding. Add a `pip` entry when that lands.
+version: 2
+updates:
+  # C# SDK
+  - package-ecosystem: nuget
+    directory: /csharp/sdk
+    schedule:
+      interval: weekly
+    groups:
+      dotnet:
+        patterns: ["*"]
+
+  # Go SDK
+  - package-ecosystem: gomod
+    directory: /go/sdk
+    schedule:
+      interval: weekly
+
+  # TypeScript SDK
+  - package-ecosystem: npm
+    directory: /typescript/sdk
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+
+  # GitHub Actions used by CI workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
