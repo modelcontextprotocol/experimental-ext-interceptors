@@ -137,7 +137,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 An **Interceptor** is an MCP primitive that provides governance for context operations through validation or mutation logic. Like tools, prompts, and resources, interceptors are discoverable, and hosted on MCP servers. Interceptors are always invoked over an MCP transport using `interceptors/list` and `interceptor/invoke`; this SEP defines no in-process interceptor API. The expected deployment is out of process, as a stdio or Streamable HTTP MCP server. An SDK MAY connect to an Interceptor Server over an in-memory transport, for example for testing or embedding, and the wire contract is unchanged.
 
-An MCP server that hosts interceptors is an **Interceptor Server**. An Interceptor Server SHOULD NOT also expose tools, prompts, or resources. It sits beside the client, server, or proxy that invokes it and is not in the request path between a client and the server whose traffic is being intercepted.
+An MCP server that hosts interceptors is an **Interceptor Server**. An Interceptor Server SHOULD NOT also expose tools, prompts, or resources. Co-hosting is permitted; the recommendation exists because a server that does both is harder to place in a deployment and to keep out of the request path. An Interceptor Server sits beside the client, server, or proxy that invokes it and is not in the request path between a client and the server whose traffic is being intercepted.
 
 Interceptors come in two types: **Validators** (see [Validator](#validator)) and **Mutators** (see [Mutator](#mutator)).
 
