@@ -1049,7 +1049,7 @@ sequenceDiagram
 
 #### Executing Multiple Interceptors
 
-An invoker MAY apply zero or more interceptors, potentially hosted across N MCP servers, to a Lifecycle Event. How it applies them is local to the invoker: the set of interceptors, their order, and their resolved policy are invoker-owned state, not an MCP primitive. This SEP defines no chain resource, chain identifier, chain discovery method, or aggregate invocation method. Each interceptor MUST be invoked independently with `interceptor/invoke` on the server that advertised it via `interceptors/list`.
+An invoker MAY apply zero or more interceptors, potentially hosted across N MCP servers, to a Lifecycle Event. How it applies them is local to the invoker: the set of interceptors, their order, and their overrides are invoker-owned state, not an MCP primitive. This SEP defines no chain resource, chain identifier, chain discovery method, or aggregate invocation method. Each interceptor MUST be invoked independently with `interceptor/invoke` on the server that advertised it via `interceptors/list`.
 
 > Important: The execution model defined above MUST be followed by all implementations. SDKs MAY provide orchestration helpers over these steps; such helpers are implementation conveniences, not wire protocol.
 
@@ -1665,7 +1665,7 @@ Interceptor mutation could be used to inject unauthorized operations:
 
 2. **Defense in Depth**: Interceptors SHOULD be deployed at both client and server boundaries
 
-3. **Audit Everything**: Implementations SHOULD log all interceptor invocations, including payloads (with PII redaction)
+3. **Audit Everything**: Implementations SHOULD log all interceptor invocations, including payloads (with PII redaction). For each invocation, the log SHOULD include the resolved `mode` and `failOpen`, and whether each value came from an invoker override or the interceptor's declared default
 
 4. **Fail Secure**: Interceptors MUST default to `failOpen: false` (fail-closed). Implementations MUST reject requests when interceptors fail unless explicitly configured otherwise.
 
