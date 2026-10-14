@@ -1073,7 +1073,7 @@ This separation enables:
 The orchestration pattern is as follows:
 
 1. **Discover:** Call `interceptors/list` on one or more MCP servers to collect all registered interceptors.
-2. **Resolve Policy:** For each discovered interceptor, merge `overrides` with interceptor defaults (overrides take precedence). Filter entries whose override `hooks` exclude the current event/phase.
+2. **Select and Resolve Policy:** From the discovered interceptors, take the set the invoker has chosen to apply. For each selected interceptor, merge `overrides` with interceptor defaults (overrides take precedence). Exclude any interceptor whose declared `hooks`, or narrowed override `hooks` if present, do not match the current event/phase.
 3. **Sort:** Order mutations by resolved `priorityHint` (ascending, with alphabetical tie-breaking by interceptor name).
 4. **Order by Trust Boundary:** Apply the trust-boundary-aware execution model — mutations before validations when sending, validations before mutations when receiving.
 5. **Execute:** Call `interceptor/invoke` on the appropriate MCP server for each interceptor, applying resolved `failOpen`, `mode`, and `timeoutMs`. Mutations MUST be invoked sequentially (each receiving the output of the previous). Validations MAY be invoked in parallel. The invoker MAY also impose an aggregate timeout covering all interceptors applied to one operation; if it is exceeded, the invoker MUST cancel the remaining invocations and treat the operation as timed out.
