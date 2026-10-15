@@ -1,0 +1,24 @@
+[package]
+name = "mcp-ext-interceptors"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Client-side Rust SDK for the experimental MCP interceptors extension"
+authors = ["The MCP Interceptors Authors"]
+license = "Apache-2.0"
+repository = "https://github.com/modelcontextprotocol/experimental-ext-interceptors"
+readme = "README.md"
+keywords = ["mcp", "interceptors", "middleware"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+async-trait = "0.1"
+futures = "0.3"
+rmcp = { version = "3.4.1", default-features = false, features = ["client", "server"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }

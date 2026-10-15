@@ -16,6 +16,7 @@ This repository provides a multi-language reference implementation of the propos
 | C# | `csharp/sdk/` | `ModelContextProtocol.Interceptors` | In Progress |
 | Go | `go/sdk/` | `github.com/modelcontextprotocol/ext-interceptors/go/sdk` | Planned |
 | Python | `python/sdk/` | `mcp-ext-interceptors` | Planned |
+| Rust | `rust/sdk/` | `mcp-ext-interceptors` | In Progress |
 | TypeScript | `typescript/sdk/` | `@ext-modelcontextprotocol/interceptors` | Planned |
 
 
@@ -25,7 +26,7 @@ This monorepo uses **path-based CI workflows** to efficiently test only what cha
 
 ### How It Works
 
-1. **Language-specific workflows** (`csharp.yml`, `python.yml`, `go.yml`, `typescript.yml`)
+1. **Language-specific workflows** (`csharp.yml`, `python.yml`, `go.yml`, `rust.yml`, `typescript.yml`)
    - Only trigger when their language directory or workflow file changes
    - Run all tests, linting, and checks for that language
 

@@ -12,6 +12,7 @@
 [Bb]in/
 [Oo]bj/
 artifacts/
+/rust/sdk/target/
 
 # NuGet
 *.nupkg
