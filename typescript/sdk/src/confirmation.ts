@@ -1,0 +1,206 @@
+// Copyright 2025 The MCP Interceptors Authors. All rights reserved.
+// Use of this source code is governed by a Apache-2.0
+// license that can be found in the LICENSE file.
+
+/**
+ * Validator confirmations ("Requiring Confirmation" in the SEP).
+ *
+ * A validator that wants a human to approve a call returns a blocking
+ * ValidationResult carrying a ConfirmationRequest. The request is bound to
+ * the exact call through `callHash`, so an approval for one call cannot be
+ * replayed for another.
+ */
+
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+
+import { canonicalize } from './jcs.js';
+import type {
+  Confirmation,
+  InterceptionEvent,
+  InterceptorInvocationParams,
+  InterceptorPhase,
+  ValidationMessage,
+  ValidationResult,
+} from './types.js';
+
+/** The object `callHash` covers. */
+export interface CallBinding {
+  event: InterceptionEvent;
+  phase: InterceptorPhase;
+  /** `context.target`, or null if absent. */
+  target: string | null;
+  payload: unknown;
+}
+
+/** Builds the call binding of an invocation. */
+export function callBinding(
+  params: Pick<InterceptorInvocationParams, 'event' | 'phase' | 'payload' | 'context'>,
+): CallBinding {
+  return {
+    event: params.event,
+    phase: params.phase,
+    target: params.context?.target ?? null,
+    payload: params.payload,
+  };
+}
+
+/** Returns "sha256:" followed by the lowercase hex SHA-256 of the binding's JCS form. */
+export function computeCallHash(binding: CallBinding): string {
+  const digest = createHash('sha256').update(canonicalize(binding), 'utf8').digest('hex');
+  return `sha256:${digest}`;
+}
+
+export type ConfirmationSecret = string | Uint8Array;
+
+const TOKEN_VERSION = 'v1';
+
+interface TokenClaims {
+  id: string;
+  callHash: string;
+  sessionId?: string;
+  expiresAt?: string;
+}
+
+function tokenMac(secret: ConfirmationSecret, claims: TokenClaims): Buffer {
+  const message = canonicalize([
+    TOKEN_VERSION,
+    claims.id,
+    claims.callHash,
+    claims.sessionId ?? null,
+    claims.expiresAt ?? null,
+  ]);
+  return createHmac('sha256', secret).update(message, 'utf8').digest();
+}
+
+/**
+ * Issues a self-verifying token: an HMAC over the request id, callHash,
+ * session id and expiry. The validator needs no pending-request state to
+ * check it, so a confirmation survives a reconnect.
+ */
+export function createConfirmationToken(secret: ConfirmationSecret, claims: TokenClaims): string {
+  const expiresAt = Buffer.from(claims.expiresAt ?? '', 'utf8').toString('base64url');
+  const mac = tokenMac(secret, claims).toString('base64url');
+  return `${TOKEN_VERSION}.${expiresAt}.${mac}`;
+}
+
+/**
+ * Checks a token issued by createConfirmationToken for the given id,
+ * callHash and session, and that its embedded expiry has not passed.
+ */
+export function verifyConfirmationToken(
+  secret: ConfirmationSecret,
+  token: string,
+  claims: Omit<TokenClaims, 'expiresAt'>,
+  now: Date = new Date(),
+): boolean {
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== TOKEN_VERSION) {
+    return false;
+  }
+  const expiresAt = Buffer.from(parts[1], 'base64url').toString('utf8') || undefined;
+  const expected = tokenMac(secret, { ...claims, expiresAt });
+  const actual = Buffer.from(parts[2], 'base64url');
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return false;
+  }
+  return expiresAt === undefined || now.getTime() < Date.parse(expiresAt);
+}
+
+export interface ConfirmationOptions {
+  /** Human-readable explanation, shown to the person asked. */
+  reason: string;
+  /**
+   * When set, the request carries a self-verifying token and only
+   * confirmations returning a valid token are accepted. Recommended.
+   */
+  secret?: ConfirmationSecret;
+  /** Lifetime of the request. Default: 5 minutes. */
+  ttlMs?: number;
+  /** Additional messages for the blocking result. */
+  messages?: ValidationMessage[];
+  now?: () => Date;
+}
+
+const DEFAULT_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Returns the blocking result a validator sends to ask for confirmation of
+ * this invocation: `valid: false`, `severity: "error"` and `confirmation`.
+ * An invoker that does not implement confirmation simply blocks.
+ */
+export function confirmationRequired(
+  params: InterceptorInvocationParams,
+  options: ConfirmationOptions,
+): ValidationResult {
+  const now = options.now?.() ?? new Date();
+  const id = randomUUID();
+  const callHash = computeCallHash(callBinding(params));
+  const expiresAt = new Date(now.getTime() + (options.ttlMs ?? DEFAULT_TTL_MS)).toISOString();
+  const token =
+    options.secret === undefined
+      ? undefined
+      : createConfirmationToken(options.secret, {
+          id,
+          callHash,
+          sessionId: params.context?.sessionId,
+          expiresAt,
+        });
+  return {
+    interceptor: params.name,
+    type: 'validation',
+    phase: params.phase,
+    valid: false,
+    severity: 'error',
+    messages: [{ message: options.reason, severity: 'error' }, ...(options.messages ?? [])],
+    confirmation: { id, reason: options.reason, callHash, expiresAt, token },
+  };
+}
+
+/**
+ * Returns the confirmation in `context.confirmations` that this validator
+ * can accept for this invocation, if any: one addressed to this validator
+ * whose callHash matches the invocation's call binding (including target)
+ * and, if `secret` is given, whose token is valid and unexpired.
+ */
+export function findConfirmation(
+  params: InterceptorInvocationParams,
+  options: Pick<ConfirmationOptions, 'secret' | 'now'> = {},
+): Confirmation | undefined {
+  const confirmations = params.context?.confirmations;
+  if (!confirmations?.length) {
+    return undefined;
+  }
+  const callHash = computeCallHash(callBinding(params));
+  const now = options.now?.() ?? new Date();
+  return confirmations.find((c) => {
+    if (c.interceptor !== params.name || c.callHash !== callHash) {
+      return false;
+    }
+    if (options.secret === undefined) {
+      return true;
+    }
+    return (
+      c.token !== undefined &&
+      verifyConfirmationToken(
+        options.secret,
+        c.token,
+        { id: c.id, callHash, sessionId: params.context?.sessionId },
+        now,
+      )
+    );
+  });
+}
+
+/**
+ * Convenience for validators: passes if the invocation carries an
+ * acceptable confirmation, otherwise asks for one.
+ */
+export function requireConfirmation(
+  params: InterceptorInvocationParams,
+  options: ConfirmationOptions,
+): ValidationResult {
+  if (findConfirmation(params, options)) {
+    return { interceptor: params.name, type: 'validation', phase: params.phase, valid: true };
+  }
+  return confirmationRequired(params, options);
+}
