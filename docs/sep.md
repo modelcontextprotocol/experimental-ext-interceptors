@@ -345,6 +345,9 @@ interface ValidationResult {
     path: string;
     value: unknown;
   }>;
+  // Optional: the payload may proceed only if a human confirms it.
+  // Only meaningful with valid: false and severity: "error"; see Requiring Confirmation.
+  confirmation?: ConfirmationRequest;
   signature?: {
     // Future: cryptographic proof of validation
     algorithm: "ed25519";
@@ -355,6 +358,37 @@ interface ValidationResult {
 ```
 
 See [Execution Model](#execution-model) for validator execution semantics.
+
+##### Requiring Confirmation
+
+Some checks don't have a fixed answer: a call may be acceptable if, and only if, a human agrees to it (for example, writing to a public destination after the session has read untrusted content). A validator expresses this by returning a blocking result that also says what would unblock it:
+
+```typescript
+interface ConfirmationRequest {
+  id: string; // Unique per request; identifies the pending invocation this confirmation is for
+  reason: string; // Human-readable explanation, suitable to show to the person asked
+  callHash: string; // Call binding hash, see below
+  expiresAt?: string; // ISO 8601; after this, a confirmation for this request MUST NOT be accepted
+  token?: string; // Opaque value the invoker MUST return unchanged with the confirmation
+}
+```
+
+The **call binding** is the object `{ event, phase, target, payload }`, where `event`, `phase` and `payload` are those of the invocation and `target` is `context.target` (`null` if absent). `callHash` is `"sha256:"` followed by the lowercase hex SHA-256 of the binding's JCS (RFC 8785) canonical form. Including `target` means the same call to two different servers has two different hashes.
+
+A validator that requires confirmation MUST return `valid: false` and `severity: "error"`, and set `confirmation`. Because the result is an ordinary blocking error, an invoker that does not implement confirmation blocks the request: the fallback is always deny, never allow.
+
+An invoker that implements confirmation:
+
+- MUST block without asking if any other validator in the same phase returned a blocking error without `confirmation`. A confirmation never overrides a plain block.
+- Obtains a human decision by means outside this specification (for example an MCP `elicitation/create` request to the client, or an out-of-band channel). If it cannot reach anyone, or no decision arrives before `expiresAt`, it MUST block.
+- MUST set `context.target` on every invocation in the phase, so validators can bind confirmations to the destination (or, when receiving, the source).
+- On approval, invokes the validator again with the same `event`, `phase`, `target` and payload, and `context.confirmations` set (see [Invocation Configuration and Context](#invocation-configuration-and-context)). It forwards the payload only if every validator then returns a non-blocking result.
+- MUST attach a confirmation only to the pending request it was issued for (the same `id`), MUST NOT attach it if that request's call binding no longer hashes to `callHash`, and MUST NOT reuse it for a second request.
+- MUST compute the call binding hash of the payload that will actually be sent or processed, after any mutations that run after validation (on the receiving side, Validate → Mutate → Process). If it differs from the confirmed `callHash`, the invoker MUST block: a confirmation covers only the exact payload the person approved.
+
+The validator decides whether a confirmation is acceptable. It SHOULD accept one only if the `callHash` matches the call binding of the invocation it is validating (including `target`), `expiresAt` has not passed, and, if it issued a `token`, the token is one it issued for that `id` and `callHash`. A validator can make `token` self-verifying (for example an HMAC over the `id`, `callHash`, `context.sessionId` and `expiresAt`), so the Interceptor Server needs no pending-request state and the confirmation survives a reconnect. Binding the confirmation to the exact payload, its destination, the session and an expiry prevents an approval for one call from being replayed for another.
+
+In audit mode, a confirmation request MUST be logged like any other blocking result, and nobody is asked.
 
 #### Mutator
 
@@ -721,6 +755,21 @@ interface InterceptorInvocationParams {
     // Session information
     sessionId?: string;
 
+    // Peer the payload is sent to or, when receiving, came from (e.g. a server name).
+    // Part of the call binding for confirmations; invokers that implement them MUST set it.
+    target?: string;
+
+    // Human confirmations for this exact payload, returned by the invoker
+    // when it re-invokes a validator after asking (see Requiring Confirmation)
+    confirmations?: Array<{
+      interceptor: string; // Name of the validator that requested it
+      id: string; // From the ConfirmationRequest
+      callHash: string; // From the ConfirmationRequest
+      token?: string; // From the ConfirmationRequest, unchanged
+      decidedAt: string; // ISO 8601
+      principal?: { type: "user" | "service"; id?: string }; // Who confirmed, if known
+    }>;
+
     // FUTURE: Interceptor state propagation
     // Allows interceptor to share state through the chain
     // This field is reserved for future enhancement
@@ -782,6 +831,7 @@ Interceptor invocation errors follow standard JSON-RPC error format:
 > - **Receiving**: Validate → Mutate → Process. A validation error MUST prevent mutations from running.
 > - **Mutations**: Sequential by `priorityHint` (alphabetical tie-break). MUST be atomic — the entire chain succeeds or none apply.
 > - **Validations**: Parallel. Only `severity: "error"` blocks; `"warn"` and `"info"` MUST NOT block.
+> - **Confirmation**: A blocking validation MAY carry a `confirmation` request. Invokers that don't implement it block as usual; those that do may ask a human and re-validate (see [Requiring Confirmation](#requiring-confirmation)).
 > - **Audit Mode**: Interceptors in audit mode MUST NOT block execution regardless of results.
 > - **failOpen: true**: If an interceptor fails (crash/timeout), the message MUST be allowed to proceed.
 > - **failOpen: false** (default): If an interceptor fails, the message MUST be blocked.
@@ -1815,6 +1865,23 @@ Interceptor mutation could be used to inject unauthorized operations:
 - Validation interceptor should verify request authorization at trust boundaries
 - Immutable fields should be enforced at protocol level
 - Audit all mutations that touch security-sensitive fields
+
+**6. Confirmation Replay and Confusion**
+
+When validators can ask a human to confirm a call, an attacker might try to:
+
+- Reuse an approval for one call to run a different one (other arguments, other tool, other server)
+- Change an approved call after it was validated, through a mutation that runs later
+- Replay an old approval later in the session, or in another session
+- Phrase a request so the person approves something other than what will run
+
+**Mitigations:**
+
+- Confirmations are bound to the canonical hash of the exact payload and its `target`, to the pending request (`id`), the validator that asked, and an expiry; invokers MUST NOT reuse them
+- Invokers MUST re-hash the payload actually sent or processed, after any later mutations, and block if it no longer matches
+- Validators can issue self-verifying tokens bound to `callHash` and `context.sessionId`
+- Invokers SHOULD show the person what will actually be sent (tool, destination, key arguments), not only the validator's `reason`
+- Any failure to ask, or to get an answer, blocks the request
 
 ### Security Best Practices
 
