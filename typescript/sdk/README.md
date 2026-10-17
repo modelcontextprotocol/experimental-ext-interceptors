@@ -45,6 +45,11 @@ const outcome = await runValidationPhase({
   confirm: async (prompt, signal) => ({ approved: await askUser(prompt, signal) }),
 });
 
+// Denials, timeouts, failures and plain blocks all come back as not allowed.
+if (!outcome.allowed) {
+  // block with outcome.reason
+}
+
 // After any later mutations, the payload must still match what was approved.
 if (outcome.confirmedCallHash && !isConfirmedCall(finalCall, outcome.confirmedCallHash)) {
   // block

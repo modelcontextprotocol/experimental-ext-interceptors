@@ -15,7 +15,8 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
 /**
  * Returns the canonical JSON text of `value`. Throws a TypeError for values
  * that have no I-JSON representation (non-finite numbers, bigints, lone
- * surrogates, functions, undefined outside an object property).
+ * surrogates, functions, undefined outside an object property, array holes,
+ * non-plain objects).
  */
 export function canonicalize(value: unknown): string {
   if (value === null) {
@@ -36,7 +37,14 @@ export function canonicalize(value: unknown): string {
       return JSON.stringify(value);
     case 'object': {
       if (Array.isArray(value)) {
-        return `[${value.map(canonicalize).join(',')}]`;
+        // Visit every index: map() skips holes, which JSON sends as null.
+        return `[${Array.from(value, canonicalize).join(',')}]`;
+      }
+      // Class instances such as Date have a wire form that differs from
+      // their own enumerable properties, so only plain objects are accepted.
+      const proto: unknown = Object.getPrototypeOf(value);
+      if (proto !== Object.prototype && proto !== null) {
+        throw new TypeError('JCS: cannot serialize a non-plain object');
       }
       const obj = value as Record<string, unknown>;
       const keys = Object.keys(obj)

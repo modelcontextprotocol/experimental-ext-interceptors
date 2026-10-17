@@ -99,6 +99,8 @@ export interface ValidationPhaseOutcome {
 interface Attempt {
   entry: ValidatorEntry;
   result?: ValidationResult;
+  /** Set when invoke threw or rejected, even with an undefined reason. */
+  failed?: true;
   error?: unknown;
 }
 
@@ -115,14 +117,14 @@ function blocks(attempt: Attempt): boolean {
   if (!isActive(attempt.entry)) {
     return false;
   }
-  if (attempt.error !== undefined) {
+  if (attempt.failed) {
     return !attempt.entry.failOpen;
   }
   return attempt.result !== undefined && isBlockingResult(attempt.result);
 }
 
 function describe(attempt: Attempt): string {
-  if (attempt.error !== undefined) {
+  if (attempt.failed) {
     return `validator "${attempt.entry.name}" failed`;
   }
   const message = attempt.result?.messages?.[0]?.message;
@@ -156,7 +158,7 @@ export async function runValidationPhase(options: ValidationPhaseOptions): Promi
     try {
       return { entry, result: await entry.invoke(params) };
     } catch (error) {
-      return { entry, error };
+      return { entry, failed: true, error };
     }
   };
 
@@ -170,7 +172,7 @@ export async function runValidationPhase(options: ValidationPhaseOptions): Promi
     reason,
     results: attempts.flatMap((a) => (a.result ? [a.result] : [])),
     failures: attempts.flatMap((a) =>
-      a.error !== undefined ? [{ interceptor: a.entry.name, mode: a.entry.mode ?? 'active', error: a.error }] : [],
+      a.failed ? [{ interceptor: a.entry.name, mode: a.entry.mode ?? 'active', error: a.error }] : [],
     ),
     confirmations,
     confirmedCallHash: allowed && confirmations.length > 0 ? callHash : undefined,
@@ -213,6 +215,19 @@ export async function runValidationPhase(options: ValidationPhaseOptions): Promi
       decidedAt: now().toISOString(),
       principal: decision.principal,
     });
+  }
+
+  // An earlier approval may have expired while a later prompt was pending.
+  for (const attempt of blocking) {
+    const { expiresAt } = attempt.result!.confirmation!;
+    if (expiresAt !== undefined && now().getTime() >= Date.parse(expiresAt)) {
+      return outcome(
+        first,
+        false,
+        `validator "${attempt.entry.name}": confirmation expired before re-validation`,
+        confirmations,
+      );
+    }
   }
 
   // Re-validate with each validator's own confirmation attached.

@@ -130,6 +130,14 @@ describe('runValidationPhase', () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
+  it('blocks when a validator rejects with an undefined reason (fail-closed)', async () => {
+    const broken: ValidatorEntry = { name: 'broken', invoke: () => Promise.reject(undefined) };
+    const out = await runValidationPhase(options({ validators: [broken] }));
+    expect(out.allowed).toBe(false);
+    expect(out.reason).toMatch(/"broken" failed/);
+    expect(out.failures).toEqual([{ interceptor: 'broken', mode: 'active', error: undefined }]);
+  });
+
   it('blocks when the person denies', async () => {
     const out = await runValidationPhase(
       options({ validators: [confirming()], confirm: () => Promise.resolve({ approved: false }) }),
@@ -160,6 +168,23 @@ describe('runValidationPhase', () => {
     expect(out.allowed).toBe(false);
     expect(out.reason).toMatch(/expired/);
     expect(signal?.aborted).toBe(true);
+  });
+
+  it('blocks when an earlier approval expires while a later prompt is pending', async () => {
+    const out = await runValidationPhase(
+      options({
+        validators: [confirming('a', 30), confirming('b', 1_000)],
+        confirm: async (prompt) => {
+          if (prompt.interceptor === 'b') {
+            await new Promise((r) => setTimeout(r, 60));
+          }
+          return { approved: true };
+        },
+      }),
+    );
+    expect(out.allowed).toBe(false);
+    expect(out.reason).toMatch(/"a": confirmation expired before re-validation/);
+    expect(out.confirmedCallHash).toBeUndefined();
   });
 
   it('blocks a request whose callHash is not bound to this call', async () => {

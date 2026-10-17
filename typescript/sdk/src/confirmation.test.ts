@@ -54,6 +54,17 @@ describe('canonicalize', () => {
     expect(canonicalize({ a: undefined, b: 1 })).toBe('{"b":1}');
   });
 
+  it('rejects array holes instead of collapsing them', () => {
+    expect(() => canonicalize(new Array(1))).toThrow(TypeError);
+    expect(() => canonicalize(Object.assign([], { 1: 2 }))).toThrow(TypeError);
+  });
+
+  it('rejects non-plain objects such as Date', () => {
+    expect(() => canonicalize({ at: new Date(0) })).toThrow(TypeError);
+    expect(() => canonicalize(new Map())).toThrow(TypeError);
+    expect(canonicalize(Object.create(null))).toBe('{}');
+  });
+
   it('rejects values without an I-JSON form', () => {
     expect(() => canonicalize(NaN)).toThrow(TypeError);
     expect(() => canonicalize(1n)).toThrow(TypeError);
@@ -92,7 +103,7 @@ describe('computeCallHash', () => {
 });
 
 describe('confirmation tokens', () => {
-  const claims = { id: 'r1', callHash: 'sha256:aa', sessionId: 's1', expiresAt: '2026-10-16T00:05:00.000Z' };
+  const claims = { interceptor: 'v', id: 'r1', callHash: 'sha256:aa', sessionId: 's1', expiresAt: '2026-10-16T00:05:00.000Z' };
   const before = new Date('2026-10-16T00:00:00Z');
 
   it('verifies for the same id, callHash and session before expiry', () => {
@@ -105,8 +116,9 @@ describe('confirmation tokens', () => {
     expect(verifyConfirmationToken(SECRET, token, claims, new Date('2026-10-16T00:05:00Z'))).toBe(false);
   });
 
-  it('rejects other ids, calls, sessions and secrets', () => {
+  it('rejects other validators, ids, calls, sessions and secrets', () => {
     const token = createConfirmationToken(SECRET, claims);
+    expect(verifyConfirmationToken(SECRET, token, { ...claims, interceptor: 'w' }, before)).toBe(false);
     expect(verifyConfirmationToken(SECRET, token, { ...claims, id: 'r2' }, before)).toBe(false);
     expect(verifyConfirmationToken(SECRET, token, { ...claims, callHash: 'sha256:bb' }, before)).toBe(false);
     expect(verifyConfirmationToken(SECRET, token, { ...claims, sessionId: 's2' }, before)).toBe(false);
@@ -182,6 +194,15 @@ describe('findConfirmation / requireConfirmation', () => {
     const c = { ...confirmationFor(params()), interceptor: 'someone-else' };
     const withC = params({ context: { timestamp: 't', target: 'github', sessionId: 's1', confirmations: [c] } });
     expect(findConfirmation(withC, { secret: SECRET })).toBeUndefined();
+  });
+
+  it('rejects a confirmation relabeled for another validator sharing the secret', () => {
+    const c = confirmationFor(params({ name: 'a' }));
+    const asB = params({
+      name: 'b',
+      context: { timestamp: 't', target: 'github', sessionId: 's1', confirmations: [{ ...c, interceptor: 'b' }] },
+    });
+    expect(findConfirmation(asB, { secret: SECRET })).toBeUndefined();
   });
 
   it('rejects an expired confirmation', () => {

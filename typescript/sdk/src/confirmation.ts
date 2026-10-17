@@ -55,6 +55,8 @@ export type ConfirmationSecret = string | Uint8Array;
 const TOKEN_VERSION = 'v1';
 
 interface TokenClaims {
+  /** Name of the validator that issued the request. */
+  interceptor: string;
   id: string;
   callHash: string;
   sessionId?: string;
@@ -64,6 +66,7 @@ interface TokenClaims {
 function tokenMac(secret: ConfirmationSecret, claims: TokenClaims): Buffer {
   const message = canonicalize([
     TOKEN_VERSION,
+    claims.interceptor,
     claims.id,
     claims.callHash,
     claims.sessionId ?? null,
@@ -73,8 +76,8 @@ function tokenMac(secret: ConfirmationSecret, claims: TokenClaims): Buffer {
 }
 
 /**
- * Issues a self-verifying token: an HMAC over the request id, callHash,
- * session id and expiry. The validator needs no pending-request state to
+ * Issues a self-verifying token: an HMAC over the issuing validator's name,
+ * the request id, callHash, session id and expiry. The validator needs no pending-request state to
  * check it, so a confirmation survives a reconnect.
  */
 export function createConfirmationToken(secret: ConfirmationSecret, claims: TokenClaims): string {
@@ -84,8 +87,8 @@ export function createConfirmationToken(secret: ConfirmationSecret, claims: Toke
 }
 
 /**
- * Checks a token issued by createConfirmationToken for the given id,
- * callHash and session, and that its embedded expiry has not passed.
+ * Checks a token issued by createConfirmationToken for the given validator,
+ * id, callHash and session, and that its embedded expiry has not passed.
  */
 export function verifyConfirmationToken(
   secret: ConfirmationSecret,
@@ -140,6 +143,7 @@ export function confirmationRequired(
     options.secret === undefined
       ? undefined
       : createConfirmationToken(options.secret, {
+          interceptor: params.name,
           id,
           callHash,
           sessionId: params.context?.sessionId,
@@ -184,7 +188,7 @@ export function findConfirmation(
       verifyConfirmationToken(
         options.secret,
         c.token,
-        { id: c.id, callHash, sessionId: params.context?.sessionId },
+        { interceptor: params.name, id: c.id, callHash, sessionId: params.context?.sessionId },
         now,
       )
     );
