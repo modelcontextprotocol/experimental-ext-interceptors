@@ -36,6 +36,9 @@ export function canonicalize(value: unknown): string {
       }
       return JSON.stringify(value);
     case 'object': {
+      if (typeof (value as { toJSON?: unknown }).toJSON === 'function') {
+        throw new TypeError('JCS: cannot serialize an object with a custom toJSON method');
+      }
       if (Array.isArray(value)) {
         // Visit every index: map() skips holes, which JSON sends as null.
         return `[${Array.from(value, canonicalize).join(',')}]`;
