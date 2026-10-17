@@ -1,0 +1,36 @@
+{
+  "id": "protocol/invoke-unknown-name",
+  "kind": "protocol",
+  "requirement": "SEP-2624/interceptor-invoke.unknown-name",
+  "description": "interceptor/invoke of an unregistered name fails with JSON-RPC invalid params (-32602).",
+  "interceptors": [
+    {
+      "name": "conf/allow-all",
+      "type": "validation",
+      "behavior": "allow-all",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "invoke",
+      "params": {
+        "name": "conf/does-not-exist",
+        "event": "tools/call",
+        "phase": "request",
+        "payload": {}
+      },
+      "expect": {
+        "errorCode": -32602
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

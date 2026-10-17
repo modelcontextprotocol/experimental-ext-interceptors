@@ -78,6 +78,28 @@ jobs:
               ref: '${{ fromJSON(steps.get-pr.outputs.result) }}'
             });
 
+      - name: Trigger Conformance CI
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'conformance.yml',
+              ref: '${{ fromJSON(steps.get-pr.outputs.result) }}'
+            });
+
+      - name: Trigger Integrations CI
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'integrations.yml',
+              ref: '${{ fromJSON(steps.get-pr.outputs.result) }}'
+            });
+
       - name: Comment on PR
         uses: actions/github-script@v7
         with:

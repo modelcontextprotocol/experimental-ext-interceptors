@@ -1,0 +1,47 @@
+{
+  "id": "protocol/chain-fail-open",
+  "kind": "protocol",
+  "requirement": "SEP-2624/chain.fail-open",
+  "description": "A crashing interceptor with failOpen=true is skipped; the chain proceeds.",
+  "interceptors": [
+    {
+      "name": "conf/crash-open",
+      "type": "validation",
+      "behavior": "crash",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both",
+      "failOpen": true
+    }
+  ],
+  "steps": [
+    {
+      "op": "apply",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "echo",
+        "arguments": {
+          "note": "hi"
+        }
+      },
+      "context": null,
+      "expect": {
+        "decision": "allow",
+        "finalPayload": {
+          "name": "echo",
+          "arguments": {
+            "note": "hi"
+          }
+        },
+        "finalPayloadCanonical": "{\"arguments\":{\"note\":\"hi\"},\"name\":\"echo\"}"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

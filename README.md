@@ -4,7 +4,7 @@
 
 This repository provides a multi-language reference implementation of the proposed interceptor extension for the Model Context Protocol (MCP), as described in [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624).
 
-**Charter:** [modelcontextprotocol.io/community/working-groups/interceptors](https://modelcontextprotocol.io/community/working-groups/interceptors) — the Interceptors Working Group's mission, scope, leadership, and active work items.
+**Charter:** [modelcontextprotocol.io/community/working-groups/interceptors](https://modelcontextprotocol.io/community/working-groups/interceptors) - the Interceptors Working Group's mission, scope, leadership, and active work items.
 
 **Meeting notes:** [Meeting Notes - Interceptors WG](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/categories/meeting-notes-interceptors-wg) in the spec repo. The April 30, 2026 meeting predates that category and is in [this repository's discussions](https://github.com/modelcontextprotocol/experimental-ext-interceptors/discussions), along with copies of the April 23 and May 14 notes.
 
@@ -18,6 +18,22 @@ This repository provides a multi-language reference implementation of the propos
 | Python | `python/sdk/` | `mcp-ext-interceptors` | Planned |
 | TypeScript | `typescript/sdk/` | `@ext-modelcontextprotocol/interceptors` | Planned |
 
+## Conformance and reference components
+
+Additional components in this tree address cross-SDK conformance (issue #20).
+They are self-contained and independently tested.
+
+| Component | Directory | What it is |
+|-----------|-----------|------------|
+| Conformance suite | `conformance/` | Language-neutral golden fixtures (generated deterministically from one typed catalog) plus a four-function adapter contract. Any SDK certifies by implementing the adapter and replaying the fixtures. See [`conformance/README.md`](conformance/README.md) and [`conformance/ADAPTER.md`](conformance/ADAPTER.md). |
+| Python adapter | `conformance/adapters/python/` | Certifies the `feature/python-sdk` implementation against the shared fixtures, proving the suite is language-neutral in fact. |
+
+### Walkthrough
+
+`scripts/demo.sh` runs two self-verifying beats end to end: the conformance
+suite is deterministic and discriminating, and the same fixtures certify the
+Python SDK cross-language. Run a single beat with `scripts/demo.sh 1|2`.
+
 
 ## CI/CD
 
@@ -28,6 +44,7 @@ This monorepo uses **path-based CI workflows** to efficiently test only what cha
 1. **Language-specific workflows** (`csharp.yml`, `python.yml`, `go.yml`, `typescript.yml`)
    - Only trigger when their language directory or workflow file changes
    - Run all tests, linting, and checks for that language
+   - `conformance.yml` and `integrations.yml` cover the components above on the same path-based model (the conformance job also asserts fixture determinism and that the suite discriminates a permissive implementation)
 
 2. **Status check workflow** (`status-check.yml`)
    - Runs on every PR to verify required checks passed

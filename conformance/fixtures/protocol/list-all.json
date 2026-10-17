@@ -1,0 +1,80 @@
+{
+  "id": "protocol/list-all",
+  "kind": "protocol",
+  "requirement": "SEP-2624/interceptors-list",
+  "description": "interceptors/list with no filter returns every registered descriptor, in registration order, in SEP wire shape (defaults omitted).",
+  "interceptors": [
+    {
+      "name": "conf/allow-all",
+      "type": "validation",
+      "behavior": "allow-all",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    },
+    {
+      "name": "conf/uppercase-note",
+      "type": "mutation",
+      "behavior": "uppercase-note",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "list",
+      "event": null,
+      "expect": {
+        "result": {
+          "interceptors": [
+            {
+              "name": "conf/allow-all",
+              "type": "validation",
+              "hooks": [
+                {
+                  "events": [
+                    "tools/call"
+                  ],
+                  "phase": "request"
+                },
+                {
+                  "events": [
+                    "tools/call"
+                  ],
+                  "phase": "response"
+                }
+              ]
+            },
+            {
+              "name": "conf/uppercase-note",
+              "type": "mutation",
+              "hooks": [
+                {
+                  "events": [
+                    "tools/call"
+                  ],
+                  "phase": "request"
+                },
+                {
+                  "events": [
+                    "tools/call"
+                  ],
+                  "phase": "response"
+                }
+              ]
+            }
+          ]
+        },
+        "canonical": "{\"interceptors\":[{\"hooks\":[{\"events\":[\"tools/call\"],\"phase\":\"request\"},{\"events\":[\"tools/call\"],\"phase\":\"response\"}],\"name\":\"conf/allow-all\",\"type\":\"validation\"},{\"hooks\":[{\"events\":[\"tools/call\"],\"phase\":\"request\"},{\"events\":[\"tools/call\"],\"phase\":\"response\"}],\"name\":\"conf/uppercase-note\",\"type\":\"mutation\"}]}"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

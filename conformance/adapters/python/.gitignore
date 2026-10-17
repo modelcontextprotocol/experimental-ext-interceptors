@@ -1,0 +1,9 @@
+# Upstream's feature/python-sdk, vendored read-only by scripts/vendor.sh —
+# never committed here; the pin lives in the script.
+_vendor/
+
+.venv/
+uv.lock
+__pycache__/
+*.egg-info/
+.pytest_cache/
