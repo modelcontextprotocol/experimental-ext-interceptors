@@ -35,7 +35,7 @@ func TestServer_ValidatorAllowsTool(t *testing.T) {
 
 func TestServer_MutatorModifiesResponse(t *testing.T) {
 	t.Parallel()
-	cs := setup(t, prefixMutator("prefix", "[mutated]", interceptors.PhaseResponse, 0, interceptors.ModeEnforce))
+	cs := setup(t, prefixMutator("prefix", "[mutated]", interceptors.PhaseResponse, 0, interceptors.ModeActive))
 
 	result, err := callEcho(t, cs)
 	require.NoError(t, err)
@@ -50,11 +50,11 @@ func TestServer_ChainedMutatorsWithAuditMode(t *testing.T) {
 	//
 	//   [M5] [M4] [M2] [M1] echo: ...
 	cs := setup(t,
-		prefixMutator("m1", "[M1]", interceptors.PhaseResponse, 10, interceptors.ModeEnforce),
-		prefixMutator("m2", "[M2]", interceptors.PhaseResponse, 20, interceptors.ModeEnforce),
+		prefixMutator("m1", "[M1]", interceptors.PhaseResponse, 10, interceptors.ModeActive),
+		prefixMutator("m2", "[M2]", interceptors.PhaseResponse, 20, interceptors.ModeActive),
 		prefixMutator("m3-audit", "[AUDIT]", interceptors.PhaseResponse, 30, interceptors.ModeAudit),
-		prefixMutator("m4", "[M4]", interceptors.PhaseResponse, 40, interceptors.ModeEnforce),
-		prefixMutator("m5", "[M5]", interceptors.PhaseResponse, 50, interceptors.ModeEnforce),
+		prefixMutator("m4", "[M4]", interceptors.PhaseResponse, 40, interceptors.ModeActive),
+		prefixMutator("m5", "[M5]", interceptors.PhaseResponse, 50, interceptors.ModeActive),
 	)
 
 	result, err := callEcho(t, cs)
@@ -70,9 +70,9 @@ func TestServer_MutatorFailureAbortsChain(t *testing.T) {
 	// 3 response mutators. Mutator 2 (priority 20) returns an error
 	// and is fail-closed. The chain aborts; client receives an error.
 	cs := setup(t,
-		prefixMutator("m1", "[M1]", interceptors.PhaseResponse, 10, interceptors.ModeEnforce),
+		prefixMutator("m1", "[M1]", interceptors.PhaseResponse, 10, interceptors.ModeActive),
 		failMutator("m2-fail", interceptors.PhaseResponse, 20),
-		prefixMutator("m3", "[M3]", interceptors.PhaseResponse, 30, interceptors.ModeEnforce),
+		prefixMutator("m3", "[M3]", interceptors.PhaseResponse, 30, interceptors.ModeActive),
 	)
 
 	_, err := callEcho(t, cs)
@@ -90,7 +90,7 @@ func TestServer_ValidatorWarnDoesNotBlock(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			return &interceptors.ValidationResult{
@@ -121,7 +121,7 @@ func TestServer_ValidationFailurePreventsM(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
 			mutatorRan.Store(true)
@@ -145,7 +145,7 @@ func TestServer_ValidatorTimeoutAbortsChain(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(ctx context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			select {
@@ -176,7 +176,7 @@ func TestServer_MutatorTimeoutAbortsChain(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
 			}},
-			Mode:         interceptors.ModeEnforce,
+			Mode:         interceptors.ModeActive,
 			PriorityHint: interceptors.NewPriority(20),
 		},
 		Handler: func(ctx context.Context, _ *interceptors.Invocation) (*interceptors.MutationResult, error) {
@@ -190,9 +190,9 @@ func TestServer_MutatorTimeoutAbortsChain(t *testing.T) {
 	}
 
 	cs := setup(t,
-		prefixMutator("m1", "[M1]", interceptors.PhaseResponse, 10, interceptors.ModeEnforce),
+		prefixMutator("m1", "[M1]", interceptors.PhaseResponse, 10, interceptors.ModeActive),
 		slowMutator,
-		prefixMutator("m3", "[M3]", interceptors.PhaseResponse, 30, interceptors.ModeEnforce),
+		prefixMutator("m3", "[M3]", interceptors.PhaseResponse, 30, interceptors.ModeActive),
 	)
 
 	// Per-invocation timeout: context expires before the 100ms handler completes.
@@ -212,7 +212,7 @@ func TestServer_MutatorFailOpenContinuesChain(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
 			}},
-			Mode:         interceptors.ModeEnforce,
+			Mode:         interceptors.ModeActive,
 			FailOpen:     true,
 			PriorityHint: interceptors.NewPriority(20),
 		},
@@ -222,9 +222,9 @@ func TestServer_MutatorFailOpenContinuesChain(t *testing.T) {
 	}
 
 	cs := setup(t,
-		prefixMutator("m1", "[M1]", interceptors.PhaseResponse, 10, interceptors.ModeEnforce),
+		prefixMutator("m1", "[M1]", interceptors.PhaseResponse, 10, interceptors.ModeActive),
 		failOpenMutator,
-		prefixMutator("m3", "[M3]", interceptors.PhaseResponse, 30, interceptors.ModeEnforce),
+		prefixMutator("m3", "[M3]", interceptors.PhaseResponse, 30, interceptors.ModeActive),
 	)
 
 	result, err := callEcho(t, cs)
@@ -252,7 +252,7 @@ func TestServer_ResponseMutatorSeesMutatedParams(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
 			raw, ok := inv.Payload.(json.RawMessage)
@@ -313,7 +313,7 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			reqValCount.Add(1)
@@ -347,7 +347,7 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			reqValCount.Add(1)
@@ -385,7 +385,7 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			reqValCount.Add(1)
@@ -409,7 +409,7 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 					Events: []string{interceptors.EventToolsCall},
 					Phase:  interceptors.PhaseRequest,
 				}},
-				Mode:         interceptors.ModeEnforce,
+				Mode:         interceptors.ModeActive,
 				PriorityHint: interceptors.NewPriority(priority),
 			},
 			Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
@@ -458,7 +458,7 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 					Events: []string{interceptors.EventToolsCall},
 					Phase:  interceptors.PhaseResponse,
 				}},
-				Mode:         interceptors.ModeEnforce,
+				Mode:         interceptors.ModeActive,
 				PriorityHint: interceptors.NewPriority(priority),
 			},
 			Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
@@ -500,7 +500,7 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			respValCount.Add(1)
@@ -534,7 +534,7 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			respValCount.Add(1)
@@ -570,7 +570,7 @@ func TestServer_CombinedValidatorsAndMutators(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			respValCount.Add(1)

@@ -48,7 +48,7 @@ func TestListWithEventFilter(t *testing.T) {
 				Events: []string{interceptors.EventPromptsGet},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			return &interceptors.ValidationResult{Valid: true}, nil
@@ -122,7 +122,7 @@ func TestInvokeValidatorRejects(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			return &interceptors.ValidationResult{
@@ -166,7 +166,7 @@ func TestInvokeMutator(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
 			raw, ok := inv.Payload.(json.RawMessage)
@@ -244,7 +244,7 @@ func TestInvokeTimeout(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(ctx context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			select {

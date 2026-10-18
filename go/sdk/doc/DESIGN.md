@@ -174,7 +174,7 @@ Response-phase validators see the post-mutation payload.
 
 ### Validator execution
 - All matching validators run in parallel (goroutines).
-- A validator returning `Valid: false` with `Severity: "error"` in enforced
+- A validator returning `Valid: false` with `Severity: "error"` in active
   mode aborts the chain.
 - `FailOpen: true` validators log errors and record an `InvokeResult`
   for observability, but don't abort.

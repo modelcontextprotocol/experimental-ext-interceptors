@@ -33,8 +33,8 @@ type InterceptionEvent = string
 type Mode string
 
 const (
-	ModeEnforce Mode = "enforce" // Enforced: validation failures block, mutations apply
-	ModeAudit   Mode = "audit"   // Audit: log results but don't block or apply mutations
+	ModeActive Mode = "active" // Active: validation failures block, mutations apply
+	ModeAudit  Mode = "audit"  // Audit: log results but don't block or apply mutations
 )
 
 // InterceptorType identifies the category of an interceptor.

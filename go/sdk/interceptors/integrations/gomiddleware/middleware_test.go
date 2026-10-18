@@ -85,7 +85,7 @@ func TestMiddlewareBlocksOnValidationError(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			raw, ok := inv.Payload.(json.RawMessage)
@@ -129,7 +129,7 @@ func TestMiddlewarePassesOnSuccess(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, _ *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			return &interceptors.ValidationResult{Valid: true}, nil
@@ -156,7 +156,7 @@ func TestMiddlewareMutatesPayload(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseResponse,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
 			raw, ok := inv.Payload.(json.RawMessage)
@@ -234,7 +234,7 @@ func TestMiddlewareWithContextProvider(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.ValidationResult, error) {
 			if inv.Context == nil || inv.Context.Principal == nil || inv.Context.Principal.ID != "test-user" {
@@ -316,7 +316,7 @@ func TestMiddlewareRequestMutatorModifiesArgs(t *testing.T) {
 				Events: []string{interceptors.EventToolsCall},
 				Phase:  interceptors.PhaseRequest,
 			}},
-			Mode: interceptors.ModeEnforce,
+			Mode: interceptors.ModeActive,
 		},
 		Handler: func(_ context.Context, inv *interceptors.Invocation) (*interceptors.MutationResult, error) {
 			raw, ok := inv.Payload.(json.RawMessage)
