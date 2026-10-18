@@ -156,7 +156,11 @@ export async function runValidationPhase(options: ValidationPhaseOptions): Promi
       },
     };
     try {
-      return { entry, result: await entry.invoke(params) };
+      const result = await entry.invoke(params);
+      if (result === undefined) {
+        throw new TypeError(`validator "${entry.name}" returned no validation result`);
+      }
+      return { entry, result };
     } catch (error) {
       return { entry, failed: true, error };
     }
