@@ -169,9 +169,21 @@ From `typescript/sdk` after `npm run build` (examples import `dist/` from the lo
 | `npm run example:interceptor-client` | `InterceptorClientSample` | Spawns the server via `StdioClientTransport`; list, invoke, chain |
 | `npm run example:gateway` | `GatewaySample` | `InterceptingMcpClient` → interceptor host → everything server |
 | `npm run example:transparent-proxy` | `TransparentProxySample` | Stdio transparent proxy (`McpInterceptorGateway`) |
+| `npm run example:transparent-proxy:http` | — | Same proxy served over Streamable HTTP |
 | `npm run example:gateway-chain` | `GatewayChainSample` | Notes on multi-host ordering with `interceptorClients` |
 
 The client sample spawns the server process and talks over its stdio pipes (same pattern as the C# `StdioClientTransport` + `dotnet run --project …`).
+
+### Transparent proxy over HTTP
+
+`example:transparent-proxy:http` listens on `http://127.0.0.1:3000/mcp` (set `PORT` to change it). Point any Streamable HTTP client at that URL, for example the MCP Inspector:
+
+```bash
+npm run example:transparent-proxy:http
+npx @modelcontextprotocol/inspector   # transport: Streamable HTTP, URL: http://127.0.0.1:3000/mcp
+```
+
+The backend and interceptor host are still spawned over stdio. Each HTTP session gets its own backend connection, because `registerNotificationForwarding()` keeps one handler per backend client. Only `localhost`, `127.0.0.1` and `[::1]` Host headers are accepted. There's no auth on the endpoint.
 
 ## Development
 

@@ -25,6 +25,7 @@
     "example:interceptor-client": "npm run build && tsx examples/interceptor-client/src/index.ts",
     "example:gateway": "npm run build && tsx examples/gateway/src/index.ts",
     "example:transparent-proxy": "npm run build && tsx examples/transparent-proxy/src/index.ts",
+    "example:transparent-proxy:http": "npm run build && tsx examples/transparent-proxy-http/src/index.ts",
     "example:gateway-chain": "npm run build && tsx examples/gateway-chain/src/index.ts",
     "prepublishOnly": "npm run build"
   },
