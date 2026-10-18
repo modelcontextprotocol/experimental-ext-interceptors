@@ -156,7 +156,23 @@ export async function runValidationPhase(options: ValidationPhaseOptions): Promi
       },
     };
     try {
-      const result = await entry.invoke(params);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let result: ValidationResult;
+      try {
+        result = await Promise.race([
+          entry.invoke(params),
+          new Promise<never>((_, reject) => {
+            if (options.timeoutMs !== undefined) {
+              timer = setTimeout(
+                () => reject(new Error(`validator "${entry.name}" timed out`)),
+                options.timeoutMs,
+              );
+            }
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
       if (result === undefined) {
         throw new TypeError(`validator "${entry.name}" returned no validation result`);
       }
