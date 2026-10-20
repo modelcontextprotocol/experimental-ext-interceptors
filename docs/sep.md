@@ -1296,7 +1296,7 @@ CLIENT RESPONSE (Receiving):
 Invokers MUST handle errors based on interceptor type:
 
 ```typescript
-// Mutation failure: Execution MUST halt immediately
+// Mutation failure (active mode, failOpen: false): Execution MUST halt immediately
 {
   error: {
     code: -32603,
