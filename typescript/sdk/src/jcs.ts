@@ -41,7 +41,11 @@ export function canonicalize(value: unknown): string {
       }
       if (Array.isArray(value)) {
         // Visit every index: map() skips holes, which JSON sends as null.
-        return `[${Array.from(value, canonicalize).join(',')}]`;
+        const elements: string[] = [];
+        for (let i = 0; i < value.length; i++) {
+          elements.push(canonicalize(value[i]));
+        }
+        return `[${elements.join(',')}]`;
       }
       // Class instances such as Date have a wire form that differs from
       // their own enumerable properties, so only plain objects are accepted.
