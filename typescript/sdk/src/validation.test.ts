@@ -247,6 +247,20 @@ describe('runValidationPhase', () => {
 });
 
 describe('isConfirmedCall', () => {
+  it('blocks when the payload changes while the person is deciding', async () => {
+    const payload = { name: 'post_issue', arguments: { repo: 'acme/site', body: 'hi' } };
+    const v = confirming();
+    const confirm: ConfirmationHandler = () => {
+      payload.arguments.body = 'secrets';
+      return approve({} as never, new AbortController().signal);
+    };
+    const out = await runValidationPhase(options({ payload, validators: [v], confirm }));
+    expect(out.allowed).toBe(false);
+    expect(out.reason).toBe('payload changed while confirmation was pending');
+    expect(out.confirmedCallHash).toBeUndefined();
+    expect(v.calls).toHaveLength(1);
+  });
+
   it('detects a payload changed after confirmation', async () => {
     const out = await runValidationPhase(options({ validators: [confirming()], confirm: approve }));
     const hash = out.confirmedCallHash!;

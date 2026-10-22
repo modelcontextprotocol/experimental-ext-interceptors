@@ -237,6 +237,11 @@ export async function runValidationPhase(options: ValidationPhaseOptions): Promi
     });
   }
 
+  // The payload is shared by reference; it must not have changed while the person was deciding.
+  if (computeCallHash({ event, phase, target, payload }) !== callHash) {
+    return outcome(first, false, 'payload changed while confirmation was pending', confirmations);
+  }
+
   // An earlier approval may have expired while a later prompt was pending.
   for (const attempt of blocking) {
     const { expiresAt } = attempt.result!.confirmation!;
