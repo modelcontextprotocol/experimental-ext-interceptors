@@ -95,11 +95,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(&address).await?;
     eprintln!("listening on {address}");
 
-    let (transport, _) = listener.accept().await?;
-    let server = interceptors
-        .wrap(ExampleToolServer)
-        .serve(transport)
-        .await?;
-    server.waiting().await?;
-    Ok(())
+    loop {
+        let (transport, _) = listener.accept().await?;
+        let server = interceptors.clone().wrap(ExampleToolServer);
+        tokio::spawn(async move {
+            match server.serve(transport).await {
+                Ok(connection) => {
+                    if let Err(error) = connection.waiting().await {
+                        eprintln!("connection failed: {error}");
+                    }
+                }
+                Err(error) => eprintln!("connection initialization failed: {error}"),
+            }
+        });
+    }
 }

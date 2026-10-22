@@ -113,7 +113,7 @@ sampling, elicitation, roots, and custom requests. Calls made directly through t
 original `rmcp::Peer` bypass the wrapper.
 
 Run the end-to-end typed `tools/call` client/server example in two terminals. The
-server exits after the client disconnects.
+server accepts multiple clients and runs until interrupted.
 
 ```sh
 # Terminal 1
@@ -127,21 +127,3 @@ Set `MCP_EXAMPLE_ADDR` in both terminals to use an address other than
 `127.0.0.1:8765`. The implementation is in [`examples/client.rs`](examples/client.rs)
 and [`examples/server.rs`](examples/server.rs).
 
-## Goose / AAIF Integration
-
-The crate supplies the interception layer, but cannot install it inside Goose's agent
-loop automatically because `rmcp::Peer` has no outgoing middleware hook. Route the
-relevant Goose/AAIF request path through `InterceptorMiddleware::outgoing` or
-`InterceptingPeer::send_request`.
-
-For `tools/call`, run outgoing request interception **before** Goose asks for user
-approval. A mutator can change the tool name or arguments, so applying interception
-after approval would approve a different request. If the host can only intercept after
-approval, it must request approval again for the final mutated payload.
-
-For that path, prefer `InterceptorMiddleware::outgoing` and perform approval inside
-`next`, which receives the final mutated request. `InterceptingPeer` operates at the
-send boundary and is too late if Goose already approved the original request.
-
-Discovery, hook matching, ordering, and invocation are automatic once the middleware
-has been placed in that path.
