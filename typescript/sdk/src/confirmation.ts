@@ -9,6 +9,10 @@
  * ValidationResult carrying a ConfirmationRequest. The request is bound to
  * the exact call through `callHash`, so an approval for one call cannot be
  * replayed for another.
+ *
+ * A confirmation is single use. The SEP makes invokers responsible for not
+ * attaching it to a second request; a validator that also enforces it passes
+ * a UsedConfirmations store, which remembers accepted ids until they expire.
  */
 
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -109,6 +113,52 @@ export function verifyConfirmationToken(
   return expiresAt === undefined || now.getTime() < Date.parse(expiresAt);
 }
 
+/** Reads the expiry embedded in a token from createConfirmationToken, without verifying it. */
+function tokenExpiry(token: string | undefined): number | undefined {
+  const part = token?.split('.')[1];
+  if (!part) {
+    return undefined;
+  }
+  const ms = Date.parse(Buffer.from(part, 'base64url').toString('utf8'));
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
+/**
+ * Remembers the confirmations a validator has accepted, so each allows one
+ * invocation. Entries are kept until the confirmation expires, which bounds
+ * the state.
+ */
+export interface UsedConfirmations {
+  /** Records the key as used until `expiresAt` (ms since the epoch). Returns false if it was already used. */
+  claim(key: string, expiresAt: number): boolean;
+}
+
+/** In-process UsedConfirmations. Use a shared store if several validator processes accept the same confirmations. */
+export class MemoryUsedConfirmations implements UsedConfirmations {
+  private readonly used = new Map<string, number>();
+
+  constructor(private readonly now: () => number = Date.now) {}
+
+  claim(key: string, expiresAt: number): boolean {
+    const now = this.now();
+    for (const [k, until] of this.used) {
+      if (until <= now) {
+        this.used.delete(k);
+      }
+    }
+    if (this.used.has(key)) {
+      return false;
+    }
+    this.used.set(key, expiresAt);
+    return true;
+  }
+
+  /** Number of confirmations remembered (for tests and monitoring). */
+  get size(): number {
+    return this.used.size;
+  }
+}
+
 export interface ConfirmationOptions {
   /** Human-readable explanation, shown to the person asked. */
   reason: string;
@@ -121,6 +171,12 @@ export interface ConfirmationOptions {
   ttlMs?: number;
   /** Additional messages for the blocking result. */
   messages?: ValidationMessage[];
+  /**
+   * Makes requireConfirmation accept each confirmation once: a second use,
+   * for example when an invoker retries, asks for a new confirmation.
+   * Recommended.
+   */
+  used?: UsedConfirmations;
   now?: () => Date;
 }
 
@@ -164,7 +220,8 @@ export function confirmationRequired(
  * Returns the confirmation in `context.confirmations` that this validator
  * can accept for this invocation, if any: one addressed to this validator
  * whose callHash matches the invocation's call binding (including target)
- * and, if `secret` is given, whose token is valid and unexpired.
+ * and, if `secret` is given, whose token is valid and unexpired. It does not
+ * record the confirmation as used; requireConfirmation does, given `used`.
  */
 export function findConfirmation(
   params: InterceptorInvocationParams,
@@ -197,14 +254,23 @@ export function findConfirmation(
 
 /**
  * Convenience for validators: passes if the invocation carries an
- * acceptable confirmation, otherwise asks for one.
+ * acceptable confirmation, otherwise asks for one. With `used`, each
+ * confirmation passes once.
  */
 export function requireConfirmation(
   params: InterceptorInvocationParams,
   options: ConfirmationOptions,
 ): ValidationResult {
-  if (findConfirmation(params, options)) {
+  const c = findConfirmation(params, options);
+  if (c && (!options.used || claim(options.used, params.name, c, options))) {
     return { interceptor: params.name, type: 'validation', phase: params.phase, valid: true };
   }
   return confirmationRequired(params, options);
+}
+
+function claim(used: UsedConfirmations, interceptor: string, c: Confirmation, options: ConfirmationOptions): boolean {
+  const now = (options.now?.() ?? new Date()).getTime();
+  // Without a token there is no embedded expiry; keep the id for a full request lifetime.
+  const expiresAt = tokenExpiry(c.token) ?? now + (options.ttlMs ?? DEFAULT_TTL_MS);
+  return used.claim(`${interceptor}\n${c.id}`, expiresAt);
 }

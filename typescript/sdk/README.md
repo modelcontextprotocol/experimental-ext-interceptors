@@ -26,12 +26,18 @@ bound to the exact `{ event, phase, target, payload }`, so an approval
 cannot be replayed for a different call:
 
 ```typescript
-import { requireConfirmation, runValidationPhase, isConfirmedCall } from '@ext-modelcontextprotocol/interceptors';
+import {
+  isConfirmedCall,
+  MemoryUsedConfirmations,
+  requireConfirmation,
+  runValidationPhase,
+} from '@ext-modelcontextprotocol/interceptors';
 
-// Validator: passes only with a valid confirmation for this exact call.
+// Validator: passes only with a valid confirmation for this exact call, once.
+const used = new MemoryUsedConfirmations();
 const guard = {
   name: 'public-write-guard',
-  invoke: async (params) => requireConfirmation(params, { reason: 'Post to a public repo?', secret }),
+  invoke: async (params) => requireConfirmation(params, { reason: 'Post to a public repo?', secret, used }),
 };
 
 // Invoker: asks the person (e.g. via elicitation) and re-validates.
@@ -55,6 +61,12 @@ if (outcome.confirmedCallHash && !isConfirmedCall(finalCall, outcome.confirmedCa
   // block
 }
 ```
+
+A confirmation is single use. Invokers must not attach it to a second
+request; with `used`, the validator enforces that too, so a retry asks for a
+new confirmation instead of reusing the old one. `MemoryUsedConfirmations`
+keeps accepted ids until they expire; validators in several processes need a
+shared `UsedConfirmations` store.
 
 ## Development
 

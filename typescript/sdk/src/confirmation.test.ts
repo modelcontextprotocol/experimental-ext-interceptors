@@ -11,6 +11,7 @@ import {
   confirmationRequired,
   createConfirmationToken,
   findConfirmation,
+  MemoryUsedConfirmations,
   requireConfirmation,
   verifyConfirmationToken,
 } from './confirmation.js';
@@ -221,5 +222,59 @@ describe('findConfirmation / requireConfirmation', () => {
     });
     expect(findConfirmation(noToken, { secret: SECRET })).toBeUndefined();
     expect(findConfirmation(forged, { secret: SECRET })).toBeUndefined();
+  });
+});
+
+describe('single use', () => {
+  const at = new Date('2026-10-16T00:00:00Z');
+  const withC = (c: Confirmation) => params({ context: { timestamp: 't', target: 'github', sessionId: 's1', confirmations: [c] } });
+
+  it('accepts the same confirmation again without a store (stateless by default)', () => {
+    const c = confirmationFor(params(), at);
+    const opts = { reason: 'r', secret: SECRET, now: () => at };
+    expect(requireConfirmation(withC(c), opts).valid).toBe(true);
+    expect(requireConfirmation(withC(c), opts).valid).toBe(true);
+  });
+
+  it('accepts a confirmation once with a store, and asks again on a retry', () => {
+    const c = confirmationFor(params(), at);
+    const opts = { reason: 'r', secret: SECRET, now: () => at, used: new MemoryUsedConfirmations(() => at.getTime()) };
+    expect(requireConfirmation(withC(c), opts).valid).toBe(true);
+    const retry = requireConfirmation(withC(c), opts);
+    expect(retry.valid).toBe(false);
+    expect(retry.confirmation?.id).not.toBe(c.id);
+  });
+
+  it('accepts each new confirmation once', () => {
+    const used = new MemoryUsedConfirmations(() => at.getTime());
+    const opts = { reason: 'r', secret: SECRET, now: () => at, used };
+    expect(requireConfirmation(withC(confirmationFor(params(), at)), opts).valid).toBe(true);
+    expect(requireConfirmation(withC(confirmationFor(params(), at)), opts).valid).toBe(true);
+    expect(used.size).toBe(2);
+  });
+
+  it('keys used confirmations by validator, so validators sharing a store do not block each other', () => {
+    const used = new MemoryUsedConfirmations(() => at.getTime());
+    const a = { ...confirmationFor(params({ name: 'a' }), at), id: 'same' };
+    expect(used.claim(`a\n${a.id}`, at.getTime() + 1000)).toBe(true);
+    expect(used.claim(`b\n${a.id}`, at.getTime() + 1000)).toBe(true);
+    expect(used.claim(`a\n${a.id}`, at.getTime() + 1000)).toBe(false);
+  });
+
+  it('forgets confirmations once they expire', () => {
+    let now = at.getTime();
+    const used = new MemoryUsedConfirmations(() => now);
+    used.claim('v\n1', now + 1000);
+    now += 2000;
+    used.claim('v\n2', now + 1000);
+    expect(used.size).toBe(1);
+  });
+
+  it('keeps a confirmation without a token for a full request lifetime', () => {
+    const c = { ...confirmationFor(params(), at), token: undefined };
+    const used = new MemoryUsedConfirmations(() => at.getTime());
+    const opts = { reason: 'r', now: () => at, used };
+    expect(requireConfirmation(withC(c), opts).valid).toBe(true);
+    expect(requireConfirmation(withC(c), opts).valid).toBe(false);
   });
 });
