@@ -1878,6 +1878,7 @@ When validators can ask a human to confirm a call, an attacker might try to:
 **Mitigations:**
 
 - Confirmations are bound to the canonical hash of the exact payload and its `target`, to the pending request (`id`), the validator that asked, and an expiry; invokers MUST NOT reuse them
+- A confirmation is single use. Validators SHOULD record accepted confirmation `id`s until they expire and reject a repeat, so a retried call asks for a new confirmation; validators in several processes need a shared store
 - Invokers MUST re-hash the payload actually sent or processed, after any later mutations, and block if it no longer matches
 - Validators can issue self-verifying tokens bound to `callHash` and `context.sessionId`
 - Invokers SHOULD show the person what will actually be sent (tool, destination, key arguments), not only the validator's `reason`
