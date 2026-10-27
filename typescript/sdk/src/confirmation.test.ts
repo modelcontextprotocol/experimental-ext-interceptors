@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -276,5 +277,60 @@ describe('single use', () => {
     const opts = { reason: 'r', now: () => at, used };
     expect(requireConfirmation(withC(c), opts).valid).toBe(true);
     expect(requireConfirmation(withC(c), opts).valid).toBe(false);
+  });
+});
+
+// Fixtures from probityai/agent-evidence-vectors; see testdata/approval-binding/README.md.
+describe('approval-binding fixtures', () => {
+  interface ApprovalRecord {
+    approval: { approvalId: string; expiresAt: string };
+    consumedApprovalIds: string[];
+    decisionTime: string;
+    use: { event: string; target: string; tool: string };
+  }
+
+  const cases = [
+    { file: 'allow-bound.json', sha256: 'edf9debc8dd96359f8865324d47ac9ae8bc400cfadfc4ce524d33efae9bf11f8', allowed: true },
+    { file: 'approval-already-consumed.json', sha256: '9f14975c6032d782a096fc15388ab26d9d42574b206098627ba4675e12c23bd6', allowed: false },
+  ];
+
+  it.each(cases)('$file: allowed=$allowed', ({ file, sha256, allowed }) => {
+    const raw = readFileSync(new URL(`../testdata/approval-binding/${file}`, import.meta.url));
+    expect(createHash('sha256').update(raw).digest('hex')).toBe(sha256);
+    const record = JSON.parse(raw.toString('utf8')) as ApprovalRecord;
+
+    const at = new Date(record.decisionTime);
+    const expiresAt = Date.parse(record.approval.expiresAt);
+    const context = { timestamp: record.decisionTime, target: record.use.target, sessionId: 's1' };
+    const p = params({ event: record.use.event, payload: { name: record.use.tool, arguments: {} }, context });
+    const callHash = computeCallHash(callBinding(p));
+    const c: Confirmation = {
+      interceptor: p.name,
+      id: record.approval.approvalId,
+      callHash,
+      token: createConfirmationToken(SECRET, {
+        interceptor: p.name,
+        id: record.approval.approvalId,
+        callHash,
+        sessionId: 's1',
+        expiresAt: record.approval.expiresAt,
+      }),
+      decidedAt: record.decisionTime,
+    };
+
+    // consumedApprovalIds are the ids already in the used store.
+    const used = new MemoryUsedConfirmations(() => at.getTime());
+    for (const id of record.consumedApprovalIds) {
+      used.claim(`${p.name}\n${id}`, expiresAt);
+    }
+
+    const result = requireConfirmation(
+      { ...p, context: { ...context, confirmations: [c] } },
+      { reason: 'r', secret: SECRET, now: () => at, used },
+    );
+    expect(result.valid).toBe(allowed);
+    if (!allowed) {
+      expect(result.confirmation?.id).not.toBe(c.id);
+    }
   });
 });
