@@ -1,0 +1,58 @@
+{
+  "approval": {
+    "approvalId": "appr-0001",
+    "approver": "human:reviewer-1",
+    "clientId": "client-ide-7",
+    "event": "tools/call",
+    "expiresAt": "2026-10-21T12:05:00Z",
+    "issuedAt": "2026-10-21T11:55:00Z",
+    "keyId": "reviewer-1-key-2026-10",
+    "payloadSha256": "37e4855e2707561919f5ff0de10785061073a919f892b6d974bb35320877c974",
+    "phase": "pre-execution",
+    "principal": "user:alice",
+    "target": "workspace/selection.json",
+    "tool": "file.save"
+  },
+  "consumedApprovalIds": [
+    "appr-0000"
+  ],
+  "contractId": "https://probityai.github.io/agent-evidence-vectors/contract/approval-binding/v1",
+  "decisionTime": "2026-10-21T12:00:00Z",
+  "policyRelease": {
+    "firstServedAt": "2026-10-21T09:00:00Z",
+    "graceSeconds": 300,
+    "lastServedAt": "2026-10-21T12:30:00Z",
+    "lookup": "ok",
+    "releaseId": "policy-release-41"
+  },
+  "presentedApprovals": [
+    {
+      "approvalId": "appr-0001",
+      "approver": "human:reviewer-1",
+      "clientId": "client-ide-7",
+      "event": "tools/call",
+      "expiresAt": "2026-10-21T12:05:00Z",
+      "issuedAt": "2026-10-21T11:55:00Z",
+      "keyId": "reviewer-1-key-2026-10",
+      "payloadSha256": "37e4855e2707561919f5ff0de10785061073a919f892b6d974bb35320877c974",
+      "phase": "pre-execution",
+      "principal": "user:alice",
+      "target": "workspace/selection.json",
+      "tool": "file.save"
+    }
+  ],
+  "trustedKeys": {
+    "human:reviewer-1": "reviewer-1-key-2026-10"
+  },
+  "use": {
+    "approvalId": "appr-0001",
+    "clientId": "client-ide-7",
+    "event": "tools/call",
+    "payloadFile": "payload.bin",
+    "phase": "pre-execution",
+    "principal": "user:alice",
+    "target": "workspace/selection.json",
+    "tool": "file.save",
+    "usedAt": "2026-10-21T12:00:00Z"
+  }
+}
