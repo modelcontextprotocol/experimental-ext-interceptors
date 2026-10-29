@@ -587,11 +587,13 @@ See [Execution Model](#execution-model) for sink execution semantics.
         name: "audit-logger",
         version: "1.0.0",
         description: "Logs all MCP operations for compliance",
-        type: "sink",
+        type: "validation",
         hooks: [
           { events: ["*"], phase: "request" },
           { events: ["*"], phase: "response" }
         ],
+        mode: "audit",
+        failOpen: true,
         configSchema: {
           type: "object",
           properties: {
