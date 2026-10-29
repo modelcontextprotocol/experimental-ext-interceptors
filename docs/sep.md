@@ -209,6 +209,9 @@ interface Interceptor {
    *
    * Note: In audit mode, the message itself always proceeds (audit never blocks execution).
    * failOpen controls whether audit failures are treated as errors or warnings.
+   *
+   * Sinks: failOpen is ignored. Sink failures never block the message
+   * (see Execution Model).
    */
   failOpen?: boolean;
 
@@ -785,6 +788,7 @@ When an interceptor is invoked with `timeoutMs` specified:
 - A timeout error MUST be returned with code `-32000` (Server error)
 - Interceptors in audit mode that timeout MUST be logged but MUST NOT block the main flow
 - When `failOpen` is `true`, a timed-out interceptor MUST allow the message to proceed
+- A timed-out sink MUST be treated like any other sink failure: swallowed, never blocking the main flow
 
 ```typescript
 // Timeout error response
@@ -1130,8 +1134,8 @@ The orchestration pattern is as follows:
 2. **Select and Resolve Policy:** From the discovered interceptors, take the set the invoker has chosen to apply. For each selected interceptor, merge `overrides` with interceptor defaults (overrides take precedence). Exclude any interceptor whose declared `hooks`, or narrowed override `hooks` if present, do not match the current event/phase.
 3. **Sort:** Order mutations by resolved `priorityHint` (ascending, with alphabetical tie-breaking by interceptor name).
 4. **Order by Trust Boundary:** Apply the trust-boundary-aware execution model — mutations before validations when sending, validations before mutations when receiving.
-5. **Execute:** Call `interceptor/invoke` on the appropriate MCP server for each interceptor, applying resolved `failOpen`, `mode`, and `timeoutMs`. Mutations MUST be invoked sequentially (each receiving the output of the previous). Validations MAY be invoked in parallel. The invoker MAY also impose an aggregate timeout covering all interceptors applied to one operation; if it is exceeded, the invoker MUST cancel the remaining invocations and treat the operation as timed out.
-6. **Aggregate:** Collect all results, assembling the final payload and validation summary.
+5. **Execute:** Call `interceptor/invoke` on the appropriate MCP server for each interceptor, applying resolved `failOpen`, `mode`, and `timeoutMs`. Mutations MUST be invoked sequentially (each receiving the output of the previous). Validations MAY be invoked in parallel. Sinks MUST be dispatched without awaiting their completion. The invoker MAY also impose an aggregate timeout covering all validators and mutators applied to one operation; if it is exceeded, the invoker MUST cancel the remaining validator and mutator invocations and treat the operation as timed out. Sinks MUST be excluded from any aggregate timeout.
+6. **Aggregate:** Collect all validator and mutator results, assembling the final payload and validation summary. Sink results, if collected, MUST be consumed asynchronously and MUST NOT delay the operation.
 
 SDK libraries are expected to provide reference implementations of this orchestration logic so that individual applications do not need to implement it from scratch.
 
@@ -1144,6 +1148,7 @@ interface InterceptorOverrides {
   /**
    * Override failure routing policy for this interceptor.
    * Takes precedence over the interceptor's declared failOpen default.
+   * Ignored for sink interceptors: an override cannot make a sink failure block.
    */
   failOpen?: boolean;
 
@@ -1165,7 +1170,8 @@ interface InterceptorOverrides {
   /**
    * Per-interceptor timeout in milliseconds.
    * If exceeded, the interceptor is cancelled and the resolved failOpen
-   * determines whether the message proceeds or is blocked.
+   * determines whether the message proceeds or is blocked. For sinks, the
+   * timeout only bounds the sink's own invocation; it never blocks the message.
    */
   timeoutMs?: number;
 
@@ -1735,7 +1741,7 @@ Interceptor mutation could be used to inject unauthorized operations:
 
 3. **Audit Everything**: Implementations SHOULD log all interceptor invocations, including payloads (with PII redaction). For each invocation, the log SHOULD include the resolved `mode` and `failOpen`, and whether each value came from an invoker override or the interceptor's declared default
 
-4. **Fail Secure**: Interceptors MUST default to `failOpen: false` (fail-closed). Implementations MUST reject requests when interceptors fail unless explicitly configured otherwise.
+4. **Fail Secure**: Validators and mutators MUST default to `failOpen: false` (fail-closed). Implementations MUST reject requests when validators or mutators fail unless explicitly configured otherwise. Sinks are exempt: they are non-enforcing by design, and their failures MUST be swallowed (see [Execution Model](#execution-model)).
 
 5. **Input Validation**: Interceptor configuration and payloads MUST be validated before processing
 
