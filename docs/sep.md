@@ -1568,7 +1568,7 @@ We explicitly separate the three interceptor types rather than collapsing them b
 
 **Audit Mode for Validators and Mutators**
 
-Validators and mutators support an `mode: "audit"` flag that disables enforcement while preserving their interface:
+Validators and mutators support a `mode: "audit"` flag that disables enforcement while preserving their interface:
 
 - **Validators in audit mode**: Log violations without blocking
 - **Mutators in audit mode**: Compute transformations without applying them (shadow mutations for testing / dry-runs)
