@@ -1,0 +1,96 @@
+name: Conformance CI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'conformance/**'
+      - 'typescript/**'
+      - '.github/workflows/conformance.yml'
+  pull_request:
+    paths:
+      - 'conformance/**'
+      - 'typescript/**'
+      - '.github/workflows/conformance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance-suite:
+    name: "Suite + Determinism"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: |
+          cd conformance
+          npm install
+      - name: Typecheck
+        run: |
+          cd conformance
+          npm run typecheck
+      - name: Run the fixture suite
+        run: |
+          cd conformance
+          npm test
+      - name: Fixtures are deterministic (regenerate and diff)
+        run: |
+          cd conformance
+          npm run generate
+          # The generator is pure: regeneration MUST reproduce byte-identical
+          # fixtures. A non-empty diff means a fixture was hand-edited or the
+          # generator drifted, either of which invalidates the suite as an oracle.
+          git diff --exit-code -- fixtures manifest.json
+
+  python-adapter:
+    name: "Python adapter (cross-language matrix)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Fetch the WG python-sdk branch under certification
+        run: |
+          git remote add upstream https://github.com/modelcontextprotocol/experimental-ext-interceptors.git
+          git fetch upstream feature/python-sdk
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+      - name: Vendor the pinned WG SDK (read-only) and sync
+        run: |
+          cd conformance/adapters/python
+          ./scripts/vendor.sh
+          uv sync --dev
+      - name: Unit tests
+        run: |
+          cd conformance/adapters/python
+          uv run pytest -q
+      - name: Conformant posture certifies against the shared fixtures (24/24)
+        run: |
+          cd conformance/adapters/python
+          uv run python -m conformance_adapter | tee /tmp/conformant.txt
+          grep -q "24/24 fixtures passed - compliance 100%" /tmp/conformant.txt
+      - name: The suite discriminates (raw < 100, strawman < 100)
+        run: |
+          cd conformance/adapters/python
+          # A conformance suite that certifies everything certifies nothing. The
+          # raw WG SDK must fail the fixtures encoding the documented interop
+          # findings, and a permissive strawman must fail every enforcement fixture.
+          uv run python -m conformance_adapter --adapter raw | tee /tmp/raw.txt
+          uv run python -m conformance_adapter --adapter strawman | tee /tmp/strawman.txt
+          if grep -q "compliance 100%" /tmp/raw.txt; then
+            echo "raw WG SDK unexpectedly scored 100% - the interop findings are not being caught"; exit 1
+          fi
+          if grep -q "compliance 100%" /tmp/strawman.txt; then
+            echo "permissive strawman unexpectedly scored 100% - the suite does not discriminate"; exit 1
+          fi
