@@ -1,0 +1,9 @@
+{
+  "name": "interceptor-server-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mcp-ext-interceptors": "file:../..",
+    "@modelcontextprotocol/server": "^2.0.0"
+  }
+}

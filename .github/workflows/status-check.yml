@@ -73,8 +73,8 @@ jobs:
               ],
               typescript: [
                 'TypeScript CI / Linting',
-                'TypeScript CI / Unit Tests (20)',
-                'TypeScript CI / Unit Tests (22)'
+                'TypeScript CI / Unit Tests (22)',
+                'TypeScript CI / Unit Tests (24)'
               ]
             };
 
