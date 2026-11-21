@@ -1,0 +1,89 @@
+{
+  "id": "behavior/redaction-defuses-relaybleed",
+  "kind": "behavior",
+  "requirement": "SEC/outbound-secret-redaction.composition",
+  "description": "Guard + redactor composed: request-phase mutation order means the redactor strips the secret BEFORE the guard checks, so the flow is allowed WITHOUT the verbatim secret leaving.",
+  "interceptors": [
+    {
+      "name": "security/cross-boundary-guard",
+      "type": "validation",
+      "behavior": "cross-boundary-guard",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    },
+    {
+      "name": "security/secretless-redactor",
+      "type": "mutation",
+      "behavior": "secretless-redactor",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "request"
+    }
+  ],
+  "steps": [
+    {
+      "op": "apply",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "read_file",
+        "arguments": {
+          "path": "/workspace/.env"
+        }
+      },
+      "context": {
+        "sessionId": "compose"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    },
+    {
+      "op": "apply",
+      "event": "tools/call",
+      "phase": "response",
+      "payload": {
+        "content": [
+          {
+            "type": "text",
+            "text": "sk_live_4eC7aRm9Kx2bNw5pQj8sYd"
+          }
+        ]
+      },
+      "context": {
+        "sessionId": "compose"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    },
+    {
+      "op": "apply",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "write_query",
+        "arguments": {
+          "query": "INSERT INTO notes (body) VALUES ('sk_live_4eC7aRm9Kx2bNw5pQj8sYd')"
+        }
+      },
+      "context": {
+        "sessionId": "compose"
+      },
+      "expect": {
+        "decision": "allow",
+        "forbids": [
+          "sk_live_4eC7aRm9Kx2bNw5pQj8sYd"
+        ]
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

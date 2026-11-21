@@ -1,0 +1,54 @@
+{
+  "id": "protocol/invoke-validation-deny",
+  "kind": "protocol",
+  "requirement": "SEP-2624/interceptor-invoke.validation",
+  "description": "interceptor/invoke of a denying validator returns valid=false, severity=error, and the exact message.",
+  "interceptors": [
+    {
+      "name": "conf/deny-all",
+      "type": "validation",
+      "behavior": "deny-all",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "invoke",
+      "params": {
+        "name": "conf/deny-all",
+        "event": "tools/call",
+        "phase": "request",
+        "payload": {
+          "name": "echo",
+          "arguments": {
+            "note": "hi"
+          }
+        }
+      },
+      "expect": {
+        "result": {
+          "interceptor": "conf/deny-all",
+          "type": "validation",
+          "phase": "request",
+          "valid": false,
+          "severity": "error",
+          "messages": [
+            {
+              "message": "denied by policy",
+              "severity": "error"
+            }
+          ]
+        },
+        "canonical": "{\"interceptor\":\"conf/deny-all\",\"messages\":[{\"message\":\"denied by policy\",\"severity\":\"error\"}],\"phase\":\"request\",\"severity\":\"error\",\"type\":\"validation\",\"valid\":false}"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

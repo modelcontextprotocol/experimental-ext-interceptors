@@ -7,7 +7,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_run:
-    workflows: ["C# CI", "Python CI", "Go CI", "TypeScript CI"]
+    workflows: ["C# CI", "Python CI", "Go CI", "TypeScript CI", "Conformance CI"]
     types: [completed]
 
 permissions:
@@ -42,6 +42,9 @@ jobs:
             typescript:
               - 'typescript/**'
               - '.github/workflows/typescript.yml'
+            conformance:
+              - 'conformance/**'
+              - '.github/workflows/conformance.yml'
 
       - name: Check required statuses
         uses: actions/github-script@v7
@@ -75,6 +78,10 @@ jobs:
                 'TypeScript CI / Linting',
                 'TypeScript CI / Unit Tests (20)',
                 'TypeScript CI / Unit Tests (22)'
+              ],
+              conformance: [
+                'Conformance CI / Suite + Determinism',
+                'Conformance CI / Python adapter (cross-language matrix)'
               ]
             };
 
@@ -83,7 +90,8 @@ jobs:
               csharp: ${{ steps.changed-files.outputs.csharp }} === 'true',
               python: ${{ steps.changed-files.outputs.python }} === 'true',
               go: ${{ steps.changed-files.outputs.go }} === 'true',
-              typescript: ${{ steps.changed-files.outputs.typescript }} === 'true'
+              typescript: ${{ steps.changed-files.outputs.typescript }} === 'true',
+              conformance: ${{ steps.changed-files.outputs.conformance }} === 'true'
             };
 
             // Collect all required checks based on changes
