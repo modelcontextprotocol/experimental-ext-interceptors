@@ -1,85 +1,154 @@
+using System.Diagnostics;
+using System.Security.Claims;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Client;
 using ModelContextProtocol.Interceptors.Protocol;
 
 namespace ModelContextProtocol.Interceptors.Gateway;
 
+/// <summary>Settings shared by every surface that applies interceptors to proxied MCP traffic.</summary>
+internal sealed record InterceptorRuntimeSettings
+{
+    public IList<string>? Events { get; init; }
+    public InterceptorInvokerRole Role { get; init; } = InterceptorInvokerRole.Client;
+    public int? AggregateTimeoutMs { get; init; }
+    public InvokeInterceptorContext? DefaultContext { get; init; }
+    public InterceptorPolicy? Policy { get; init; }
+    public Action<InterceptorExecutionResult>? Observer { get; init; }
+    public TimeSpan? DiscoveryCacheDuration { get; init; }
+    public ILogger? Logger { get; init; }
+}
+
 /// <summary>
-/// Encapsulates the logic for running interceptor chain phases (request/response)
-/// against one or more interceptor server clients. Used by both <see cref="Client.InterceptingMcpClient"/>
-/// and <see cref="McpInterceptorGateway"/>.
+/// Applies interceptors to one phase of a proxied MCP operation. Shared by
+/// <see cref="Client.InterceptingMcpClient"/> and <see cref="McpInterceptorGateway"/>.
 /// </summary>
+/// <remarks>
+/// Interceptors discovered on every interceptor client are merged and ordered globally (see
+/// <see cref="InterceptorOrchestrator"/>). Discovery results are cached; a failed run throws an
+/// <see cref="McpInterceptorException"/>.
+/// </remarks>
 internal sealed class InterceptorPhaseRunner
 {
-    private readonly IReadOnlyList<McpClient> _interceptorClients;
-    private readonly IList<string>? _events;
-    private readonly int? _timeoutMs;
-    private readonly InvokeInterceptorContext? _defaultContext;
+    private readonly InterceptorRuntimeSettings _settings;
+    private readonly InterceptorPolicy _policy;
+    private readonly InterceptorDiscoveryCache _discovery;
+    private readonly ILogger _logger;
 
-    internal InterceptorPhaseRunner(
+    internal InterceptorPhaseRunner(InterceptorRuntimeSettings settings)
+    {
+        _settings = settings;
+        _policy = settings.Policy ?? new InterceptorPolicy();
+        _discovery = new InterceptorDiscoveryCache(settings.DiscoveryCacheDuration);
+        _logger = settings.Logger ?? NullLogger.Instance;
+    }
+
+    internal InterceptorInvokerRole Role => _settings.Role;
+
+    /// <summary>Returns whether <paramref name="eventName"/> passes the configured event filter.</summary>
+    internal bool ShouldIntercept(string eventName) =>
+        _settings.Events is not { Count: > 0 } events || events.Contains(eventName);
+
+    /// <summary>Drops cached discovery results, so the next operation re-lists interceptors.</summary>
+    internal void InvalidateDiscovery() => _discovery.Invalidate();
+
+    /// <summary>
+    /// Runs the interceptors that apply to <paramref name="eventName"/> in <paramref name="phase"/>.
+    /// </summary>
+    /// <returns>The payload after all applied mutations.</returns>
+    /// <exception cref="McpInterceptorException">The interceptors rejected the operation.</exception>
+    internal async ValueTask<JsonNode> RunPhaseAsync(
         IReadOnlyList<McpClient> interceptorClients,
-        IList<string>? events = null,
-        int? timeoutMs = null,
-        InvokeInterceptorContext? defaultContext = null)
+        string eventName,
+        InterceptorPhase phase,
+        JsonNode payload,
+        InvokeInterceptorContext? context,
+        CancellationToken cancellationToken)
     {
-        _interceptorClients = interceptorClients;
-        _events = events;
-        _timeoutMs = timeoutMs;
-        _defaultContext = defaultContext;
-    }
+        var bindings = await BindAsync(interceptorClients, cancellationToken).ConfigureAwait(false);
 
-    /// <summary>
-    /// Returns whether the given event should be intercepted based on the configured event filter.
-    /// </summary>
-    internal bool ShouldIntercept(string eventName)
-    {
-        if (_events is not { Count: > 0 } events)
-        {
-            return true;
-        }
-
-        return events.Contains(eventName);
-    }
-
-    /// <summary>
-    /// Runs the interceptor chain phase across all configured interceptor clients as a single
-    /// merged chain per the SEP: interceptors discovered from every client are combined, sorted
-    /// globally by priority hint (alphabetical tie-break), and each is invoked on the client that
-    /// hosts it via <see cref="InterceptorOrchestrator.ExecuteAsync(IEnumerable{McpClient}, InterceptorExecutionRequest, CancellationToken)"/>.
-    /// </summary>
-    /// <returns>The final payload (the original on failure) and the chain status.</returns>
-    internal async ValueTask<(JsonNode payload, InterceptorExecutionStatus status)> RunPhaseAsync(
-        string eventName, InterceptorPhase phase, JsonNode payload, CancellationToken ct)
-    {
-        var chainResult = await InterceptorOrchestrator.ExecuteAsync(
-            _interceptorClients,
+        var result = await InterceptorExecutionEngine.ExecuteAsync(
+            InterceptorOrchestrator.CreateEntries(bindings),
             new InterceptorExecutionRequest
             {
                 Event = eventName,
                 Phase = phase,
+                Direction = _settings.Role.GetDirection(phase),
                 Payload = payload,
-                TimeoutMs = _timeoutMs,
-                Context = _defaultContext,
+                TimeoutMs = _settings.AggregateTimeoutMs,
+                Context = context ?? _settings.DefaultContext,
             },
-            ct);
+            cancellationToken,
+            _logger).ConfigureAwait(false);
 
-        return chainResult.Status == InterceptorExecutionStatus.Success
-            ? (chainResult.FinalPayload ?? payload, InterceptorExecutionStatus.Success)
-            : (payload, chainResult.Status);
+        Notify(result);
+
+        if (result.Status != InterceptorExecutionStatus.Success)
+        {
+            throw McpInterceptorException.FromResult(result);
+        }
+
+        return result.FinalPayload ?? payload;
     }
 
     /// <summary>
-    /// Throws an appropriate exception for a non-success chain status.
+    /// Builds the context sent with each invocation: the configured defaults, plus a fresh timestamp,
+    /// the current trace, and the session and user when known.
     /// </summary>
-    internal static void ThrowFailure(string operation, InterceptorPhase phase, InterceptorExecutionStatus status)
+    internal InvokeInterceptorContext CreateContext(string? sessionId, ClaimsPrincipal? user)
     {
-        var phaseText = phase == InterceptorPhase.Request ? "Request" : "Response";
-        if (status == InterceptorExecutionStatus.ValidationFailed)
+        var defaults = _settings.DefaultContext;
+        var activity = Activity.Current;
+        return new InvokeInterceptorContext
         {
-            throw new McpInterceptorValidationException($"{phaseText}-phase interceptor validation failed for {operation}.");
+            Principal = defaults?.Principal ?? CreatePrincipal(user),
+            TraceId = defaults?.TraceId ?? activity?.TraceId.ToString(),
+            SpanId = defaults?.SpanId ?? activity?.SpanId.ToString(),
+            Timestamp = DateTimeOffset.UtcNow.ToString("O"),
+            SessionId = defaults?.SessionId ?? sessionId,
+        };
+    }
+
+    private async ValueTask<IReadOnlyList<InterceptorBinding>> BindAsync(
+        IReadOnlyList<McpClient> interceptorClients,
+        CancellationToken cancellationToken)
+    {
+        // Discovery is fail-closed: an unreachable interceptor server fails the operation.
+        var listed = await Task.WhenAll(interceptorClients.Select(
+            client => _discovery.GetAsync(client, cancellationToken).AsTask())).ConfigureAwait(false);
+
+        try
+        {
+            return _policy.Bind(interceptorClients.SelectMany((client, i) => listed[i].Select(interceptor => (interceptor, client))));
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new McpInterceptorException(ex.Message, McpErrorCode.InternalError);
+        }
+    }
+
+    private void Notify(InterceptorExecutionResult result)
+    {
+        if (_settings.Observer is not { } observer)
+        {
+            return;
         }
 
-        throw new InvalidOperationException($"{phaseText}-phase interceptor chain failed for {operation} with status '{status}'.");
+        try
+        {
+            observer(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Interceptor execution observer threw; ignoring.");
+        }
     }
+
+    private static InterceptorPrincipal? CreatePrincipal(ClaimsPrincipal? user) =>
+        user?.Identity is { IsAuthenticated: true } identity
+            ? new InterceptorPrincipal { Type = "user", Id = identity.Name }
+            : null;
 }

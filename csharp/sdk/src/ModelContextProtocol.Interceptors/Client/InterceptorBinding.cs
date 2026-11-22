@@ -1,12 +1,12 @@
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Protocol;
 
 namespace ModelContextProtocol.Interceptors.Client;
 
 /// <summary>
-/// An entry in an interceptor chain: an interceptor descriptor paired with the MCP server that
-/// hosts it. The server reference is used to route <c>interceptor/invoke</c> calls to the correct
-/// server when a chain spans multiple servers.
+/// A discovered interceptor paired with the MCP server that advertised it and the invoker's policy
+/// for it. <c>interceptor/invoke</c> for this interceptor is always sent to <see cref="Server"/>.
 /// </summary>
 public sealed class InterceptorBinding
 {
@@ -15,4 +15,10 @@ public sealed class InterceptorBinding
 
     /// <summary>Gets the client connected to the MCP server hosting this interceptor.</summary>
     public required McpClient Server { get; init; }
+
+    /// <summary>Gets the invoker's overrides for this interceptor, if any.</summary>
+    public InterceptorOverrides? Overrides { get; init; }
+
+    /// <summary>Gets the configuration sent as <c>config</c> on each invocation, if any.</summary>
+    public JsonNode? Config { get; init; }
 }

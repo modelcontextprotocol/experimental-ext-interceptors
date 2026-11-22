@@ -94,9 +94,8 @@ public class GatewayComponentsTests
         var configurator = new GatewayProxyConfigurator(
             fixture.BackendClient,
             provider,
-            events: null,
-            timeoutMs: null,
-            defaultContext: null,
+            new InterceptorPhaseRunner(new InterceptorRuntimeSettings()),
+            ToolCallRejectionMode.ErrorResult,
             InterceptorJsonUtilities.DefaultOptions);
 
         var serverOptions = new McpServerOptions();

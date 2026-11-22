@@ -22,6 +22,7 @@ public abstract class InterceptorResult
 
     /// <summary>Gets or sets the execution duration in milliseconds.</summary>
     [JsonPropertyName("durationMs")]
+    [JsonConverter(typeof(LenientInt64MillisecondsConverter))]
     public long? DurationMs { get; set; }
 
     /// <summary>Gets or sets additional metadata about the result.</summary>

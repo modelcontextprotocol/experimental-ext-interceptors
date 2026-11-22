@@ -707,7 +707,10 @@ public class McpInterceptorGatewayTests
 
         Assert.False(backendCalled);
         Assert.True(result.IsError);
-        Assert.Contains("An error occurred invoking 'echo'.", result.Content[0].ToString());
+        var text = result.Content[0].ToString();
+        Assert.Contains("blocked before reaching the server", text);
+        Assert.Contains("failing-mutator", text);
+        Assert.Contains("PII redaction failed", text);
     }
 
     [Fact]
@@ -748,7 +751,7 @@ public class McpInterceptorGatewayTests
 
         Assert.False(backendCalled);
         Assert.True(result.IsError);
-        Assert.Contains("An error occurred invoking 'echo'.", result.Content[0].ToString());
+        Assert.Contains("aggregate timeout of 25ms", result.Content[0].ToString());
     }
 
     [Fact]

@@ -4,13 +4,12 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// Aggregate result of an SDK-orchestrated interceptor chain (see
-/// <see cref="Client.McpClientInterceptorExtensions.ExecuteInterceptorsAsync"/>). Carries the aggregated
-/// per-interceptor results, the final payload after mutations, a validation summary, and any abort info.
+/// The outcome of running interceptors for one lifecycle event: the final payload, every
+/// invocation with its resolved policy, and why the operation was rejected, if it was.
 /// </summary>
 public sealed class InterceptorExecutionResult
 {
-    /// <summary>Gets or sets the overall status of the chain execution.</summary>
+    /// <summary>Gets or sets the overall status.</summary>
     [JsonPropertyName("status")]
     public InterceptorExecutionStatus Status { get; set; }
 
@@ -22,23 +21,44 @@ public sealed class InterceptorExecutionResult
     [JsonPropertyName("phase")]
     public InterceptorPhase Phase { get; set; }
 
-    /// <summary>Gets or sets the individual results from each interceptor in the chain.</summary>
+    /// <summary>Gets or sets the direction the message was travelling, which decided the execution order.</summary>
+    [JsonPropertyName("direction")]
+    public InterceptorDirection Direction { get; set; }
+
+    /// <summary>
+    /// Gets or sets the results returned by validators and mutators, including those running in
+    /// audit mode. Sinks run in the background and are not included.
+    /// </summary>
     [JsonPropertyName("results")]
     public IList<InterceptorResult> Results { get; set; } = [];
 
-    /// <summary>Gets or sets the final payload after all mutations have been applied.</summary>
+    /// <summary>Gets or sets one record per applied interceptor, in execution order.</summary>
+    [JsonPropertyName("invocations")]
+    public IList<InterceptorInvocation> Invocations { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the payload after all applied mutations. When the operation was rejected, this is
+    /// the original payload: mutations are atomic, so either all apply or none do.
+    /// </summary>
     [JsonPropertyName("finalPayload")]
     public JsonNode? FinalPayload { get; set; }
 
-    /// <summary>Gets or sets a summary of validation results across the chain.</summary>
+    /// <summary>Gets or sets message counts by severity across all validator results.</summary>
     [JsonPropertyName("validationSummary")]
     public ValidationSummary? ValidationSummary { get; set; }
 
-    /// <summary>Gets or sets the total chain execution duration in milliseconds.</summary>
+    /// <summary>
+    /// Gets or sets every reason validation rejected the operation. Empty unless
+    /// <see cref="Status"/> is <see cref="InterceptorExecutionStatus.ValidationFailed"/>.
+    /// </summary>
+    [JsonPropertyName("validationErrors")]
+    public IList<InterceptorValidationError> ValidationErrors { get; set; } = [];
+
+    /// <summary>Gets or sets the total time spent running interceptors, in milliseconds.</summary>
     [JsonPropertyName("totalDurationMs")]
     public long TotalDurationMs { get; set; }
 
-    /// <summary>Gets or sets information about which interceptor caused the chain to abort, if applicable.</summary>
+    /// <summary>Gets or sets which interceptor rejected the operation and why, if it was rejected.</summary>
     [JsonPropertyName("abortedAt")]
     public InterceptorAbortInfo? AbortedAt { get; set; }
 }

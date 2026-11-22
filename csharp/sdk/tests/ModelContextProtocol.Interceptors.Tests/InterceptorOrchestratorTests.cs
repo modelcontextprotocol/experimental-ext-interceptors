@@ -22,11 +22,11 @@ public class InterceptorOrchestratorTests
             serverAInterceptors: [MutationDescriptor("a-mutator", priorityHint: 10)],
             serverBInterceptors: [MutationDescriptor("b-mutator", priorityHint: -10)]);
 
-        var chain = await InterceptorOrchestrator.DiscoverAsync([fixture.ClientA, fixture.ClientB]);
+        var orchestrator = await InterceptorOrchestrator.DiscoverAsync([fixture.ClientA, fixture.ClientB]);
 
-        Assert.Equal(2, chain.Entries.Count);
-        var entryA = Assert.Single(chain.Entries, e => e.Interceptor.Name == "a-mutator");
-        var entryB = Assert.Single(chain.Entries, e => e.Interceptor.Name == "b-mutator");
+        Assert.Equal(2, orchestrator.Bindings.Count);
+        var entryA = Assert.Single(orchestrator.Bindings, e => e.Interceptor.Name == "a-mutator");
+        var entryB = Assert.Single(orchestrator.Bindings, e => e.Interceptor.Name == "b-mutator");
         Assert.Same(fixture.ClientA, entryA.Server);
         Assert.Same(fixture.ClientB, entryB.Server);
     }

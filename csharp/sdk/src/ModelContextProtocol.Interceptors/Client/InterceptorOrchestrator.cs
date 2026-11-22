@@ -1,96 +1,98 @@
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Protocol;
 
 namespace ModelContextProtocol.Interceptors.Client;
 
 /// <summary>
-/// An interceptor chain assembled from one or more MCP servers, per the SEP orchestration pattern:
-/// discover via <c>interceptors/list</c> on every server, merge all entries into a single chain
-/// sorted by priority hint (alphabetical tie-break), and execute each interceptor via
-/// <c>interceptor/invoke</c> on the server that hosts it — mutations sequentially (each receiving
-/// the previous one's output), validations in parallel.
+/// Applies interceptors hosted on one or more MCP servers to lifecycle events, following the
+/// SEP-2624 orchestration pattern.
 /// </summary>
 /// <remarks>
-/// Interceptors with the same name on different servers are not deduplicated; each entry is
-/// invoked on its own host, so results may share an <see cref="InterceptorResult.InterceptorName"/>.
+/// <list type="number">
+/// <item><b>Discover</b>: call <c>interceptors/list</c> on every server.</item>
+/// <item><b>Select and resolve policy</b>: apply an <see cref="InterceptorPolicy"/> (which interceptors,
+/// their overrides and configuration) and keep those whose hooks match the event and phase.</item>
+/// <item><b>Sort</b>: mutations by resolved priority, then name, across all servers.</item>
+/// <item><b>Order by trust boundary</b>: mutate then validate when sending; validate then mutate when receiving.</item>
+/// <item><b>Execute</b>: invoke each interceptor with <c>interceptor/invoke</c> on the server that advertised it.</item>
+/// <item><b>Aggregate</b>: return the final payload, every invocation, and any validation errors.</item>
+/// </list>
+/// This is an SDK convenience, not wire protocol: the SEP defines no chain resource or aggregate method.
+/// Interceptors with the same name on different servers are not deduplicated.
 /// </remarks>
 public sealed class InterceptorOrchestrator
 {
-    /// <summary>Creates a chain from pre-discovered entries.</summary>
-    public InterceptorOrchestrator(IReadOnlyList<InterceptorBinding> entries)
+    /// <summary>Creates an orchestrator from already-discovered bindings.</summary>
+    /// <exception cref="InvalidOperationException">A binding's overrides widen the interceptor's declared hooks.</exception>
+    public InterceptorOrchestrator(IReadOnlyList<InterceptorBinding> bindings)
     {
-        ArgumentNullException.ThrowIfNull(entries);
-        Entries = entries;
+        ArgumentNullException.ThrowIfNull(bindings);
+        foreach (var binding in bindings)
+        {
+            InterceptorOverrides.ValidateFor(binding.Interceptor, binding.Overrides);
+        }
+
+        Bindings = bindings;
     }
 
-    /// <summary>Gets all interceptor entries in the chain, collected from one or more servers.</summary>
-    public IReadOnlyList<InterceptorBinding> Entries { get; }
+    /// <summary>Gets the interceptors this orchestrator applies, collected from one or more servers.</summary>
+    public IReadOnlyList<InterceptorBinding> Bindings { get; }
+
+    /// <summary>Gets or sets the logger that records each invocation's resolved policy.</summary>
+    public ILogger? Logger { get; init; }
 
     /// <summary>
-    /// Discovers interceptors by calling <c>interceptors/list</c> on every server in parallel and
-    /// assembles them into a chain, preserving server order for stable ordering of exact ties.
+    /// Discovers interceptors on every server in parallel and binds them according to <paramref name="policy"/>.
     /// </summary>
     /// <remarks>
-    /// Discovery is fail-closed: if any server's <c>interceptors/list</c> fails, the whole call
-    /// throws rather than silently dropping that server's interceptors.
+    /// Discovery is fail-closed: if any server's <c>interceptors/list</c> fails, this throws rather
+    /// than silently dropping that server's interceptors.
     /// </remarks>
     public static async ValueTask<InterceptorOrchestrator> DiscoverAsync(
         IEnumerable<McpClient> servers,
-        ListInterceptorsRequestParams? requestParams = null,
+        InterceptorPolicy? policy = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(servers);
 
         var serverList = servers.ToList();
         var listed = await Task.WhenAll(serverList.Select(
-            server => server.ListInterceptorsAsync(requestParams, cancellationToken).AsTask())).ConfigureAwait(false);
+            server => server.ListAllInterceptorsAsync(cancellationToken: cancellationToken).AsTask())).ConfigureAwait(false);
 
-        var entries = new List<InterceptorBinding>();
-        for (var i = 0; i < serverList.Count; i++)
-        {
-            foreach (var interceptor in listed[i].Interceptors)
-            {
-                entries.Add(new InterceptorBinding { Interceptor = interceptor, Server = serverList[i] });
-            }
-        }
-
-        return new InterceptorOrchestrator(entries);
+        var discovered = serverList.SelectMany((server, i) => listed[i].Select(interceptor => (interceptor, server)));
+        return new InterceptorOrchestrator((policy ?? new InterceptorPolicy()).Bind(discovered));
     }
 
-    /// <summary>
-    /// Executes the chain for the given event and phase using the SEP execution model.
-    /// </summary>
+    /// <summary>Runs the interceptors that apply to one lifecycle event.</summary>
     public ValueTask<InterceptorExecutionResult> ExecuteAsync(
-        InterceptorExecutionRequest requestParams,
+        InterceptorExecutionRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(requestParams);
-
-        var executionEntries = Entries
-            .Select(e => new InterceptorExecutionEngine.ExecutionEntry(
-                e.Interceptor,
-                (invokeParams, ct) => e.Server.InvokeInterceptorAsync(invokeParams, ct)))
-            .ToList();
-
-        return InterceptorExecutionEngine.ExecuteAsync(executionEntries, requestParams, cancellationToken);
+        ArgumentNullException.ThrowIfNull(request);
+        return InterceptorExecutionEngine.ExecuteAsync(CreateEntries(Bindings), request, cancellationToken, Logger);
     }
 
     /// <summary>
-    /// Discovers interceptors across the given servers (filtered by the request's event) and
-    /// executes the merged chain in one call.
+    /// Discovers interceptors on the given servers and runs those that apply to one lifecycle event.
     /// </summary>
     public static async ValueTask<InterceptorExecutionResult> ExecuteAsync(
         IEnumerable<McpClient> servers,
-        InterceptorExecutionRequest requestParams,
+        InterceptorExecutionRequest request,
+        InterceptorPolicy? policy = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(requestParams);
+        ArgumentNullException.ThrowIfNull(request);
 
-        var chain = await DiscoverAsync(
-            servers,
-            new ListInterceptorsRequestParams { Event = requestParams.Event },
-            cancellationToken).ConfigureAwait(false);
-
-        return await chain.ExecuteAsync(requestParams, cancellationToken).ConfigureAwait(false);
+        var orchestrator = await DiscoverAsync(servers, policy, cancellationToken).ConfigureAwait(false);
+        return await orchestrator.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
     }
+
+    internal static IReadOnlyList<InterceptorExecutionEngine.ExecutionEntry> CreateEntries(IEnumerable<InterceptorBinding> bindings) =>
+        bindings.Select(binding => new InterceptorExecutionEngine.ExecutionEntry(
+            binding.Interceptor,
+            (invokeParams, ct) => binding.Server.InvokeInterceptorAsync(invokeParams, binding.Interceptor.Type, ct),
+            binding.Overrides,
+            binding.Config,
+            binding.Server.ServerInfo?.Name)).ToList();
 }

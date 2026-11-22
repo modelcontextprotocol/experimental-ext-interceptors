@@ -28,9 +28,11 @@ public class InterceptorExecutionEngineTests
             return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
         });
 
+        // Sinks run in the background, so they signal completion instead of joining the ordered list.
+        var sinkRan = new TaskCompletionSource();
         var sink = CreateInterceptor("sink-1", InterceptorType.Sink, (req, _) =>
         {
-            executionOrder.Add("sink");
+            sinkRan.TrySetResult();
             return new ValueTask<InterceptorResult>(new SinkInterceptorResult { Recorded = true });
         });
 
@@ -45,7 +47,9 @@ public class InterceptorExecutionEngineTests
             CancellationToken.None);
 
         Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
-        Assert.Equal(["mutation", "validation", "sink"], executionOrder);
+        Assert.Equal(["mutation", "validation"], executionOrder);
+        Assert.Equal(["mut-1", "val-1", "sink-1"], result.Invocations.Select(i => i.Interceptor));
+        await sinkRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(result.FinalPayload!["mutated"]!.GetValue<bool>());
     }
 
@@ -66,9 +70,11 @@ public class InterceptorExecutionEngineTests
             return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
         });
 
+        // Sinks run in the background, so they signal completion instead of joining the ordered list.
+        var sinkRan = new TaskCompletionSource();
         var sink = CreateInterceptor("sink-1", InterceptorType.Sink, (req, _) =>
         {
-            executionOrder.Add("sink");
+            sinkRan.TrySetResult();
             return new ValueTask<InterceptorResult>(new SinkInterceptorResult { Recorded = true });
         });
 
@@ -83,7 +89,9 @@ public class InterceptorExecutionEngineTests
             CancellationToken.None);
 
         Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
-        Assert.Equal(["validation", "sink", "mutation"], executionOrder);
+        Assert.Equal(["validation", "mutation"], executionOrder);
+        Assert.Equal(["val-1", "sink-1", "mut-1"], result.Invocations.Select(i => i.Interceptor));
+        await sinkRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -451,9 +459,10 @@ public class InterceptorExecutionEngineTests
             CancellationToken.None);
 
         Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
-        Assert.Single(result.Results);
-        var sinkResult = Assert.IsType<SinkInterceptorResult>(result.Results[0]);
-        Assert.False(sinkResult.Recorded);
+        Assert.Empty(result.Results);
+        var invocation = Assert.Single(result.Invocations);
+        Assert.Equal(InterceptorInvocationOutcome.Dispatched, invocation.Outcome);
+        Assert.Equal(InterceptorEffect.None, invocation.Effect);
     }
 
     [Fact]
@@ -750,14 +759,14 @@ public class InterceptorExecutionEngineTests
 
     private static ValueTask<InterceptorExecutionResult> RunAsync(
         IEnumerable<TestEntry> entries,
-        InterceptorExecutionRequest chainParams,
+        InterceptorExecutionRequest request,
         CancellationToken ct)
     {
         var handlerByName = entries.ToDictionary(e => e.Descriptor.Name, e => e.Handler);
         return InterceptorExecutionEngine.ExecuteAsync(
             entries.Select(e => e.Descriptor),
             (req, c) => handlerByName[req.Name](req, c),
-            chainParams,
+            request,
             ct);
     }
 

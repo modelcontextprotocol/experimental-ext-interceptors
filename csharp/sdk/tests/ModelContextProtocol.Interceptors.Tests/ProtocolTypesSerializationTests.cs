@@ -358,7 +358,7 @@ public class ProtocolTypesSerializationTests
             Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"test":true}""")!,
-            InterceptorNames = ["pii-validator", "content-filter"],
+            Direction = InterceptorDirection.Receiving,
             TimeoutMs = 10000,
         };
 
@@ -366,7 +366,8 @@ public class ProtocolTypesSerializationTests
         var deserialized = JsonSerializer.Deserialize<InterceptorExecutionRequest>(json, Options)!;
 
         Assert.Equal(InterceptionEvents.ToolsCall, deserialized.Event);
-        Assert.Equal(2, deserialized.InterceptorNames!.Count);
+        Assert.Equal(InterceptorDirection.Receiving, deserialized.Direction);
+        Assert.Contains("\"direction\":\"receiving\"", json);
         Assert.Equal(10000, deserialized.TimeoutMs);
     }
 
