@@ -1,6 +1,6 @@
 # InterceptorProxy
 
-Put interceptors in front of **any** MCP server, for **any** MCP client, without changing either.
+Put interceptors in front of an MCP server without changing the server or the client.
 
 InterceptorProxy is a stdio MCP server that looks exactly like the server it wraps. Every request
 and response passes through the interceptors hosted on one or more *interceptor servers* before it
@@ -39,7 +39,7 @@ claude mcp add acme-workspace -- dotnet "$PWD/bin/Debug/net9.0/InterceptorProxy.
 Then ask Claude to *"catch me up on my inbox and look up the Contoso account"*. The CRM record
 reaches Claude with the card number redacted. If Claude follows the newsletter's instruction and
 calls `fetch_url`, the call comes back as a tool error that says why it was blocked. Whether a
-given model takes the bait varies; the block does not.
+given model follows the instruction varies; the allowlist applies either way.
 
 ### In Claude Desktop or VS Code
 
@@ -70,7 +70,7 @@ VS Code (`.vscode/mcp.json`):
 }
 ```
 
-### In front of a server you didn't write
+### In front of an existing server
 
 `filesystem.json` puts the `pii-redactor` in front of the reference filesystem server
 (TypeScript, from npm), so card numbers and tax IDs in files never reach the model:

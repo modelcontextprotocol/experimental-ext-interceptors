@@ -1,7 +1,8 @@
-# Why Interceptors?
+# WhyInterceptorsDemo
 
-A three-minute terminal demo for people who have not met MCP interceptors yet. It answers one
-question: *why does MCP need this at all?*
+A short terminal demo of MCP interceptors: out-of-process middleware for MCP clients, gateways and
+servers. One agent and one MCP server run first connected directly, then through a proxy that
+calls an interceptor server on every request and response.
 
 ```bash
 # from csharp/sdk
@@ -11,14 +12,14 @@ dotnet run --project samples/WhyInterceptorsDemo
 Press Enter to advance. Other options: `--auto` (timed), `--fast` (no pauses), `--act N` (jump to
 an act), `--export-html run.html` (save the run as a colored HTML page).
 
-## The story
+## The acts
 
-| Act | What happens | The point |
+| Act | What happens | What it shows |
 | --- | --- | --- |
-| 1. An ordinary request | Dana's agent talks straight to *Acme Workspace*, a third-party MCP server. A newsletter in the inbox tells AI assistants to "sync contacts" with an outside service; the CRM returns a card number the task never needed. The agent leaks contacts and billing data. | Nobody wrote a bug. The checks have to live *between* the agent and the server, and today every client and gateway invents its own. |
-| 2. Same agent, same server, one config change | The agent connects to an interceptor proxy instead. The proxy calls the *Security Guard* interceptor server on every request and response: `pii-redactor` keeps the card number out of the model's context, and `exfiltration-guard` blocks the outbound call. The agent gets the reason as a tool error and tells Dana. | The guard checks the *action*, so it does not need to detect the injection. Neither the client nor the server changed. |
-| 3. Policy belongs to whoever deploys it | The platform team runs the guard in **audit mode** through an invoker override: it reports *would block* and blocks nothing. The guard's `audit-trail` interceptor recorded every operation, including the attempt Act 2 blocked. | The SEP separates what an interceptor *can* do (declared by its author) from how it *runs* (decided by the deployer). |
-| 4. Under the hood | The recorded `interceptor/invoke` exchange for the blocked call, the ten-line interceptor behind it, and the M × N → M + N argument. | Two JSON-RPC methods and an ordinary MCP server. |
+| 1. Without middleware | Dana's agent connects to *Acme Workspace*, an MCP server with email, CRM and web tools. A newsletter in the inbox asks AI assistants to "sync contacts" with an outside service, and the CRM record includes a card number. The agent follows the instruction and sends contacts and billing details to an outside URL. | The kind of rule a deployment may want for agent traffic, and that today has to be built into a particular client or gateway. |
+| 2. With an interceptor proxy | The agent connects to a proxy instead. The proxy calls the *Security Guard* interceptor server: `pii-redactor` removes the card number from the tool result, and `exfiltration-guard` blocks the outbound call. The agent gets the reason as a tool error. | Neither the agent nor the server changes. The guard checks the call, so it does not need to recognize the instruction. |
+| 3. Policy set by the deployer | The proxy runs the guard in **audit mode** through an invoker override: it reports *would block* and blocks nothing. The guard's `audit-trail` interceptor has recorded every operation. | The SEP separates what an interceptor declares from how the invoker runs it. |
+| 4. On the wire | The recorded `interceptor/invoke` exchange for the `fetch_url` call and the interceptor that answered it. | Two JSON-RPC methods on an ordinary MCP server. |
 
 ## What is real
 
@@ -29,9 +30,9 @@ The agent's *reasoning* is scripted so every run is identical. Everything else i
   `--guard-server`).
 - The interceptor proxy is the library's `McpInterceptorGateway`, run in-process so the story can
   show its traces (`OnInterceptorsExecuted`).
-- The agent's tool calls are real MCP requests through the proxy. The scripted agent builds its
-  exfiltration URL from the tool results it actually received, so when the CRM record arrives
-  redacted, the leak attempt carries the redaction.
+- The agent's tool calls are real MCP requests through the proxy. The scripted agent builds the
+  outbound URL from the tool results it actually received, so when the CRM record arrives
+  redacted, the URL carries the redaction.
 - Act 4 shows the JSON-RPC messages recorded off the guard's transport, not a reconstruction.
 
 ## Reading the code

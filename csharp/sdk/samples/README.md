@@ -2,10 +2,9 @@
 
 ## Start here
 
-1. **[WhyInterceptorsDemo](WhyInterceptorsDemo)**: a three-minute scripted story. An agent is
-   tricked by a prompt injection into leaking data through a third-party MCP server. The same agent
-   and server then run again behind an interceptor proxy, and the leak is stopped. Best for people
-   new to interceptors.
+1. **[WhyInterceptorsDemo](WhyInterceptorsDemo)**: a short scripted demo. One agent and one MCP
+   server, first connected directly and then through a proxy that applies a destination allowlist,
+   a redactor and an audit log from an interceptor server. Best for people new to interceptors.
 
    ```bash
    dotnet run --project samples/WhyInterceptorsDemo

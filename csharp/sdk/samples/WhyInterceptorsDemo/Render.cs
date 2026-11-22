@@ -83,7 +83,7 @@ internal static partial class Render
                     $"[grey]{Markup.Escape(from)}[/]  [bold]{Markup.Escape(subject)}[/]\n" +
                     $"[grey]{Markup.Escape(body[..injection].Trim())}[/]\n\n" +
                     $"[bold red]{Markup.Escape(body[injection..])}[/]"))
-                .Header("[bold red] hidden instruction in a newsletter [/]")
+                .Header("[bold red] newsletter with an instruction for AI assistants [/]")
                 .BorderColor(Color.Red)
                 .Padding(1, 0));
         }
@@ -101,8 +101,8 @@ internal static partial class Render
         AnsiConsole.Write(new Padder(new Panel(new Markup(markup)).Header(header).BorderColor(border).Padding(1, 0)).Padding(9, 0, 0, 1));
     }
 
-    /// <summary>What the attacker's server received, read from the URL the agent fetched.</summary>
-    public static void AttackerView(string? leakedUrl)
+    /// <summary>What the external service received, read from the URL the agent fetched.</summary>
+    public static void ReceivedBy(string? leakedUrl)
     {
         IRenderable body;
         Color border;
@@ -128,7 +128,7 @@ internal static partial class Render
         }
 
         AnsiConsole.Write(new Padder(new Panel(body)
-            .Header($"[bold] what {AcmeWorkspaceTools.AttackerDomain} received [/]")
+            .Header($"[bold] what {AcmeWorkspaceTools.ExternalDomain} received [/]")
             .BorderColor(border)
             .Padding(1, 0)).Padding(9, 0, 0, 1));
     }

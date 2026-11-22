@@ -3,23 +3,22 @@
 C# implementation of the [MCP Interceptors extension (SEP-2624)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624),
 built on the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (2.1, MCP `2026-07-28`).
 
-## Why interceptors?
+## What interceptors are for
 
-An agent talks to MCP servers that someone else wrote. Everything a server returns goes straight
-into the model's context, and everything the model decides to do goes straight back out as a tool
-call. MCP has no standard place to check either direction, so every client, gateway and server
-vendor builds its own guardrails, in its own language, with its own configuration.
+MCP deployments often run middleware between clients and servers: policy checks, redaction, audit
+logging. Today that middleware is usually built into one client, gateway or SDK.
 
-An **interceptor** is that place. It is hosted on an ordinary MCP server (an *interceptor server*)
-and called over MCP with two methods, `interceptors/list` and `interceptor/invoke`. **Validators**
-gate a message; **mutators** rewrite it. The invoker (a client, gateway or server) runs them at
-fixed points, in an order that respects the trust boundary. Guardrails are written once, in any
-language, and plugged in anywhere.
+Interceptors standardize it as out-of-process MCP middleware. An interceptor is hosted on an
+ordinary MCP server (an *interceptor server*) and called with two methods, `interceptors/list` and
+`interceptor/invoke`. **Validators** check a message; **mutators** rewrite it. The invoker (a
+client, gateway or server) applies them at defined points, in a defined order, under its own policy.
+An interceptor written once, in any language, works with any invoker that implements the calling
+side.
 
-**See it:** `dotnet run --project samples/WhyInterceptorsDemo` is a three-minute story. An agent is
-tricked into leaking data through a third-party server, then the same agent and server run behind
-an interceptor proxy. To try it with your own agent, see
-[InterceptorProxy](samples/InterceptorProxy). All samples are listed in [samples/README.md](samples/README.md).
+**See it:** `dotnet run --project samples/WhyInterceptorsDemo` runs a short scripted demo with one
+agent and one MCP server, first connected directly and then through an interceptor proxy. To try
+interceptors with your own client, see [InterceptorProxy](samples/InterceptorProxy). All samples
+are listed in [samples/README.md](samples/README.md).
 
 ## Writing an interceptor server
 
