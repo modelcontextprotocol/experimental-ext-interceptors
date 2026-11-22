@@ -55,7 +55,7 @@ internal static class Story
 
         if (firstAct <= 3)
         {
-            await PolicyAsync(pace, world!);
+            await PolicyAsync(pace, world!, act2Ran: firstAct <= 2);
         }
 
         await UnderTheHoodAsync(pace, world!);
@@ -154,7 +154,7 @@ internal static class Story
 
     // ── Act 3 ───────────────────────────────────────────────────────────────
 
-    private static async Task PolicyAsync(Pace pace, World world)
+    private static async Task PolicyAsync(Pace pace, World world, bool act2Ran)
     {
         Render.Act(3, "Policy belongs to whoever deploys it",
             "The guard's author declares defaults. The platform team running it decides how it runs.");
@@ -189,8 +189,10 @@ internal static class Story
         await pace.Beat();
 
         AnsiConsole.WriteLine();
-        Render.Narrate("Meanwhile the guard's [bold]audit-trail[/] interceptor recorded every operation — including the attempt");
-        Render.Narrate("Act 2 blocked — in a log owned by the Security Guard, not by the agent or the proxy:");
+        Render.Narrate(act2Ran
+            ? "Meanwhile the guard's [bold]audit-trail[/] interceptor recorded every operation, including the attempt Act 2 blocked,"
+            : "Meanwhile the guard's [bold]audit-trail[/] interceptor recorded every operation,");
+        Render.Narrate("in a log owned by the Security Guard rather than by the agent or the proxy:");
         AuditTrail(world.AuditLogPath);
         await pace.Beat(4000);
     }
@@ -204,7 +206,7 @@ internal static class Story
         var (request, response) = FindBlockedInvocation(world);
         if (request is not null)
         {
-            Render.Narrate("What the proxy sent the Security Guard when the agent tried to fetch the URL in Act 2");
+            Render.Narrate("What the proxy sent the Security Guard when the agent tried to fetch the attacker's URL");
             Render.Narrate("[grey](recorded off the wire; long strings shortened, protocol _meta omitted):[/]");
             Render.Json("[grey] → interceptor/invoke [/]", request);
             Render.Json("[grey] ← result [/]", response);
