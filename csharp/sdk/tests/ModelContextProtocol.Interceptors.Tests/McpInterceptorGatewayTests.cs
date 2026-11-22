@@ -1402,8 +1402,9 @@ public class McpInterceptorGatewayTests
         internal static async Task<(McpServer server, McpClient client)> CreateServerClientPairForTesting(
             string name,
             Action<McpServerOptions> configure,
-            Action<string>? onRegisterNotificationHandler = null) =>
-            await CreateServerClientPair(name, configure, onRegisterNotificationHandler);
+            Action<string>? onRegisterNotificationHandler = null,
+            string? protocolVersion = null) =>
+            await CreateServerClientPair(name, configure, onRegisterNotificationHandler, protocolVersion);
 
         private static async Task<(McpServer server, McpClient client)> CreateServerClientPair(
             string name,

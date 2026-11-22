@@ -107,11 +107,25 @@ internal sealed class GatewayProxyConfigurator
 #pragma warning disable MCP9005
         if (backendCaps?.Logging is not null)
         {
-            handlers.SetLoggingLevelHandler = (request, ct) =>
-                ForwardAsync<SetLevelRequestParams, EmptyResult>(request, RequestMethods.LoggingSetLevel, ct);
+            handlers.SetLoggingLevelHandler = async (request, ct) =>
+            {
+                // The two hops negotiate protocol versions independently. A down-level client may send
+                // logging/setLevel to a gateway whose backend session is on 2026-07-28 or later, where the
+                // method no longer exists (the level travels in per-request _meta instead). Forwarding
+                // would fail the client's request, so accept it here.
+                if (BackendSessionIsJuly2026OrLater)
+                {
+                    return new EmptyResult();
+                }
+
+                return await ForwardAsync<SetLevelRequestParams, EmptyResult>(request, RequestMethods.LoggingSetLevel, ct).ConfigureAwait(false);
+            };
         }
 #pragma warning restore MCP9005
     }
+
+    private bool BackendSessionIsJuly2026OrLater =>
+        _backend.NegotiatedProtocolVersion is { } version && string.CompareOrdinal(version, "2026-07-28") >= 0;
 
     /// <summary>
     /// Forwards a <c>tools/call</c>, reporting a rejection as a tool error result unless the gateway is

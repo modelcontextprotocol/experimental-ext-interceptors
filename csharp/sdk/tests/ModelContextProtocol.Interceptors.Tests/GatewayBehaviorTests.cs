@@ -177,6 +177,38 @@ public class GatewayBehaviorTests
         Assert.Contains("pii-redactor", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
     }
 
+    [Fact]
+    public async Task DownLevelClient_SetLoggingLevel_IsAcceptedWhenBackendHopIsCurrent()
+    {
+        // Found with the MCP Inspector CLI: it negotiates an older revision with the proxy and sends
+        // logging/setLevel, which the proxy's 2026-07-28 backend session no longer supports.
+        var backendSawSetLevel = false;
+        var (backendServer, backend) = await McpInterceptorGatewayTests.GatewayTestFixture.CreateServerClientPairForTesting("backend", options =>
+        {
+            options.Capabilities ??= new();
+#pragma warning disable MCP9005
+            options.Capabilities.Logging = new();
+            options.Handlers.SetLoggingLevelHandler = (_, _) => { backendSawSetLevel = true; return new ValueTask<EmptyResult>(new EmptyResult()); };
+#pragma warning restore MCP9005
+        });
+        var (interceptorServer, interceptors) = await McpInterceptorGatewayTests.GatewayTestFixture.CreateServerClientPairForTesting(
+            "interceptors", options => new InterceptorServerOptionsSetup([ExfiltrationGuard()]).Configure(options));
+        await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOptions { BackendClient = backend, InterceptorClients = [interceptors] });
+        var (proxyServer, proxy) = await McpInterceptorGatewayTests.GatewayTestFixture.CreateServerClientPairForTesting(
+            "proxy", gateway.ConfigureServerOptions, protocolVersion: "2025-06-18");
+        await using (backendServer) await using (backend) await using (interceptorServer) await using (interceptors) await using (proxyServer) await using (proxy)
+        {
+            Assert.Equal("2025-06-18", proxy.NegotiatedProtocolVersion);
+            Assert.True(string.CompareOrdinal(backend.NegotiatedProtocolVersion, "2026-07-28") >= 0);
+
+#pragma warning disable MCP9005
+            await proxy.SetLoggingLevelAsync(LoggingLevel.Warning);
+#pragma warning restore MCP9005
+
+            Assert.False(backendSawSetLevel);
+        }
+    }
+
     // ── Interop tolerance ───────────────────────────────────────────────────
 
     [Fact]
