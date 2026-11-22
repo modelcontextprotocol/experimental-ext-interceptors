@@ -37,6 +37,14 @@ public class TestInterceptors
     public static MutationInterceptorResult MutateWithConflictingPriorities(JsonNode payload)
         => new() { Modified = false };
 
+    [McpServerInterceptor(Name = "configurable", Type = InterceptorType.Validation, Events = ["tools/call"], Version = "1.2.0",
+        ConfigSchema = """{"type":"object","properties":{"allowedDomains":{"type":"array","items":{"type":"string"}}}}""")]
+    public static async ValueTask<bool> ValidateWithConfig(JsonNode payload, JsonNode? config)
+    {
+        await Task.Yield();
+        return config?["allowedDomains"] is JsonArray { Count: > 0 };
+    }
+
     [McpServerInterceptor(Name = "sink", Type = InterceptorType.Sink, Events = ["*"])]
     public static SinkInterceptorResult Sink(JsonNode payload, InvokeInterceptorContext? context)
     {
@@ -220,6 +228,35 @@ public class ReflectionMcpServerInterceptorTests
     {
         var method = typeof(TestInterceptors).GetMethod(nameof(TestInterceptors.MutateWithConflictingPriorities))!;
         Assert.Throws<InvalidOperationException>(() => ReflectionMcpServerInterceptor.Create(method, target: null));
+    }
+
+    [Fact]
+    public async Task Create_AdvertisesVersionAndConfigSchema_AndBindsConfig()
+    {
+        var method = typeof(TestInterceptors).GetMethod(nameof(TestInterceptors.ValidateWithConfig))!;
+        var interceptor = ReflectionMcpServerInterceptor.Create(method, target: null);
+
+        Assert.Equal("1.2.0", interceptor.ProtocolInterceptor.Version);
+        Assert.Equal("array", interceptor.ProtocolInterceptor.ConfigSchema!.Value.GetProperty("properties").GetProperty("allowedDomains").GetProperty("type").GetString());
+
+        var withConfig = await interceptor.InvokeAsync(new InvokeInterceptorRequestParams
+        {
+            Name = "configurable",
+            Event = "tools/call",
+            Phase = InterceptorPhase.Request,
+            Payload = new JsonObject(),
+            Config = JsonNode.Parse("""{"allowedDomains":["acme.com"]}"""),
+        }, server: null!, services: null);
+        var withoutConfig = await interceptor.InvokeAsync(new InvokeInterceptorRequestParams
+        {
+            Name = "configurable",
+            Event = "tools/call",
+            Phase = InterceptorPhase.Request,
+            Payload = new JsonObject(),
+        }, server: null!, services: null);
+
+        Assert.True(Assert.IsType<ValidationInterceptorResult>(withConfig).Valid);
+        Assert.False(Assert.IsType<ValidationInterceptorResult>(withoutConfig).Valid);
     }
 
     [Fact]
