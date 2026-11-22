@@ -751,7 +751,7 @@ public class McpInterceptorGatewayTests
 
         Assert.False(backendCalled);
         Assert.True(result.IsError);
-        Assert.Contains("aggregate timeout of 25ms", result.Content[0].ToString());
+        Assert.Contains("aggregate timeout", result.Content[0].ToString());
     }
 
     [Fact]

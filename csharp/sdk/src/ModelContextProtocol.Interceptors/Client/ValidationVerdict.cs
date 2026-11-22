@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Interceptors.Client;
 /// <list type="number">
 /// <item><c>valid: true</c> never blocks.</item>
 /// <item>Otherwise the top-level <c>severity</c> decides, when present.</item>
-/// <item>Otherwise the most severe message decides.</item>
+/// <item>Otherwise the most severe message decides; a message without a severity counts as <c>error</c>.</item>
 /// <item>An invalid result with no severity anywhere blocks (SEP Security Best Practice 4, "Fail Secure").</item>
 /// </list>
 /// </remarks>
@@ -33,10 +33,21 @@ public static class ValidationVerdict
 
         if (result.Messages is { Count: > 0 } messages)
         {
-            return messages.Max(m => m.Severity);
+            return messages.Max(m => SeverityOf(m, result));
         }
 
         return result.Valid ? null : ValidationSeverity.Error;
+    }
+
+    /// <summary>
+    /// Gets a message's severity. A message without one counts as <c>error</c> in an invalid result and
+    /// <c>info</c> in a valid one, so that a validator that forgets severities still fails closed.
+    /// </summary>
+    public static ValidationSeverity SeverityOf(ValidationMessage message, ValidationInterceptorResult result)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(result);
+        return message.Severity ?? (result.Valid ? ValidationSeverity.Info : ValidationSeverity.Error);
     }
 
     /// <summary>Returns whether <paramref name="result"/> blocks the operation (ignoring audit mode).</summary>
@@ -48,7 +59,7 @@ public static class ValidationVerdict
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        var message = result.Messages?.FirstOrDefault(m => m.Severity == ValidationSeverity.Error)
+        var message = result.Messages?.FirstOrDefault(m => SeverityOf(m, result) == ValidationSeverity.Error)
             ?? result.Messages?.FirstOrDefault();
         return message?.Message ?? "Validation failed";
     }
@@ -57,7 +68,7 @@ public static class ValidationVerdict
     internal static IEnumerable<InterceptorValidationError> ErrorsFor(string interceptor, ValidationInterceptorResult result)
     {
         var messages = result.Messages ?? [];
-        var reported = messages.Where(m => m.Severity == ValidationSeverity.Error).ToList();
+        var reported = messages.Where(m => SeverityOf(m, result) == ValidationSeverity.Error).ToList();
         if (reported.Count == 0)
         {
             reported = [.. messages];
@@ -74,7 +85,7 @@ public static class ValidationVerdict
             yield return new InterceptorValidationError
             {
                 Interceptor = interceptor,
-                Severity = message.Severity,
+                Severity = SeverityOf(message, result),
                 Message = message.Message,
                 Path = message.Path,
             };

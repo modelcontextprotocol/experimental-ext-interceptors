@@ -38,6 +38,7 @@ public static class McpClientInterceptorExtensions
         ArgumentNullException.ThrowIfNull(client);
 
         var interceptors = new List<Interceptor>();
+        var seenCursors = new HashSet<string>(StringComparer.Ordinal);
         string? cursor = null;
         do
         {
@@ -46,6 +47,12 @@ public static class McpClientInterceptorExtensions
                 cancellationToken).ConfigureAwait(false);
             interceptors.AddRange(page.Interceptors);
             cursor = page.NextCursor;
+            if (cursor is not null && !seenCursors.Add(cursor))
+            {
+                throw new McpProtocolException(
+                    $"interceptors/list returned the cursor '{cursor}' twice; stopping to avoid an endless listing.",
+                    McpErrorCode.InternalError);
+            }
         }
         while (!string.IsNullOrEmpty(cursor));
 

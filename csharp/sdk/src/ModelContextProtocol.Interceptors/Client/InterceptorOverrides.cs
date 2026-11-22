@@ -52,10 +52,18 @@ public sealed class InterceptorOverrides
     /// <summary>
     /// Throws when <paramref name="overrides"/> would widen the hooks <paramref name="interceptor"/> declares.
     /// </summary>
-    /// <exception cref="InvalidOperationException">The overrides reference an event or phase the interceptor does not declare.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The overrides reference an event or phase the interceptor does not declare, or set a non-positive timeout.
+    /// </exception>
     public static void ValidateFor(Interceptor interceptor, InterceptorOverrides? overrides)
     {
         ArgumentNullException.ThrowIfNull(interceptor);
+
+        if (overrides?.TimeoutMs is <= 0)
+        {
+            throw new InvalidOperationException(
+                $"The timeoutMs override for interceptor '{interceptor.Name}' must be a positive number of milliseconds, not {overrides.TimeoutMs}.");
+        }
 
         if (overrides?.Hooks is not { } hooks)
         {

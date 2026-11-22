@@ -14,8 +14,8 @@ namespace ModelContextProtocol.Interceptors.Gateway;
 /// <remarks>
 /// Each forwarded method is intercepted under an event named after the method (for example
 /// <c>tools/call</c>), as the working group agreed that any MCP JSON-RPC message is interceptable.
-/// Requests and results are forwarded as JSON, so fields this SDK does not model survive the hop
-/// and interceptors see exactly what crosses the wire.
+/// Interceptors see requests and results as JSON. The hop itself goes through the SDK's typed
+/// request and result models, so fields the SDK does not model are not preserved.
 /// </remarks>
 internal sealed class GatewayProxyConfigurator
 {
@@ -164,20 +164,51 @@ internal sealed class GatewayProxyConfigurator
             return Deserialize<TResult>(passthrough, method, "backend");
         }
 
-        await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, eventName, ct).ConfigureAwait(false);
-        var context = _runner.CreateContext(request.Server.SessionId, request.User);
+        var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, eventName, ct).ConfigureAwait(false);
+        var pendingSinks = new List<Task>();
+        try
+        {
+            var context = _runner.CreateContext(request.Server.SessionId, request.User);
 
-        var forwardedRequest = await _runner.RunPhaseAsync(
-            resolvedClients.Clients, eventName, InterceptorPhase.Request, requestPayload, context, ct).ConfigureAwait(false);
+            var forwardedRequest = await _runner.RunPhaseAsync(
+                resolvedClients.Clients, eventName, InterceptorPhase.Request, requestPayload, context, ct, pendingSinks).ConfigureAwait(false);
 
-        var backendResult = await SendToBackendAsync(method, forwardedRequest, ct).ConfigureAwait(false);
-        normalizeResult?.Invoke(backendResult);
+            var backendResult = await SendToBackendAsync(method, forwardedRequest, ct).ConfigureAwait(false);
+            normalizeResult?.Invoke(backendResult);
 
-        var finalResult = await _runner.RunPhaseAsync(
-            resolvedClients.Clients, eventName, InterceptorPhase.Response, backendResult, context, ct).ConfigureAwait(false);
-        normalizeResult?.Invoke(finalResult);
+            var finalResult = await _runner.RunPhaseAsync(
+                resolvedClients.Clients, eventName, InterceptorPhase.Response, backendResult, context, ct, pendingSinks).ConfigureAwait(false);
+            normalizeResult?.Invoke(finalResult);
 
-        return Deserialize<TResult>(finalResult, method, "interceptor mutations");
+            return Deserialize<TResult>(finalResult, method, "interceptor mutations");
+        }
+        finally
+        {
+            if (pendingSinks.Count == 0)
+            {
+                await resolvedClients.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                // Per-request interceptor clients stay open until the sinks dispatched on them finish;
+                // the response is not held up.
+                _ = DisposeAfterAsync(resolvedClients, pendingSinks);
+            }
+        }
+    }
+
+    private static async Task DisposeAfterAsync(IAsyncDisposable resource, List<Task> pending)
+    {
+        try
+        {
+            await Task.WhenAll(pending).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Sink failures are already logged by the engine.
+        }
+
+        await resource.DisposeAsync().ConfigureAwait(false);
     }
 
     private async ValueTask<JsonNode> SendToBackendAsync(string method, JsonNode payload, CancellationToken ct)

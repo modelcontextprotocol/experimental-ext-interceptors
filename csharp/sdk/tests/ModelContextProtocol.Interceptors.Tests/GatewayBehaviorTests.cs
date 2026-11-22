@@ -317,6 +317,88 @@ public class GatewayBehaviorTests
         Assert.False(rig.BackendCalled);
     }
 
+    [Fact]
+    public async Task InterceptingClient_ListedToolsStayIntercepted()
+    {
+        // Review finding: tools listed through the wrapper were bound to the inner client.
+        await using var rig = await Rig.CreateAsync([ExfiltrationGuard()]);
+        await using var client = new InterceptingMcpClient(rig.Backend, new() { InterceptorClient = rig.InterceptorClient });
+        var fetch = (await client.ListToolsAsync()).Single(t => t.Name == "fetch");
+
+        await Assert.ThrowsAsync<McpInterceptorValidationException>(() =>
+            fetch.CallAsync(new Dictionary<string, object?> { ["url"] = "https://evil.example" }).AsTask());
+        await Assert.ThrowsAsync<McpInterceptorValidationException>(() =>
+            fetch.InvokeAsync(new Microsoft.Extensions.AI.AIFunctionArguments { ["url"] = "https://evil.example" }).AsTask());
+        Assert.False(rig.BackendCalled);
+
+        var allowed = await fetch.InvokeAsync(new Microsoft.Extensions.AI.AIFunctionArguments { ["url"] = "https://acme.com/a" });
+        Assert.True(rig.BackendCalled);
+        Assert.Contains("fetched https://acme.com/a", allowed?.ToString());
+    }
+
+    [Fact]
+    public async Task StalledDiscovery_IsBoundedByAggregateTimeout()
+    {
+        await using var rig = await Rig.CreateAsync([], gateway => gateway.TimeoutMs = 300,
+            configureInterceptorServer: options => options.Filters.Message.IncomingFilters.Add(next => async (context, ct) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: InterceptorRequestMethods.InterceptorsList })
+                {
+                    await Task.Delay(Timeout.Infinite, ct); // never answers
+                }
+
+                await next(context, ct);
+            }));
+
+        var call = rig.Proxy.CallToolAsync("echo", new Dictionary<string, object?> { ["message"] = "x" }).AsTask();
+        var finished = await Task.WhenAny(call, Task.Delay(5_000));
+
+        Assert.Same(call, finished);
+        var result = await call;
+        Assert.True(result.IsError);
+        Assert.Contains("discovery did not complete", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+        Assert.False(rig.BackendCalled);
+    }
+
+    [Fact]
+    public async Task FailingDiscovery_IsReportedAsInterceptorRejection()
+    {
+        // An "interceptor server" that does not implement the extension answers interceptors/list with
+        // method-not-found. That must fail closed as an interceptor error, not leak the raw error.
+        await using var rig = await Rig.CreateAsync([], configureInterceptorServer: _ => { });
+
+        var result = await rig.Proxy.CallToolAsync("echo", new Dictionary<string, object?> { ["message"] = "x" });
+
+        Assert.True(result.IsError);
+        Assert.Contains("Interceptor discovery failed", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+        Assert.False(rig.BackendCalled);
+    }
+
+    [Fact]
+    public async Task ListAllInterceptors_StopsOnRepeatedCursor()
+    {
+        var (server, client) = await McpInterceptorGatewayTests.GatewayTestFixture.CreateServerClientPairForTesting(
+            "looping", options => options.Filters.Message.IncomingFilters.Add(next => async (context, ct) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: InterceptorRequestMethods.InterceptorsList } request)
+                {
+                    await context.Server.SendMessageAsync(new JsonRpcResponse
+                    {
+                        Id = request.Id,
+                        Result = JsonNode.Parse("""{"interceptors":[],"nextCursor":"same"}"""),
+                    }, ct);
+                    return;
+                }
+
+                await next(context, ct);
+            }));
+        await using var _ = server;
+        await using var __ = client;
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(() => client.ListAllInterceptorsAsync().AsTask());
+        Assert.Contains("twice", ex.Message);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private static McpServerInterceptor ExfiltrationGuard() =>
@@ -374,7 +456,8 @@ public class GatewayBehaviorTests
 
         public static async Task<Rig> CreateAsync(
             McpServerInterceptor[] interceptors,
-            Action<McpInterceptorGatewayOptions>? configureGateway = null)
+            Action<McpInterceptorGatewayOptions>? configureGateway = null,
+            Action<McpServerOptions>? configureInterceptorServer = null)
         {
             var rig = new Rig();
             try
@@ -394,7 +477,14 @@ public class GatewayBehaviorTests
 
                         await next(context, ct);
                     });
-                    new InterceptorServerOptionsSetup(interceptors).Configure(options);
+                    if (configureInterceptorServer is null)
+                    {
+                        new InterceptorServerOptionsSetup(interceptors).Configure(options);
+                    }
+                    else
+                    {
+                        configureInterceptorServer(options);
+                    }
                 });
                 rig._disposables.Add(interceptorServer);
                 rig.InterceptorClient = interceptorClient;

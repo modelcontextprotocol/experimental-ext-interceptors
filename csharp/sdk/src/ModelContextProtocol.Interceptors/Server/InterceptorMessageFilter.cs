@@ -120,6 +120,12 @@ internal sealed class InterceptorMessageFilter
             return;
         }
 
+        if (invokeParams.TimeoutMs is <= 0)
+        {
+            await SendError(context, request.Id, -32602, $"timeoutMs must be a positive number of milliseconds, not {invokeParams.TimeoutMs}", ct);
+            return;
+        }
+
         // Apply timeout if specified
         using var timeoutCts = invokeParams.TimeoutMs.HasValue
             ? CancellationTokenSource.CreateLinkedTokenSource(ct)

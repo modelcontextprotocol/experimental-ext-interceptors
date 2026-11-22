@@ -40,6 +40,11 @@ internal sealed class InterceptorPhaseRunner
 
     internal InterceptorPhaseRunner(InterceptorRuntimeSettings settings)
     {
+        if (settings.AggregateTimeoutMs is <= 0)
+        {
+            throw new ArgumentException($"TimeoutMs must be a positive number of milliseconds, not {settings.AggregateTimeoutMs}.", nameof(settings));
+        }
+
         _settings = settings;
         _policy = settings.Policy ?? new InterceptorPolicy();
         _discovery = new InterceptorDiscoveryCache(settings.DiscoveryCacheDuration);
@@ -58,17 +63,26 @@ internal sealed class InterceptorPhaseRunner
     /// <summary>
     /// Runs the interceptors that apply to <paramref name="eventName"/> in <paramref name="phase"/>.
     /// </summary>
+    /// <param name="pendingSinks">Receives a task that completes when this run's background sinks finish.</param>
     /// <returns>The payload after all applied mutations.</returns>
-    /// <exception cref="McpInterceptorException">The interceptors rejected the operation.</exception>
+    /// <exception cref="McpInterceptorException">
+    /// The interceptors rejected the operation, or interceptor discovery failed or timed out (fail-closed).
+    /// </exception>
     internal async ValueTask<JsonNode> RunPhaseAsync(
         IReadOnlyList<McpClient> interceptorClients,
         string eventName,
         InterceptorPhase phase,
         JsonNode payload,
         InvokeInterceptorContext? context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ICollection<Task>? pendingSinks = null)
     {
+        // The aggregate timeout covers discovery too: a stalled interceptors/list must not hang the operation.
+        var stopwatch = Stopwatch.StartNew();
         var bindings = await BindAsync(interceptorClients, cancellationToken).ConfigureAwait(false);
+        var remainingMs = _settings.AggregateTimeoutMs is int aggregate
+            ? Math.Max(1, aggregate - (int)stopwatch.ElapsedMilliseconds)
+            : (int?)null;
 
         var result = await InterceptorExecutionEngine.ExecuteAsync(
             InterceptorOrchestrator.CreateEntries(bindings),
@@ -78,11 +92,16 @@ internal sealed class InterceptorPhaseRunner
                 Phase = phase,
                 Direction = _settings.Role.GetDirection(phase),
                 Payload = payload,
-                TimeoutMs = _settings.AggregateTimeoutMs,
+                TimeoutMs = remainingMs,
                 Context = context ?? _settings.DefaultContext,
             },
             cancellationToken,
             _logger).ConfigureAwait(false);
+
+        if (!result.SinkCompletion.IsCompleted)
+        {
+            pendingSinks?.Add(result.SinkCompletion);
+        }
 
         Notify(result);
 
@@ -116,9 +135,33 @@ internal sealed class InterceptorPhaseRunner
         IReadOnlyList<McpClient> interceptorClients,
         CancellationToken cancellationToken)
     {
-        // Discovery is fail-closed: an unreachable interceptor server fails the operation.
-        var listed = await Task.WhenAll(interceptorClients.Select(
-            client => _discovery.GetAsync(client, cancellationToken).AsTask())).ConfigureAwait(false);
+        // Discovery is fail-closed: an unreachable, failing or stalled interceptor server fails the operation
+        // with an interceptor error, so a gateway reports it like any other rejection.
+        using var timeoutCts = _settings.AggregateTimeoutMs is int aggregate
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        timeoutCts?.CancelAfter(_settings.AggregateTimeoutMs!.Value);
+
+        IList<Interceptor>[] listed;
+        try
+        {
+            listed = await Task.WhenAll(interceptorClients.Select(
+                client => _discovery.GetAsync(client, timeoutCts?.Token ?? cancellationToken).AsTask())).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
+        {
+            throw new McpInterceptorException(
+                $"Interceptor execution timeout: interceptor discovery did not complete within {_settings.AggregateTimeoutMs}ms.",
+                (McpErrorCode)(-32000));
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new McpInterceptorException("Interceptor discovery failed: interceptors/list did not complete.", ex, McpErrorCode.InternalError);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not McpInterceptorException)
+        {
+            throw new McpInterceptorException($"Interceptor discovery failed: {ex.Message}", ex, McpErrorCode.InternalError);
+        }
 
         try
         {

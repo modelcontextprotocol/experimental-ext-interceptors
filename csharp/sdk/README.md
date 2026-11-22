@@ -119,7 +119,9 @@ var result = await client.CallToolAsync("fetch_url", new Dictionary<string, obje
 
 `CallToolAsync`, `ListToolsAsync`, `ListPromptsAsync`, `GetPromptAsync`, `ListResourcesAsync`,
 `ReadResourceAsync` and `SubscribeToResourceAsync` run interceptors in both phases. Mutations to
-list results apply.
+list results apply. Tools returned by `ListToolsAsync` are `AIFunction`s whose calls also go
+through the interceptors, so they can be handed to an `IChatClient`; prompts and resources are
+returned as protocol definitions, to be fetched through the wrapper.
 
 ### Directly
 
@@ -151,15 +153,20 @@ interceptor server, in one global order.
   opposite. Set `InvokerRole` on a gateway (`Client` by default: it protects an agent from the server
   it calls), or `Direction` on an `InterceptorExecutionRequest`.
 - **Mutators** run by resolved priority (lower first, then name). They are atomic: if one fails
-  closed, none apply.
+  closed, none apply, and the result's `FinalPayload` is null.
 - **Validators** all complete before the verdict, and every blocking error is reported. A result
   blocks when `valid` is false and its severity is `error`. Top-level `severity` wins, then the
-  most severe message; an invalid result with no severity blocks (fail-secure). This tracks the
-  open question in experimental-ext-interceptors#51; see `ValidationVerdict`.
+  most severe message (a message without a severity counts as `error` in an invalid result); an
+  invalid result with no severity blocks (fail-secure). This tracks the open question in
+  experimental-ext-interceptors#51; see `ValidationVerdict`.
 - **Failures** (errors, unusable results, per-interceptor timeouts) block unless the interceptor is
   fail-open. Audit-mode interceptors never block: validators report *would block*, and mutators are
   computed but not applied.
-- An **aggregate timeout** (`TimeoutMs`) cancels the remaining invocations and fails the operation.
+- An **aggregate timeout** (`TimeoutMs`) covers discovery and every invocation in a phase. When it
+  elapses, the remaining invocations are cancelled and the operation fails. Audit-mode interceptors
+  it cuts off are recorded as timed out and do not fail the operation by themselves.
+- **Discovery is fail-closed:** an interceptor server that fails or stalls `interceptors/list`
+  rejects the operation like any other interceptor failure.
 - **Sinks** (the proposed third type in experimental-ext-interceptors#28) are dispatched in the
   background on a snapshot of the payload. The operation never waits for them.
 

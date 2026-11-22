@@ -17,7 +17,9 @@ namespace ModelContextProtocol.Interceptors.Client;
 /// <item>Every validator completes before the verdict; every blocking error is reported.</item>
 /// <item>Failures (errors, unusable results, per-interceptor timeouts) are routed by the resolved fail-open policy.
 /// Audit-mode interceptors never block.</item>
-/// <item>An aggregate timeout cancels the remaining invocations and fails the operation.</item>
+/// <item>An aggregate timeout cancels the remaining invocations and fails the operation. Audit-mode interceptors it
+/// cuts off are recorded as timed out and never fail the operation by themselves, though the time they took still
+/// counts against the interceptors after them.</item>
 /// </list>
 /// Each entry is invoked through its own delegate, so a single run can span interceptor servers.
 /// </remarks>
@@ -63,6 +65,11 @@ internal static class InterceptorExecutionEngine
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(request);
 
+        if (request.TimeoutMs is <= 0)
+        {
+            throw new ArgumentException($"The aggregate timeout must be a positive number of milliseconds, not {request.TimeoutMs}.", nameof(request));
+        }
+
         if (request.Phase is not (InterceptorPhase.Request or InterceptorPhase.Response))
         {
             throw new ArgumentException(
@@ -72,7 +79,7 @@ internal static class InterceptorExecutionEngine
         }
 
         var direction = request.Direction ?? InterceptorInvokerRole.Client.GetDirection(request.Phase);
-        var state = new ExecutionState(request, direction, logger ?? NullLogger.Instance);
+        var state = new ExecutionState(request, direction, logger ?? NullLogger.Instance, cancellationToken);
         var stopwatch = Stopwatch.StartNew();
 
         // One global order across all servers: resolved priority ascending, then name (ordinal).
@@ -115,7 +122,7 @@ internal static class InterceptorExecutionEngine
             state.Fail(InterceptorExecutionStatus.Timeout, new InterceptorAbortInfo
             {
                 Interceptor = state.InFlight ?? "*",
-                Reason = $"Interceptors for '{request.Event}' did not complete within the aggregate timeout of {request.TimeoutMs}ms.",
+                Reason = $"Interceptors for '{request.Event}' did not complete within the aggregate timeout.",
                 Type = "timeout",
             });
         }
@@ -133,7 +140,7 @@ internal static class InterceptorExecutionEngine
         foreach (var entry in mutations)
         {
             state.InFlight = entry.Name;
-            var outcome = await InvokeAsync(entry, state.Request, state.CurrentPayload, aggregateToken).ConfigureAwait(false);
+            var outcome = await InvokeAsync(entry, state, state.CurrentPayload, aggregateToken).ConfigureAwait(false);
             var invocation = state.Record(entry, outcome);
 
             string? failure = outcome.Error;
@@ -213,7 +220,7 @@ internal static class InterceptorExecutionEngine
         state.InFlight = validations.Count == 1 ? validations[0].Name : null;
         var payload = state.CurrentPayload;
         var outcomes = await Task.WhenAll(validations.Select(entry =>
-            InvokeAsync(entry, state.Request, payload, aggregateToken).AsTask())).ConfigureAwait(false);
+            InvokeAsync(entry, state, payload, aggregateToken).AsTask())).ConfigureAwait(false);
         state.InFlight = null;
 
         InterceptorAbortInfo? firstAbort = null;
@@ -307,7 +314,7 @@ internal static class InterceptorExecutionEngine
             // Snapshot the payload: later mutations must not change what the sink observes.
             var invokeParams = CreateInvokeParams(entry, state.Request, state.CurrentPayload.DeepClone());
             var logger = state.Logger;
-            _ = Task.Run(async () =>
+            state.SinkTasks.Add(Task.Run(async () =>
             {
                 using var cts = new CancellationTokenSource(
                     entry.TimeoutMs is int timeout ? TimeSpan.FromMilliseconds(timeout) : DefaultSinkTimeout);
@@ -319,16 +326,17 @@ internal static class InterceptorExecutionEngine
                 {
                     logger.LogDebug(ex, "Sink interceptor '{Interceptor}' failed.", entry.Name);
                 }
-            });
+            }));
         }
     }
 
     private static async ValueTask<InvocationOutcome> InvokeAsync(
         ResolvedEntry entry,
-        InterceptorExecutionRequest request,
+        ExecutionState state,
         JsonNode payload,
         CancellationToken aggregateToken)
     {
+        var request = state.Request;
         using var timeoutCts = entry.TimeoutMs is int timeout
             ? CancellationTokenSource.CreateLinkedTokenSource(aggregateToken)
             : null;
@@ -348,6 +356,12 @@ internal static class InterceptorExecutionEngine
             return timeoutCts?.IsCancellationRequested == true
                 ? new InvocationOutcome(InterceptorInvocationOutcome.TimedOut, null, $"timed out after {entry.TimeoutMs}ms", stopwatch.ElapsedMilliseconds)
                 : new InvocationOutcome(InterceptorInvocationOutcome.Failed, null, "the invocation was cancelled", stopwatch.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException) when (entry.IsAudit && !state.CallerToken.IsCancellationRequested)
+        {
+            // Audit mode never blocks (SEP): an audit-mode interceptor cut off by the aggregate timeout is
+            // recorded as timed out instead of failing the operation.
+            return new InvocationOutcome(InterceptorInvocationOutcome.TimedOut, null, "cut off by the aggregate timeout", stopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -375,7 +389,7 @@ internal static class InterceptorExecutionEngine
         {
             foreach (var message in messages)
             {
-                Count(message.Severity, summary);
+                Count(ValidationVerdict.SeverityOf(message, validation), summary);
             }
         }
         else if (!validation.Valid && ValidationVerdict.EffectiveSeverity(validation) is { } severity)
@@ -471,10 +485,12 @@ internal static class InterceptorExecutionEngine
             : (fallback, InterceptorPolicySource.Default);
     }
 
-    private sealed class ExecutionState(InterceptorExecutionRequest request, InterceptorDirection direction, ILogger logger)
+    private sealed class ExecutionState(InterceptorExecutionRequest request, InterceptorDirection direction, ILogger logger, CancellationToken callerToken)
     {
         public InterceptorExecutionRequest Request { get; } = request;
         public ILogger Logger { get; } = logger;
+        public CancellationToken CallerToken { get; } = callerToken;
+        public List<Task> SinkTasks { get; } = [];
         public JsonNode CurrentPayload { get; set; } = request.Payload;
         public List<InterceptorResult> Results { get; } = [];
         public List<InterceptorInvocation> Invocations { get; } = [];
@@ -528,8 +544,10 @@ internal static class InterceptorExecutionEngine
             Results = Results,
             Invocations = Invocations,
             OriginalPayload = Request.Payload,
-            // Mutations are atomic: a rejected operation keeps its original payload.
-            FinalPayload = _status == InterceptorExecutionStatus.Success ? CurrentPayload : Request.Payload,
+            // Mutations are atomic, and a rejected operation forwards nothing. Leaving FinalPayload unset also
+            // keeps pre-redaction content out of anything that serializes the result.
+            FinalPayload = _status == InterceptorExecutionStatus.Success ? CurrentPayload : null,
+            SinkCompletion = SinkTasks.Count == 0 ? Task.CompletedTask : Task.WhenAll(SinkTasks),
             ValidationSummary = Summary,
             ValidationErrors = ValidationErrors,
             TotalDurationMs = totalDurationMs,

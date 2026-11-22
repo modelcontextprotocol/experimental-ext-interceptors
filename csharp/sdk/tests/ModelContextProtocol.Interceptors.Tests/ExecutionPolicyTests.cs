@@ -188,7 +188,9 @@ public class ExecutionPolicyTests
         var result = await RunAsync([first, second]);
 
         Assert.Equal(InterceptorExecutionStatus.MutationFailed, result.Status);
-        Assert.True(JsonNode.DeepEquals(Payload, result.FinalPayload));
+        Assert.Null(result.FinalPayload); // nothing is forwarded, and nothing pre-redaction is serialized
+        Assert.True(JsonNode.DeepEquals(Payload, result.OriginalPayload));
+        Assert.DoesNotContain("finalPayload", JsonSerializer.Serialize(result, InterceptorJsonUtilities.DefaultOptions));
         Assert.Equal("second", result.AbortedAt!.Interceptor);
     }
 
@@ -241,7 +243,49 @@ public class ExecutionPolicyTests
         { """{"type":"validation","valid":false}""", true },
         { """{"type":"validation","valid":true,"severity":"error"}""", false },
         { """{"type":"validation","valid":false,"messages":[{"message":"m","severity":"info"}]}""", false },
+        // A message without a severity counts as error in an invalid result (review finding: it read as info).
+        { """{"type":"validation","valid":false,"messages":[{"message":"SQL injection detected"}]}""", true },
+        { """{"type":"validation","valid":true,"messages":[{"message":"looks fine"}]}""", false },
     };
+
+    [Fact]
+    public async Task ValidationVerdict_CSharpMessageWithoutSeverity_Blocks()
+    {
+        var validator = Validator("pii", (_, _) => new ValueTask<InterceptorResult>(
+            new ValidationInterceptorResult { Valid = false, Messages = [new ValidationMessage { Message = "PII found" }] }));
+
+        var result = await RunAsync([validator]);
+
+        Assert.Equal(InterceptorExecutionStatus.ValidationFailed, result.Status);
+        Assert.Equal(ValidationSeverity.Error, Assert.Single(result.ValidationErrors).Severity);
+    }
+
+    [Fact]
+    public async Task AggregateTimeout_DoesNotFailOperation_ForAuditModeInterceptor()
+    {
+        var slowAudit = Validator("audit-logger", async (_, ct) =>
+        {
+            await Task.Delay(2_000, ct);
+            return ValidationInterceptorResult.Success();
+        }, mode: InterceptorMode.Audit);
+
+        var result = await RunAsync([slowAudit], aggregateTimeoutMs: 100);
+
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
+        var invocation = Assert.Single(result.Invocations);
+        Assert.Equal(InterceptorInvocationOutcome.TimedOut, invocation.Outcome);
+        Assert.Equal(InterceptorEffect.None, invocation.Effect);
+    }
+
+    [Fact]
+    public async Task NonPositiveTimeouts_AreRejected()
+    {
+        var guard = Validator("guard", (_, _) => Pass());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync([guard with { Overrides = new() { TimeoutMs = -5 } }]).AsTask());
+        await Assert.ThrowsAsync<ArgumentException>(() => RunAsync([guard], aggregateTimeoutMs: 0).AsTask());
+        Assert.Throws<InvalidOperationException>(() => new InterceptorPolicy { DefaultTimeoutMs = -1 }.Bind([]));
+    }
 
     [Theory]
     [MemberData(nameof(VerdictCases))]

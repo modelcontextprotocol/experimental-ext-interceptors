@@ -47,8 +47,8 @@ public sealed class InterceptorExecutionResult
     public JsonNode? OriginalPayload { get; set; }
 
     /// <summary>
-    /// Gets or sets the payload after all applied mutations. When the operation was rejected, this is
-    /// the original payload: mutations are atomic, so either all apply or none do.
+    /// Gets or sets the payload after all applied mutations, or <see langword="null"/> when the operation
+    /// was rejected. Mutations are atomic: either all apply or none do.
     /// </summary>
     [JsonPropertyName("finalPayload")]
     public JsonNode? FinalPayload { get; set; }
@@ -67,6 +67,10 @@ public sealed class InterceptorExecutionResult
     /// <summary>Gets or sets the total time spent running interceptors, in milliseconds.</summary>
     [JsonPropertyName("totalDurationMs")]
     public long TotalDurationMs { get; set; }
+
+    /// <summary>Completes when every sink dispatched by this run has finished.</summary>
+    [JsonIgnore]
+    internal Task SinkCompletion { get; set; } = Task.CompletedTask;
 
     /// <summary>Gets or sets which interceptor rejected the operation and why, if it was rejected.</summary>
     [JsonPropertyName("abortedAt")]

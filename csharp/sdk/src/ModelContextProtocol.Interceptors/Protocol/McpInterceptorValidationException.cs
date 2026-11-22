@@ -16,6 +16,12 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 /// </remarks>
 public class McpInterceptorException : McpProtocolException
 {
+    /// <summary>Creates a new <see cref="McpInterceptorException"/> caused by <paramref name="innerException"/>.</summary>
+    public McpInterceptorException(string message, Exception? innerException, McpErrorCode errorCode)
+        : base(message, innerException, errorCode)
+    {
+    }
+
     /// <summary>Creates a new <see cref="McpInterceptorException"/>.</summary>
     public McpInterceptorException(string message, McpErrorCode errorCode, InterceptorExecutionResult? executionResult = null)
         : base(message, errorCode)
@@ -79,6 +85,8 @@ public sealed class McpInterceptorValidationException : McpInterceptorException
         : base(message, McpErrorCode.InvalidParams)
     {
         ValidationErrors = validationErrors ?? [];
+        Data["validationErrors"] = JsonSerializer.SerializeToElement(
+            ValidationErrors, InterceptorJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IReadOnlyList<InterceptorValidationError>)));
     }
 
     /// <summary>Gets every reason validation rejected the operation.</summary>

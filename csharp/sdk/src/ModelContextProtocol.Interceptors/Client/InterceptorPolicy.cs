@@ -51,6 +51,10 @@ public sealed class InterceptorPolicy
     public IReadOnlyList<InterceptorBinding> Bind(IEnumerable<(Interceptor Interceptor, McpClient Server)> discovered)
     {
         ArgumentNullException.ThrowIfNull(discovered);
+        if (DefaultTimeoutMs is <= 0)
+        {
+            throw new InvalidOperationException($"DefaultTimeoutMs must be a positive number of milliseconds, not {DefaultTimeoutMs}.");
+        }
 
         var bindings = new List<InterceptorBinding>();
         var found = new HashSet<string>(StringComparer.Ordinal);

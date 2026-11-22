@@ -105,16 +105,17 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     /// <summary>
     /// Lists tools from the MCP server, routing each page through interceptors for the <c>tools/list</c>
     /// event. Mutations apply: a mutator that removes or rewrites tools changes what is returned.
+    /// Calling a returned tool also goes through interceptors.
     /// </summary>
-    public async ValueTask<IList<McpClientTool>> ListToolsAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<IList<InterceptedMcpClientTool>> ListToolsAsync(CancellationToken cancellationToken = default)
     {
-        var tools = new List<McpClientTool>();
+        var tools = new List<InterceptedMcpClientTool>();
         string? cursor = null;
         do
         {
             var page = await SendAsync<ListToolsRequestParams, ListToolsResult>(
                 RequestMethods.ToolsList, new ListToolsRequestParams { Cursor = cursor }, cancellationToken, GatewayProxyConfigurator.EnsureToolInputSchemas);
-            tools.AddRange(page.Tools.Select(tool => new McpClientTool(_inner, tool)));
+            tools.AddRange(page.Tools.Select(tool => new InterceptedMcpClientTool(this, tool)));
             cursor = page.NextCursor;
         }
         while (!string.IsNullOrEmpty(cursor));
@@ -125,15 +126,19 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     /// <summary>
     /// Lists prompts from the MCP server, routing each page through interceptors for the <c>prompts/list</c> event.
     /// </summary>
-    public async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// Returns protocol definitions rather than the SDK's <see cref="McpClientPrompt"/>, which is bound to
+    /// the inner client and would skip interceptors. Use <see cref="GetPromptAsync"/> to get a prompt.
+    /// </remarks>
+    public async ValueTask<IList<Prompt>> ListPromptsAsync(CancellationToken cancellationToken = default)
     {
-        var prompts = new List<McpClientPrompt>();
+        var prompts = new List<Prompt>();
         string? cursor = null;
         do
         {
             var page = await SendAsync<ListPromptsRequestParams, ListPromptsResult>(
                 RequestMethods.PromptsList, new ListPromptsRequestParams { Cursor = cursor }, cancellationToken);
-            prompts.AddRange(page.Prompts.Select(prompt => new McpClientPrompt(_inner, prompt)));
+            prompts.AddRange(page.Prompts);
             cursor = page.NextCursor;
         }
         while (!string.IsNullOrEmpty(cursor));
@@ -165,15 +170,19 @@ public sealed class InterceptingMcpClient : IAsyncDisposable
     /// <summary>
     /// Lists resources from the MCP server, routing each page through interceptors for the <c>resources/list</c> event.
     /// </summary>
-    public async ValueTask<IList<McpClientResource>> ListResourcesAsync(CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// Returns protocol definitions rather than the SDK's <see cref="McpClientResource"/>, which is bound to
+    /// the inner client and would skip interceptors. Use <see cref="ReadResourceAsync"/> to read one.
+    /// </remarks>
+    public async ValueTask<IList<Resource>> ListResourcesAsync(CancellationToken cancellationToken = default)
     {
-        var resources = new List<McpClientResource>();
+        var resources = new List<Resource>();
         string? cursor = null;
         do
         {
             var page = await SendAsync<ListResourcesRequestParams, ListResourcesResult>(
                 RequestMethods.ResourcesList, new ListResourcesRequestParams { Cursor = cursor }, cancellationToken);
-            resources.AddRange(page.Resources.Select(resource => new McpClientResource(_inner, resource)));
+            resources.AddRange(page.Resources);
             cursor = page.NextCursor;
         }
         while (!string.IsNullOrEmpty(cursor));

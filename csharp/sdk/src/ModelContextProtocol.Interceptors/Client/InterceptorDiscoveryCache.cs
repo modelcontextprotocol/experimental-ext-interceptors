@@ -27,6 +27,12 @@ internal sealed class InterceptorDiscoveryCache
     /// <summary>The default cache duration.</summary>
     internal static TimeSpan DefaultDuration { get; } = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// Upper bound for one shared discovery. It is not tied to any caller's token, so without a bound a
+    /// stalled <c>interceptors/list</c> would stay pending forever.
+    /// </summary>
+    internal static TimeSpan DiscoveryTimeout { get; } = TimeSpan.FromSeconds(30);
+
     internal async ValueTask<IList<Interceptor>> GetAsync(McpClient client, CancellationToken cancellationToken)
     {
         if (_duration <= TimeSpan.Zero)
@@ -39,7 +45,7 @@ internal sealed class InterceptorDiscoveryCache
         {
             // Not tied to the caller's token: concurrent callers share the discovery, and one caller
             // cancelling must not fail the others.
-            entry = new Entry(client.ListAllInterceptorsAsync(cancellationToken: CancellationToken.None).AsTask(), now + _duration);
+            entry = new Entry(DiscoverAsync(client), now + _duration);
             _entries.AddOrUpdate(client, entry);
         }
 
@@ -55,6 +61,12 @@ internal sealed class InterceptorDiscoveryCache
     }
 
     internal void Invalidate() => _entries.Clear();
+
+    private static async Task<IList<Interceptor>> DiscoverAsync(McpClient client)
+    {
+        using var cts = new CancellationTokenSource(DiscoveryTimeout);
+        return await client.ListAllInterceptorsAsync(cancellationToken: cts.Token).ConfigureAwait(false);
+    }
 
     private sealed record Entry(Task<IList<Interceptor>> Discovery, DateTimeOffset ExpiresAt);
 }

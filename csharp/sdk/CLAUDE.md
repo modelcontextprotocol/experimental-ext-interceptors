@@ -24,15 +24,15 @@ dotnet run --project samples/WhyInterceptorsDemo -- --fast   # end-to-end smoke 
 - `Tool.inputSchema` is required and validated on deserialization; the gateway coerces missing/invalid schemas to `{"type":"object"}` (`EnsureToolInputSchemas`).
 - MRTR and server→client requests (sampling, elicitation, roots) are not forwarded.
 
-**`InterceptingMcpClient` is composition**: `McpClient` has an internal constructor; subclassing is `[Experimental]`. We wrap it and expose `.Inner`.
+**`InterceptingMcpClient` is composition**: `McpClient` has an internal constructor; subclassing is `[Experimental]`. We wrap it and expose `.Inner`. The SDK's `McpClientTool`/`McpClientPrompt`/`McpClientResource` are sealed and bound to the client that listed them, so the wrapper returns `InterceptedMcpClientTool` (an `AIFunction` routed through the wrapper) and protocol `Prompt`/`Resource` definitions.
 
 ## Execution model (`Client/InterceptorExecutionEngine.cs`)
 - **Direction, not phase, decides order** (#29). `Sending`: mutations (sequential by priority ↑, name tie-break) → validations (parallel) → sinks (background). `Receiving`: validations → sinks → mutations. `InterceptorInvokerRole.Client` maps request→sending; `Server` maps request→receiving. Gateways default to `Client`.
 - **Policy resolution**: override → declared → SEP default, per field (`InterceptorOverrides`: mode, failOpen, priorityHint, timeoutMs, hooks). Hook overrides may only narrow (`InterceptorOverrides.ValidateFor`). `InterceptorPolicy` adds `Include` (fail-closed selection), per-interceptor `Config`, `DefaultTimeoutMs`.
-- **Timeouts**: per-interceptor timeout is routed by failOpen; the aggregate `TimeoutMs` cancels the rest and fails the operation regardless of failOpen.
-- **Validations** all complete; every blocking error is collected into `ValidationErrors`. Verdict rule lives in `ValidationVerdict` (fail-secure reading of #51: top-level severity, else worst message, else block).
-- **Mutations** are atomic (`FinalPayload` = original on failure); a wrong result type fails closed.
-- **Sinks** are fire-and-forget on a `DeepClone` of the payload; not included in `Results`.
+- **Timeouts**: per-interceptor timeout is routed by failOpen; the aggregate `TimeoutMs` (which also covers discovery in `InterceptorPhaseRunner`) cancels the rest and fails the operation regardless of failOpen. Audit-mode invocations cut off by the aggregate are recorded as `TimedOut` and never fail the operation (SEP: audit MUST NOT block). Non-positive timeouts are rejected (overrides, policy, engine, server filter).
+- **Validations** all complete; every blocking error is collected into `ValidationErrors`. Verdict rule lives in `ValidationVerdict` (fail-secure reading of #51: top-level severity, else worst message, else block). `ValidationMessage.Severity` is nullable; a missing one counts as error in an invalid result (`ValidationVerdict.SeverityOf`).
+- **Mutations** are atomic (`FinalPayload` = null on rejection, so nothing pre-redaction is serialized; `OriginalPayload` is `[JsonIgnore]`); a wrong result type fails closed.
+- **Sinks** are fire-and-forget on a `DeepClone` of the payload; not included in `Results`. `InterceptorExecutionResult.SinkCompletion` (internal) lets the gateway keep per-request interceptor clients open until sinks finish.
 - `InterceptorInvocation` per applied interceptor: resolved mode/failOpen + source (SEP Security Best Practice 3), outcome, effect.
 
 ## Public API map
@@ -58,7 +58,7 @@ dotnet run --project samples/WhyInterceptorsDemo -- --fast   # end-to-end smoke 
 
 ## Transparent gateway (`Gateway/`)
 - `McpInterceptorGateway` coordinates; `GatewayProxyConfigurator` mirrors backend capabilities and registers one generic raw-JSON forwarding handler per backend method (event name = method name, so completions/templates/unsubscribe are interceptable too); `GatewayInterceptorProtocolBridge` is the opt-in SEP passthrough (`ExposeInterceptorProtocol`); `GatewayConnectionForwardingRegistrar` handles per-session notification forwarding for the DI path.
-- `InterceptorPhaseRunner` (shared with `InterceptingMcpClient`) caches discovery per interceptor client (`InterceptorDiscoveryCache`, default 1 min, weak-keyed), binds the policy, runs the engine, calls `OnInterceptorsExecuted`, throws `McpInterceptorException` on failure, and builds per-request context (timestamp, trace, session, authenticated user).
+- `InterceptorPhaseRunner` (shared with `InterceptingMcpClient`) caches discovery per interceptor client (`InterceptorDiscoveryCache`, default 1 min, weak-keyed, each shared discovery capped at 30 s; `ListAllInterceptorsAsync` stops on a repeated cursor), wraps discovery failures/timeouts as `McpInterceptorException` (fail-closed), binds the policy, runs the engine, calls `OnInterceptorsExecuted`, throws `McpInterceptorException` on failure, and builds per-request context (timestamp, trace, session, authenticated user).
 - **Rejected `tools/call`**: returned as `CallToolResult { IsError = true }` with a readable reason and SEP details under `_meta["io.modelcontextprotocol/interceptors"]` (`ToolCallRejectionMode.ErrorResult`, default), or as the SEP JSON-RPC error (`ProtocolError`). Other methods always get the JSON-RPC error. Background: the SDK hides non-`McpException` messages ("An error occurred invoking 'x'."), and clients reliably show tool error results to the model.
 - External connections: `CreateAsync` + `InterceptorServerConnections`; per-request `InterceptorServerConnectionResolver` (transparent path only).
 
