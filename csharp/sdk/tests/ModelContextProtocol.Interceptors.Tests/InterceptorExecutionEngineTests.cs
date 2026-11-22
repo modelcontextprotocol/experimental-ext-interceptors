@@ -5,7 +5,7 @@ using Xunit;
 
 namespace ModelContextProtocol.Interceptors.Tests;
 
-public class InterceptorChainOrchestratorTests
+public class InterceptorExecutionEngineTests
 {
     [Fact]
     public async Task RequestPhase_ExecutesMutationsBeforeValidations()
@@ -36,7 +36,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [mutation, validation, sink],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -44,7 +44,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(["mutation", "validation", "sink"], executionOrder);
         Assert.True(result.FinalPayload!["mutated"]!.GetValue<bool>());
     }
@@ -74,7 +74,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [mutation, validation, sink],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Response,
@@ -82,7 +82,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(["validation", "sink", "mutation"], executionOrder);
     }
 
@@ -111,7 +111,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [mutHigh, mutLow, mutDefault],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -119,7 +119,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(["low-priority", "default-priority", "high-priority"], executionOrder);
     }
 
@@ -144,7 +144,7 @@ public class InterceptorChainOrchestratorTests
 
         var requestResult = await RunAsync(
             [pii, compressor],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -152,14 +152,14 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, requestResult.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, requestResult.Status);
         Assert.Equal(["pii-redactor", "compressor"], executionOrder);
 
         executionOrder.Clear();
 
         var responseResult = await RunAsync(
             [pii, compressor],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Response,
@@ -167,7 +167,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, responseResult.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, responseResult.Status);
         Assert.Equal(["compressor", "pii-redactor"], executionOrder);
     }
 
@@ -189,7 +189,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [scalar, requestOnly, responseOnly, unset],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -197,7 +197,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         // -10, then the two 0-effective entries tie-broken alphabetically, then 5.
         Assert.Equal(["scalar", "a-response-only", "b-unset", "request-only"], executionOrder);
     }
@@ -215,7 +215,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [Mut("charlie"), Mut("alpha"), Mut("bravo")],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -223,7 +223,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(["alpha", "bravo", "charlie"], executionOrder);
     }
 
@@ -247,7 +247,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [mut1, mut2],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -255,14 +255,14 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.True(result.FinalPayload!["original"]!.GetValue<bool>());
         Assert.True(result.FinalPayload!["step1"]!.GetValue<bool>());
         Assert.True(result.FinalPayload!["step2"]!.GetValue<bool>());
     }
 
     [Fact]
-    public async Task ValidationErrorAbortsChain()
+    public async Task ValidationErrorAbortsExecution()
     {
         var validation = CreateInterceptor("strict-val", InterceptorType.Validation, (req, _) =>
         {
@@ -272,7 +272,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [validation],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -280,7 +280,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.ValidationFailed, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.ValidationFailed, result.Status);
         Assert.NotNull(result.AbortedAt);
         Assert.Equal("strict-val", result.AbortedAt!.Interceptor);
         Assert.Equal("validation", result.AbortedAt.Type);
@@ -297,7 +297,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [shadowMutation],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -305,7 +305,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Single(result.Results);
         Assert.True(result.FinalPayload!["original"]!.GetValue<bool>());
         Assert.Null(result.FinalPayload["shadowed"]);
@@ -325,7 +325,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [auditor],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -333,7 +333,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(1, result.ValidationSummary!.Errors);
         Assert.Null(result.AbortedAt);
     }
@@ -355,7 +355,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [crashing, following],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -363,7 +363,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.True(result.FinalPayload!["reached"]!.GetValue<bool>());
     }
 
@@ -377,7 +377,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [crashing],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -385,7 +385,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.MutationFailed, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.MutationFailed, result.Status);
         Assert.Equal("crashing", result.AbortedAt!.Interceptor);
     }
 
@@ -399,7 +399,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [crashing],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -407,7 +407,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
     }
 
     [Fact]
@@ -420,7 +420,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [crashing],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -428,7 +428,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.ValidationFailed, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.ValidationFailed, result.Status);
         Assert.Equal("crashing-validator", result.AbortedAt!.Interceptor);
     }
 
@@ -442,7 +442,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [sink],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -450,7 +450,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Single(result.Results);
         var sinkResult = Assert.IsType<SinkInterceptorResult>(result.Results[0]);
         Assert.False(sinkResult.Recorded);
@@ -471,7 +471,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [toolsInterceptor, promptsInterceptor],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -479,7 +479,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Single(result.Results); // Only the tools interceptor ran
     }
 
@@ -498,7 +498,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [requestOnly, responseOnly],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -506,7 +506,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Single(result.Results);
         Assert.Equal("request-only", result.Results[0].InterceptorName);
     }
@@ -521,7 +521,7 @@ public class InterceptorChainOrchestratorTests
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => RunAsync(
             [validation],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Both,
@@ -551,7 +551,7 @@ public class InterceptorChainOrchestratorTests
 
         var result = await RunAsync(
             [val],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -559,7 +559,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(0, result.ValidationSummary!.Errors);
         Assert.Equal(2, result.ValidationSummary.Warnings);
         Assert.Equal(1, result.ValidationSummary.Infos);
@@ -583,9 +583,9 @@ public class InterceptorChainOrchestratorTests
         var serverA = Server(Mut("server-a-late", 100));
         var serverB = Server(Mut("server-b-early", -100));
 
-        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+        var result = await InterceptorExecutionEngine.ExecuteAsync(
             [.. serverA, .. serverB],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -593,7 +593,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(["server-b-early", "server-a-late"], executionOrder);
     }
 
@@ -611,9 +611,9 @@ public class InterceptorChainOrchestratorTests
         var serverA = Server(Mut("zulu"));
         var serverB = Server(Mut("alpha"));
 
-        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+        var result = await InterceptorExecutionEngine.ExecuteAsync(
             [.. serverA, .. serverB],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -621,7 +621,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(["alpha", "zulu"], executionOrder);
     }
 
@@ -643,9 +643,9 @@ public class InterceptorChainOrchestratorTests
             return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = obj });
         }, priorityHint: 1));
 
-        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+        var result = await InterceptorExecutionEngine.ExecuteAsync(
             [.. serverB, .. serverA],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -653,7 +653,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.True(result.FinalPayload!["original"]!.GetValue<bool>());
         Assert.True(result.FinalPayload["fromA"]!.GetValue<bool>());
         Assert.True(result.FinalPayload["fromB"]!.GetValue<bool>());
@@ -683,9 +683,9 @@ public class InterceptorChainOrchestratorTests
             return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
         }));
 
-        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+        var result = await InterceptorExecutionEngine.ExecuteAsync(
             [.. serverA, .. serverB],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -693,7 +693,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(2, validatedPayloads.Count);
         // Both servers' validations run after the mutation from server A, against its output.
         Assert.All(validatedPayloads, p => Assert.True(p["mutated"]!.GetValue<bool>()));
@@ -717,9 +717,9 @@ public class InterceptorChainOrchestratorTests
             return new ValueTask<InterceptorResult>(ValidationInterceptorResult.Success());
         }));
 
-        var result = await InterceptorChainOrchestrator.ExecuteAsync(
+        var result = await InterceptorExecutionEngine.ExecuteAsync(
             [.. serverA, .. serverB],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
@@ -727,7 +727,7 @@ public class InterceptorChainOrchestratorTests
             },
             CancellationToken.None);
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         // Each entry routes to its own host: one invocation per server, two results.
         Assert.Equal(1, serverAInvocations);
         Assert.Equal(1, serverBInvocations);
@@ -741,20 +741,20 @@ public class InterceptorChainOrchestratorTests
     /// Models one fake server: each of its entries gets an invoker bound to that server's own
     /// handler, so duplicate names across servers stay distinct.
     /// </summary>
-    private static List<InterceptorChainOrchestrator.ChainExecutionEntry> Server(params TestEntry[] entries)
+    private static List<InterceptorExecutionEngine.ExecutionEntry> Server(params TestEntry[] entries)
     {
-        return entries.Select(e => new InterceptorChainOrchestrator.ChainExecutionEntry(
+        return entries.Select(e => new InterceptorExecutionEngine.ExecutionEntry(
             e.Descriptor,
             (req, ct) => e.Handler(req, ct))).ToList();
     }
 
-    private static ValueTask<InterceptorChainResult> RunAsync(
+    private static ValueTask<InterceptorExecutionResult> RunAsync(
         IEnumerable<TestEntry> entries,
-        ExecuteChainRequestParams chainParams,
+        InterceptorExecutionRequest chainParams,
         CancellationToken ct)
     {
         var handlerByName = entries.ToDictionary(e => e.Descriptor.Name, e => e.Handler);
-        return InterceptorChainOrchestrator.ExecuteAsync(
+        return InterceptorExecutionEngine.ExecuteAsync(
             entries.Select(e => e.Descriptor),
             (req, c) => handlerByName[req.Name](req, c),
             chainParams,

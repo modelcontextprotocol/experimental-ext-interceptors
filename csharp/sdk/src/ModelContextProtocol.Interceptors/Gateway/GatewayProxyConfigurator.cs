@@ -71,10 +71,10 @@ internal sealed class GatewayProxyConfigurator
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
             {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, requestStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.ToolsList, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Request, requestStatus);
+                if (requestStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("tools/list", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
             }
 
@@ -92,10 +92,10 @@ internal sealed class GatewayProxyConfigurator
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
             {
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, responseStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.ToolsList, InterceptorPhase.Response, backendNode, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Response, responseStatus);
+                if (responseStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("tools/list", InterceptorPhase.Response, responseStatus);
                 EnsureToolInputSchemas(processed);
                 result = JsonSerializer.Deserialize<ListToolsResult>(processed, _jsonOptions) ?? result;
             }
@@ -111,10 +111,10 @@ internal sealed class GatewayProxyConfigurator
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsCall))
             {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, requestStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.ToolsCall, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("tools/call", InterceptorPhase.Request, requestStatus);
+                if (requestStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("tools/call", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
             }
 
@@ -125,10 +125,10 @@ internal sealed class GatewayProxyConfigurator
             if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsCall))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, responseStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.ToolsCall, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("tools/call", InterceptorPhase.Response, responseStatus);
+                if (responseStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("tools/call", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<CallToolResult>(processed, _jsonOptions) ?? result;
             }
 
@@ -151,10 +151,10 @@ internal sealed class GatewayProxyConfigurator
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsList))
             {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, requestStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.PromptsList, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("prompts/list", InterceptorPhase.Request, requestStatus);
+                if (requestStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("prompts/list", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
             }
 
@@ -165,10 +165,10 @@ internal sealed class GatewayProxyConfigurator
             if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsList))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, responseStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.PromptsList, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("prompts/list", InterceptorPhase.Response, responseStatus);
+                if (responseStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("prompts/list", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<ListPromptsResult>(processed, _jsonOptions) ?? result;
             }
 
@@ -183,10 +183,10 @@ internal sealed class GatewayProxyConfigurator
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsGet))
             {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, requestStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.PromptsGet, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("prompts/get", InterceptorPhase.Request, requestStatus);
+                if (requestStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("prompts/get", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
             }
 
@@ -197,10 +197,10 @@ internal sealed class GatewayProxyConfigurator
             if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsGet))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, responseStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.PromptsGet, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("prompts/get", InterceptorPhase.Response, responseStatus);
+                if (responseStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("prompts/get", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<GetPromptResult>(processed, _jsonOptions) ?? result;
             }
 
@@ -223,10 +223,10 @@ internal sealed class GatewayProxyConfigurator
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesList))
             {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, requestStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.ResourcesList, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("resources/list", InterceptorPhase.Request, requestStatus);
+                if (requestStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("resources/list", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
             }
 
@@ -237,10 +237,10 @@ internal sealed class GatewayProxyConfigurator
             if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesList))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, responseStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.ResourcesList, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("resources/list", InterceptorPhase.Response, responseStatus);
+                if (responseStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("resources/list", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<ListResourcesResult>(processed, _jsonOptions) ?? result;
             }
 
@@ -255,10 +255,10 @@ internal sealed class GatewayProxyConfigurator
 
             if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesRead))
             {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, requestStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("resources/read", InterceptorPhase.Request, requestStatus);
+                if (requestStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("resources/read", InterceptorPhase.Request, requestStatus);
                 requestPayload = processed;
             }
 
@@ -269,10 +269,10 @@ internal sealed class GatewayProxyConfigurator
             if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesRead))
             {
                 var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
+                var (processed, responseStatus) = await chainRunner.RunPhaseAsync(
                     InterceptionEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("resources/read", InterceptorPhase.Response, responseStatus);
+                if (responseStatus != InterceptorExecutionStatus.Success)
+                    InterceptorPhaseRunner.ThrowFailure("resources/read", InterceptorPhase.Response, responseStatus);
                 result = JsonSerializer.Deserialize<ReadResourceResult>(processed, _jsonOptions) ?? result;
             }
 
@@ -292,10 +292,10 @@ internal sealed class GatewayProxyConfigurator
 
                 if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesSubscribe))
                 {
-                    var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
+                    var (processed, requestStatus) = await chainRunner.RunPhaseAsync(
                         InterceptionEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, ct);
-                    if (requestStatus != InterceptorChainStatus.Success)
-                        InterceptorChainRunner.ThrowChainFailure("resources/subscribe", InterceptorPhase.Request, requestStatus);
+                    if (requestStatus != InterceptorExecutionStatus.Success)
+                        InterceptorPhaseRunner.ThrowFailure("resources/subscribe", InterceptorPhase.Request, requestStatus);
                     requestPayload = processed;
                 }
 
@@ -381,6 +381,6 @@ internal sealed class GatewayProxyConfigurator
             ?? throw new InvalidOperationException("Failed to clone backend server capabilities.");
     }
 
-    private InterceptorChainRunner CreateChainRunner(IReadOnlyList<McpClient> interceptorClients) =>
+    private InterceptorPhaseRunner CreateChainRunner(IReadOnlyList<McpClient> interceptorClients) =>
         new(interceptorClients, _events, _timeoutMs, _defaultContext);
 }

@@ -410,7 +410,7 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task CallToolAsync_ChainsAllInterceptorClients()
+    public async Task CallToolAsync_RunsInterceptorsFromAllInterceptorClients()
     {
         // Set up two interceptor servers, each with one mutation interceptor
         // The first prepends "A:", the second prepends "B:"
@@ -582,7 +582,7 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task ExecuteChain_FailsWhenInterceptorProtocolNotExposed()
+    public async Task ExecuteInterceptors_FailsWhenInterceptorProtocolNotExposed()
     {
         await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
             backendConfigure: (options) =>
@@ -602,8 +602,8 @@ public class McpInterceptorGatewayTests
 
         await Assert.ThrowsAsync<McpProtocolException>(async () =>
         {
-            await fixture.ProxyClient.ExecuteChainAsync(
-                new ExecuteChainRequestParams
+            await fixture.ProxyClient.ExecuteInterceptorsAsync(
+                new InterceptorExecutionRequest
                 {
                     Event = InterceptionEvents.ToolsCall,
                     Phase = InterceptorPhase.Request,
@@ -613,7 +613,7 @@ public class McpInterceptorGatewayTests
     }
 
     [Fact]
-    public async Task ExecuteChain_AggregatesResultsAcrossInterceptorClientsViaGateway()
+    public async Task ExecuteInterceptors_AggregatesResultsAcrossInterceptorClientsViaGateway()
     {
         // Two interceptor servers, each with one mutation interceptor
         await using var fixture = await GatewayTestFixture.CreateWithMultipleInterceptorServersAsync(
@@ -651,18 +651,18 @@ public class McpInterceptorGatewayTests
             ],
             exposeInterceptorProtocol: true);
 
-        // Client-side ExecuteChainAsync does list+invoke against the proxy; with
+        // Client-side ExecuteInterceptorsAsync does list+invoke against the proxy; with
         // ExposeInterceptorProtocol enabled, the proxy aggregates list and routes invoke
         // to the appropriate interceptor client behind it.
-        var chainResult = await fixture.ProxyClient.ExecuteChainAsync(
-            new ExecuteChainRequestParams
+        var chainResult = await fixture.ProxyClient.ExecuteInterceptorsAsync(
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{"original":true}""")!,
             });
 
-        Assert.Equal(InterceptorChainStatus.Success, chainResult.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, chainResult.Status);
         // Results from both interceptor servers should be aggregated
         Assert.Equal(2, chainResult.Results.Count);
         // Final payload should have mutations from both servers

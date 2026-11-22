@@ -19,7 +19,7 @@ namespace ModelContextProtocol.Interceptors.Client;
 /// </list>
 /// Audit mode and fail-open are honored per interceptor descriptor.
 /// </remarks>
-internal static class InterceptorChainOrchestrator
+internal static class InterceptorExecutionEngine
 {
     internal delegate ValueTask<InterceptorResult> InterceptorInvoker(
         InvokeInterceptorRequestParams request,
@@ -29,26 +29,26 @@ internal static class InterceptorChainOrchestrator
     /// An interceptor descriptor paired with the invoker that routes <c>interceptor/invoke</c>
     /// to the server hosting it. Mirrors the SEP's <c>ChainEntry</c>.
     /// </summary>
-    internal readonly record struct ChainExecutionEntry(Interceptor Descriptor, InterceptorInvoker Invoker);
+    internal readonly record struct ExecutionEntry(Interceptor Descriptor, InterceptorInvoker Invoker);
 
     /// <summary>
     /// Convenience overload for the single-server case: every descriptor shares one invoker.
     /// </summary>
-    internal static ValueTask<InterceptorChainResult> ExecuteAsync(
+    internal static ValueTask<InterceptorExecutionResult> ExecuteAsync(
         IEnumerable<Interceptor> interceptors,
         InterceptorInvoker invoker,
-        ExecuteChainRequestParams chainParams,
+        InterceptorExecutionRequest chainParams,
         CancellationToken cancellationToken)
     {
         return ExecuteAsync(
-            interceptors.Select(i => new ChainExecutionEntry(i, invoker)).ToList(),
+            interceptors.Select(i => new ExecutionEntry(i, invoker)).ToList(),
             chainParams,
             cancellationToken);
     }
 
-    internal static async ValueTask<InterceptorChainResult> ExecuteAsync(
-        IReadOnlyList<ChainExecutionEntry> entries,
-        ExecuteChainRequestParams chainParams,
+    internal static async ValueTask<InterceptorExecutionResult> ExecuteAsync(
+        IReadOnlyList<ExecutionEntry> entries,
+        InterceptorExecutionRequest chainParams,
         CancellationToken cancellationToken)
     {
         if (chainParams.Phase is not (InterceptorPhase.Request or InterceptorPhase.Response))
@@ -61,10 +61,10 @@ internal static class InterceptorChainOrchestrator
 
         var sw = Stopwatch.StartNew();
         var results = new List<InterceptorResult>();
-        var summary = new ChainValidationSummary();
+        var summary = new ValidationSummary();
         var currentPayload = chainParams.Payload;
-        ChainAbortInfo? abortInfo = null;
-        var status = InterceptorChainStatus.Success;
+        InterceptorAbortInfo? abortInfo = null;
+        var status = InterceptorExecutionStatus.Success;
 
         // Merge & sort: one global order across all servers by effective priority
         // (ascending, alphabetical tie-break), then partition by type. The stable sort
@@ -93,10 +93,10 @@ internal static class InterceptorChainOrchestrator
             {
                 // Sending: Mutations -> Validations -> Sinks
                 (currentPayload, status, abortInfo) = await ExecuteMutationsAsync(mutations, chainParams, currentPayload, results, ct);
-                if (status != InterceptorChainStatus.Success) goto Done;
+                if (status != InterceptorExecutionStatus.Success) goto Done;
 
                 (status, abortInfo) = await ExecuteValidationsAsync(validations, chainParams, currentPayload, results, summary, ct);
-                if (status != InterceptorChainStatus.Success) goto Done;
+                if (status != InterceptorExecutionStatus.Success) goto Done;
 
                 await ExecuteSinksAsync(sinks, chainParams, currentPayload, results, ct);
             }
@@ -104,7 +104,7 @@ internal static class InterceptorChainOrchestrator
             {
                 // Receiving: Validations -> Sinks -> Mutations
                 (status, abortInfo) = await ExecuteValidationsAsync(validations, chainParams, currentPayload, results, summary, ct);
-                if (status != InterceptorChainStatus.Success) goto Done;
+                if (status != InterceptorExecutionStatus.Success) goto Done;
 
                 await ExecuteSinksAsync(sinks, chainParams, currentPayload, results, ct);
 
@@ -113,12 +113,12 @@ internal static class InterceptorChainOrchestrator
         }
         catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
         {
-            status = InterceptorChainStatus.Timeout;
+            status = InterceptorExecutionStatus.Timeout;
         }
 
     Done:
         sw.Stop();
-        return new InterceptorChainResult
+        return new InterceptorExecutionResult
         {
             Status = status,
             Event = chainParams.Event,
@@ -131,9 +131,9 @@ internal static class InterceptorChainOrchestrator
         };
     }
 
-    private static async ValueTask<(JsonNode payload, InterceptorChainStatus status, ChainAbortInfo? abort)> ExecuteMutationsAsync(
-        List<ChainExecutionEntry> mutations,
-        ExecuteChainRequestParams chainParams,
+    private static async ValueTask<(JsonNode payload, InterceptorExecutionStatus status, InterceptorAbortInfo? abort)> ExecuteMutationsAsync(
+        List<ExecutionEntry> mutations,
+        InterceptorExecutionRequest chainParams,
         JsonNode currentPayload,
         List<InterceptorResult> results,
         CancellationToken ct)
@@ -167,7 +167,7 @@ internal static class InterceptorChainOrchestrator
                     continue;
                 }
 
-                return (currentPayload, InterceptorChainStatus.MutationFailed, new ChainAbortInfo
+                return (currentPayload, InterceptorExecutionStatus.MutationFailed, new InterceptorAbortInfo
                 {
                     Interceptor = descriptor.Name,
                     Reason = ex.Message,
@@ -175,15 +175,15 @@ internal static class InterceptorChainOrchestrator
                 });
             }
         }
-        return (currentPayload, InterceptorChainStatus.Success, null);
+        return (currentPayload, InterceptorExecutionStatus.Success, null);
     }
 
-    private static async ValueTask<(InterceptorChainStatus status, ChainAbortInfo? abort)> ExecuteValidationsAsync(
-        List<ChainExecutionEntry> validations,
-        ExecuteChainRequestParams chainParams,
+    private static async ValueTask<(InterceptorExecutionStatus status, InterceptorAbortInfo? abort)> ExecuteValidationsAsync(
+        List<ExecutionEntry> validations,
+        InterceptorExecutionRequest chainParams,
         JsonNode currentPayload,
         List<InterceptorResult> results,
-        ChainValidationSummary summary,
+        ValidationSummary summary,
         CancellationToken ct)
     {
         var tasks = validations.Select(async entry =>
@@ -219,7 +219,7 @@ internal static class InterceptorChainOrchestrator
                     continue;
                 }
 
-                return (InterceptorChainStatus.ValidationFailed, new ChainAbortInfo
+                return (InterceptorExecutionStatus.ValidationFailed, new InterceptorAbortInfo
                 {
                     Interceptor = descriptor.Name,
                     Reason = error.Message,
@@ -246,7 +246,7 @@ internal static class InterceptorChainOrchestrator
 
                 if (!isAudit && !validation.Valid && validation.Severity == ValidationSeverity.Error)
                 {
-                    return (InterceptorChainStatus.ValidationFailed, new ChainAbortInfo
+                    return (InterceptorExecutionStatus.ValidationFailed, new InterceptorAbortInfo
                     {
                         Interceptor = descriptor.Name,
                         Reason = validation.Messages?.FirstOrDefault()?.Message ?? "Validation failed",
@@ -256,12 +256,12 @@ internal static class InterceptorChainOrchestrator
             }
         }
 
-        return (InterceptorChainStatus.Success, null);
+        return (InterceptorExecutionStatus.Success, null);
     }
 
     private static async ValueTask ExecuteSinksAsync(
-        List<ChainExecutionEntry> sinks,
-        ExecuteChainRequestParams chainParams,
+        List<ExecutionEntry> sinks,
+        InterceptorExecutionRequest chainParams,
         JsonNode currentPayload,
         List<InterceptorResult> results,
         CancellationToken ct)
@@ -293,11 +293,11 @@ internal static class InterceptorChainOrchestrator
         results.AddRange(completedResults);
     }
 
-    private static List<ChainExecutionEntry> FilterEntries(
-        IReadOnlyList<ChainExecutionEntry> entries,
-        ExecuteChainRequestParams chainParams)
+    private static List<ExecutionEntry> FilterEntries(
+        IReadOnlyList<ExecutionEntry> entries,
+        InterceptorExecutionRequest chainParams)
     {
-        var result = new List<ChainExecutionEntry>();
+        var result = new List<ExecutionEntry>();
 
         foreach (var entry in entries)
         {
@@ -345,7 +345,7 @@ internal static class InterceptorChainOrchestrator
 
     private static InvokeInterceptorRequestParams CreateInvokeParams(
         Interceptor descriptor,
-        ExecuteChainRequestParams chainParams,
+        InterceptorExecutionRequest chainParams,
         JsonNode currentPayload)
     {
         return new InvokeInterceptorRequestParams

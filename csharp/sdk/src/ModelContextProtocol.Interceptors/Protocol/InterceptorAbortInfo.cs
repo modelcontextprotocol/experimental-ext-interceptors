@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 /// <summary>
 /// Information about which interceptor caused a chain execution to abort.
 /// </summary>
-public sealed class ChainAbortInfo
+public sealed class InterceptorAbortInfo
 {
     /// <summary>Gets or sets the name of the interceptor that caused the abort.</summary>
     [JsonPropertyName("interceptor")]

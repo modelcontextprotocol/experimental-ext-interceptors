@@ -10,14 +10,14 @@ namespace ModelContextProtocol.Interceptors.Gateway;
 /// against one or more interceptor server clients. Used by both <see cref="Client.InterceptingMcpClient"/>
 /// and <see cref="McpInterceptorGateway"/>.
 /// </summary>
-internal sealed class InterceptorChainRunner
+internal sealed class InterceptorPhaseRunner
 {
     private readonly IReadOnlyList<McpClient> _interceptorClients;
     private readonly IList<string>? _events;
     private readonly int? _timeoutMs;
     private readonly InvokeInterceptorContext? _defaultContext;
 
-    internal InterceptorChainRunner(
+    internal InterceptorPhaseRunner(
         IReadOnlyList<McpClient> interceptorClients,
         IList<string>? events = null,
         int? timeoutMs = null,
@@ -46,15 +46,15 @@ internal sealed class InterceptorChainRunner
     /// Runs the interceptor chain phase across all configured interceptor clients as a single
     /// merged chain per the SEP: interceptors discovered from every client are combined, sorted
     /// globally by priority hint (alphabetical tie-break), and each is invoked on the client that
-    /// hosts it via <see cref="InterceptorChain.ExecuteAsync(IEnumerable{McpClient}, ExecuteChainRequestParams, CancellationToken)"/>.
+    /// hosts it via <see cref="InterceptorOrchestrator.ExecuteAsync(IEnumerable{McpClient}, InterceptorExecutionRequest, CancellationToken)"/>.
     /// </summary>
     /// <returns>The final payload (the original on failure) and the chain status.</returns>
-    internal async ValueTask<(JsonNode payload, InterceptorChainStatus status)> RunChainPhaseAsync(
+    internal async ValueTask<(JsonNode payload, InterceptorExecutionStatus status)> RunPhaseAsync(
         string eventName, InterceptorPhase phase, JsonNode payload, CancellationToken ct)
     {
-        var chainResult = await InterceptorChain.ExecuteAsync(
+        var chainResult = await InterceptorOrchestrator.ExecuteAsync(
             _interceptorClients,
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = eventName,
                 Phase = phase,
@@ -64,18 +64,18 @@ internal sealed class InterceptorChainRunner
             },
             ct);
 
-        return chainResult.Status == InterceptorChainStatus.Success
-            ? (chainResult.FinalPayload ?? payload, InterceptorChainStatus.Success)
+        return chainResult.Status == InterceptorExecutionStatus.Success
+            ? (chainResult.FinalPayload ?? payload, InterceptorExecutionStatus.Success)
             : (payload, chainResult.Status);
     }
 
     /// <summary>
     /// Throws an appropriate exception for a non-success chain status.
     /// </summary>
-    internal static void ThrowChainFailure(string operation, InterceptorPhase phase, InterceptorChainStatus status)
+    internal static void ThrowFailure(string operation, InterceptorPhase phase, InterceptorExecutionStatus status)
     {
         var phaseText = phase == InterceptorPhase.Request ? "Request" : "Response";
-        if (status == InterceptorChainStatus.ValidationFailed)
+        if (status == InterceptorExecutionStatus.ValidationFailed)
         {
             throw new McpInterceptorValidationException($"{phaseText}-phase interceptor validation failed for {operation}.");
         }

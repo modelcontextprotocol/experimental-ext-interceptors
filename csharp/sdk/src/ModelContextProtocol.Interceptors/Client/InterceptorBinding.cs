@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Interceptors.Client;
 /// hosts it. The server reference is used to route <c>interceptor/invoke</c> calls to the correct
 /// server when a chain spans multiple servers.
 /// </summary>
-public sealed class InterceptorChainEntry
+public sealed class InterceptorBinding
 {
     /// <summary>Gets the interceptor descriptor, as returned by <c>interceptors/list</c>.</summary>
     public required Interceptor Interceptor { get; init; }

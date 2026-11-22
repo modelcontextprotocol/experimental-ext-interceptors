@@ -14,17 +14,17 @@ namespace ModelContextProtocol.Interceptors.Client;
 /// Interceptors with the same name on different servers are not deduplicated; each entry is
 /// invoked on its own host, so results may share an <see cref="InterceptorResult.InterceptorName"/>.
 /// </remarks>
-public sealed class InterceptorChain
+public sealed class InterceptorOrchestrator
 {
     /// <summary>Creates a chain from pre-discovered entries.</summary>
-    public InterceptorChain(IReadOnlyList<InterceptorChainEntry> entries)
+    public InterceptorOrchestrator(IReadOnlyList<InterceptorBinding> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
         Entries = entries;
     }
 
     /// <summary>Gets all interceptor entries in the chain, collected from one or more servers.</summary>
-    public IReadOnlyList<InterceptorChainEntry> Entries { get; }
+    public IReadOnlyList<InterceptorBinding> Entries { get; }
 
     /// <summary>
     /// Discovers interceptors by calling <c>interceptors/list</c> on every server in parallel and
@@ -34,7 +34,7 @@ public sealed class InterceptorChain
     /// Discovery is fail-closed: if any server's <c>interceptors/list</c> fails, the whole call
     /// throws rather than silently dropping that server's interceptors.
     /// </remarks>
-    public static async ValueTask<InterceptorChain> DiscoverAsync(
+    public static async ValueTask<InterceptorOrchestrator> DiscoverAsync(
         IEnumerable<McpClient> servers,
         ListInterceptorsRequestParams? requestParams = null,
         CancellationToken cancellationToken = default)
@@ -45,43 +45,43 @@ public sealed class InterceptorChain
         var listed = await Task.WhenAll(serverList.Select(
             server => server.ListInterceptorsAsync(requestParams, cancellationToken).AsTask())).ConfigureAwait(false);
 
-        var entries = new List<InterceptorChainEntry>();
+        var entries = new List<InterceptorBinding>();
         for (var i = 0; i < serverList.Count; i++)
         {
             foreach (var interceptor in listed[i].Interceptors)
             {
-                entries.Add(new InterceptorChainEntry { Interceptor = interceptor, Server = serverList[i] });
+                entries.Add(new InterceptorBinding { Interceptor = interceptor, Server = serverList[i] });
             }
         }
 
-        return new InterceptorChain(entries);
+        return new InterceptorOrchestrator(entries);
     }
 
     /// <summary>
     /// Executes the chain for the given event and phase using the SEP execution model.
     /// </summary>
-    public ValueTask<InterceptorChainResult> ExecuteAsync(
-        ExecuteChainRequestParams requestParams,
+    public ValueTask<InterceptorExecutionResult> ExecuteAsync(
+        InterceptorExecutionRequest requestParams,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(requestParams);
 
         var executionEntries = Entries
-            .Select(e => new InterceptorChainOrchestrator.ChainExecutionEntry(
+            .Select(e => new InterceptorExecutionEngine.ExecutionEntry(
                 e.Interceptor,
                 (invokeParams, ct) => e.Server.InvokeInterceptorAsync(invokeParams, ct)))
             .ToList();
 
-        return InterceptorChainOrchestrator.ExecuteAsync(executionEntries, requestParams, cancellationToken);
+        return InterceptorExecutionEngine.ExecuteAsync(executionEntries, requestParams, cancellationToken);
     }
 
     /// <summary>
     /// Discovers interceptors across the given servers (filtered by the request's event) and
     /// executes the merged chain in one call.
     /// </summary>
-    public static async ValueTask<InterceptorChainResult> ExecuteAsync(
+    public static async ValueTask<InterceptorExecutionResult> ExecuteAsync(
         IEnumerable<McpClient> servers,
-        ExecuteChainRequestParams requestParams,
+        InterceptorExecutionRequest requestParams,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(requestParams);

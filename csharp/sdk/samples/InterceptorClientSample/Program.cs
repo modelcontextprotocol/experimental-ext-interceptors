@@ -110,7 +110,7 @@ Console.WriteLine();
 Console.WriteLine("── Demo 5: Execute chain (email + PII check) ──");
 
 var chainPayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Email bob@corp.com about SSN"}}""")!;
-var chainResult = await client.ExecuteChainAsync(new ExecuteChainRequestParams
+var chainResult = await client.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
 {
     Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
@@ -147,7 +147,7 @@ Console.WriteLine();
 Console.WriteLine("── Demo 6: Execute chain (clean data, should pass) ──");
 
 var cleanChainPayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Contact bob@corp.com please"}}""")!;
-var cleanChainResult = await client.ExecuteChainAsync(new ExecuteChainRequestParams
+var cleanChainResult = await client.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
 {
     Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,

@@ -68,7 +68,7 @@ var loggingGateway = new InterceptingMcpClient(everythingClient, new Interceptin
 
 // Outer layer: security interceptors → logging gateway
 // Note: InterceptingMcpClient wraps McpClient, so to chain we use the
-// security interceptors directly via ExecuteChainAsync before the inner gateway.
+// security interceptors directly via ExecuteInterceptorsAsync before the inner gateway.
 
 Console.WriteLine("[setup] Connected! Chain: Security → Logging → Everything Server");
 Console.WriteLine();
@@ -102,7 +102,7 @@ Console.WriteLine("── Demo 1: Clean echo through both layers ──");
     var payload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Hello from the chain!"}}""")!;
 
     // Security layer (request phase)
-    var securityResult = await securityInterceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
+    var securityResult = await securityInterceptorClient.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
     {
         Event = InterceptionEvents.ToolsCall,
         Phase = InterceptorPhase.Request,
@@ -125,7 +125,7 @@ Console.WriteLine("── Demo 2: Email payload through both layers ──");
     var payload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Contact alice@secret.com"}}""")!;
 
     // Security layer redacts the email
-    var securityResult = await securityInterceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
+    var securityResult = await securityInterceptorClient.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
     {
         Event = InterceptionEvents.ToolsCall,
         Phase = InterceptorPhase.Request,
@@ -152,7 +152,7 @@ Console.WriteLine("── Demo 3: PII payload — blocked by security layer ─�
 {
     var payload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"SSN: 123-45-6789"}}""")!;
 
-    var securityResult = await securityInterceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
+    var securityResult = await securityInterceptorClient.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
     {
         Event = InterceptionEvents.ToolsCall,
         Phase = InterceptorPhase.Request,
@@ -160,7 +160,7 @@ Console.WriteLine("── Demo 3: PII payload — blocked by security layer ─�
     });
     Console.WriteLine($"  Security layer: {securityResult.Status}");
 
-    if (securityResult.Status == InterceptorChainStatus.ValidationFailed)
+    if (securityResult.Status == InterceptorExecutionStatus.ValidationFailed)
     {
         Console.WriteLine($"  BLOCKED — request never reached logging layer or server");
         if (securityResult.AbortedAt is { } abort)

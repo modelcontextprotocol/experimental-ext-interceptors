@@ -49,14 +49,14 @@ public static class McpClientInterceptorExtensions
     /// dispatches each one via <c>interceptor/invoke</c>, orchestrating ordering, parallelism,
     /// audit-mode, and fail-open semantics locally.
     /// </remarks>
-    public static ValueTask<InterceptorChainResult> ExecuteChainAsync(
+    public static ValueTask<InterceptorExecutionResult> ExecuteInterceptorsAsync(
         this McpClient client,
-        ExecuteChainRequestParams requestParams,
+        InterceptorExecutionRequest requestParams,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(requestParams);
 
-        return InterceptorChain.ExecuteAsync([client], requestParams, cancellationToken);
+        return InterceptorOrchestrator.ExecuteAsync([client], requestParams, cancellationToken);
     }
 }

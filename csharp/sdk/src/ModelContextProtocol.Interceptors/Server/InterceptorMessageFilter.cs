@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Interceptors.Server;
 /// <summary>
 /// An incoming message filter that handles the interceptor extension's JSON-RPC methods:
 /// <c>interceptors/list</c> and <c>interceptor/invoke</c>. Chain execution is performed
-/// client-side via <see cref="McpClientInterceptorExtensions.ExecuteChainAsync"/>; per the SEP
+/// client-side via <see cref="McpClientInterceptorExtensions.ExecuteInterceptorsAsync"/>; per the SEP
 /// it is no longer a wire method.
 /// </summary>
 internal sealed class InterceptorMessageFilter
@@ -62,7 +62,7 @@ internal sealed class InterceptorMessageFilter
                 var matchesAnyHook = false;
                 foreach (var hook in serverInterceptor.ProtocolInterceptor.Hooks)
                 {
-                    if (InterceptorChainOrchestrator.MatchesEvent(hook.Events, eventFilter))
+                    if (InterceptorExecutionEngine.MatchesEvent(hook.Events, eventFilter))
                     {
                         matchesAnyHook = true;
                         break;

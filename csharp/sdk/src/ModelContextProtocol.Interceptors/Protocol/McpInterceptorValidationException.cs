@@ -7,12 +7,12 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 public sealed class McpInterceptorValidationException : Exception
 {
     /// <summary>Gets the chain result that caused the validation failure.</summary>
-    public InterceptorChainResult? ChainResult { get; }
+    public InterceptorExecutionResult? ChainResult { get; }
 
     /// <summary>Gets the validation messages from the failed interceptor.</summary>
     public IReadOnlyList<ValidationMessage> ValidationMessages { get; }
 
-    public McpInterceptorValidationException(string message, IReadOnlyList<ValidationMessage>? validationMessages = null, InterceptorChainResult? chainResult = null)
+    public McpInterceptorValidationException(string message, IReadOnlyList<ValidationMessage>? validationMessages = null, InterceptorExecutionResult? chainResult = null)
         : base(message)
     {
         ValidationMessages = validationMessages ?? [];
