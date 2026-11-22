@@ -5,9 +5,9 @@ using ModelContextProtocol.Interceptors.Client;
 using ModelContextProtocol.Interceptors.Protocol;
 
 // ──────────────────────────────────────────────────────────────────────
-// Gateway Chain Sample
+// Layered Gateways Sample
 //
-// Demonstrates chaining two interceptor servers in front of an MCP server:
+// Demonstrates stacking two gateways, each with its own interceptor server, in front of an MCP server:
 //
 //   Client ──▶ Security Interceptors ──▶ Logging Interceptors ──▶ Everything Server
 //
@@ -20,7 +20,7 @@ using ModelContextProtocol.Interceptors.Protocol;
 // interceptor set.
 // ──────────────────────────────────────────────────────────────────────
 
-Console.WriteLine("=== MCP Interceptors Gateway Chain Sample ===");
+Console.WriteLine("=== MCP Interceptors Layered Gateways Sample ===");
 Console.WriteLine();
 
 var interceptorServerPath = Path.Combine(GetSourceDir(), "..", "InterceptorServerSample");
@@ -54,7 +54,7 @@ await using var everythingClient = await McpClient.CreateAsync(
         Arguments = ["-y", "@modelcontextprotocol/server-everything"],
     }));
 
-// 3. Chain: wrap everything server with logging, then wrap that with security
+// 3. Layers: wrap the everything server with logging, then wrap that with security
 //    Security layer intercepts tools/call (validation + mutation)
 //    Logging layer intercepts all events (sink only, since that's
 //    what request-logger is configured for — it won't block anything)
@@ -67,10 +67,10 @@ var loggingGateway = new InterceptingMcpClient(everythingClient, new Interceptin
 });
 
 // Outer layer: security interceptors → logging gateway
-// Note: InterceptingMcpClient wraps McpClient, so to chain we use the
+// Note: InterceptingMcpClient wraps McpClient, so to stack layers we use the
 // security interceptors directly via ExecuteInterceptorsAsync before the inner gateway.
 
-Console.WriteLine("[setup] Connected! Chain: Security → Logging → Everything Server");
+Console.WriteLine("[setup] Connected! Layers: Security → Logging → Everything Server");
 Console.WriteLine();
 
 // 4. List interceptors from both layers
@@ -99,7 +99,7 @@ Console.WriteLine($"[tools] {tools.Count} tools available");
 Console.WriteLine();
 Console.WriteLine("── Demo 1: Clean echo through both layers ──");
 {
-    var payload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Hello from the chain!"}}""")!;
+    var payload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Hello through two gateways!"}}""")!;
 
     // Security layer (request phase)
     var securityResult = await securityInterceptorClient.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
@@ -113,7 +113,7 @@ Console.WriteLine("── Demo 1: Clean echo through both layers ──");
     // Logging layer + actual call (uses the sanitized payload)
     var result = await loggingGateway.CallToolAsync("echo", new Dictionary<string, object?>
     {
-        ["message"] = "Hello from the chain!",
+        ["message"] = "Hello through two gateways!",
     });
     Console.WriteLine($"  Result: {result.Content.FirstOrDefault()}");
 }

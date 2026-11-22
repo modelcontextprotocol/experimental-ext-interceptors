@@ -1,104 +1,73 @@
 # MCP Interceptors - C# SDK
 
 ## What this is
-C# implementation of gateway-level interceptors from [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624). NuGet package additive to the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (v2.1.0, MCP spec 2026-07-28). Focus is on the protocol-level extension (client → interceptor server → server), NOT in-process middleware.
+C# implementation of [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624) interceptors. NuGet package additive to the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (v2.1.0, MCP spec 2026-07-28). Focus is the protocol-level extension (invoker → interceptor server over MCP), NOT in-process middleware. `docs/sep.md` at the repo root is the WG's working copy of the SEP and is authoritative; SDK wording follows it.
 
 ## Build & test
 ```
 dotnet build   # from csharp/sdk/
-dotnet test    # 105 tests across the interceptor test project
+dotnet test    # ~150 tests
+dotnet run --project samples/WhyInterceptorsDemo -- --fast   # end-to-end smoke test over real stdio processes
 ```
 
 ## Key architectural constraints
 
-**Why message filter, not handlers**: `McpServerHandlers` and `McpServerImpl` are `internal` in the SDK. We can't register handlers for new JSON-RPC methods from outside. Instead we use `McpServerOptions.Filters.Message.IncomingFilters` to intercept `interceptors/list` and `interceptor/invoke`, handle them, send `JsonRpcResponse` via `context.Server.SendMessageAsync()`, and skip calling `next`. See `InterceptorMessageFilter.cs`. Chain execution is no longer a wire method — it's SDK orchestration in `Client/InterceptorChainOrchestrator.cs`.
+**Why message filter, not handlers**: `McpServerHandlers` and `McpServerImpl` are `internal` in the SDK. We can't register handlers for new JSON-RPC methods from outside. Instead we use `McpServerOptions.Filters.Message.IncomingFilters` to intercept `interceptors/list` and `interceptor/invoke`, handle them, send `JsonRpcResponse` via `context.Server.SendMessageAsync()`, and skip calling `next`. See `InterceptorMessageFilter.cs`.
 
-**Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions (stable since SDK 2.x — no experimental pragma needed). We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["io.modelcontextprotocol/interceptors"]`.
+**Why `ServerCapabilities.Extensions`**: The SDK's intended mechanism for protocol extensions. We advertise `InterceptorsCapability { SupportedEvents }` under `Extensions["io.modelcontextprotocol/interceptors"]`.
 
-**Client `SendRequestAsync`**: The public `SendRequestAsync<TParameters, TResult>` endpoint extension takes `JsonSerializerOptions` (call it with named `cancellationToken:` — 2.x inserted an optional `RequestId` parameter before it). We pass `InterceptorJsonUtilities.DefaultOptions` which chains `McpJsonUtilities.DefaultOptions` + our `InterceptorJsonContext`. The internal overload takes `JsonTypeInfo<T>` — we can't use it.
+**Client `SendRequestAsync`**: The public `SendRequestAsync<TParameters, TResult>` endpoint extension takes `JsonSerializerOptions` (call it with named `cancellationToken:` — 2.x inserted an optional `RequestId` parameter before it). We pass `InterceptorJsonUtilities.DefaultOptions` (`McpJsonUtilities.DefaultOptions` + `InterceptorJsonContext`, with `AllowOutOfOrderMetadataProperties = true` so a result's `type` discriminator needn't come first).
 
 **SDK 2.x / spec 2026-07-28 notes**:
-- Tasks moved out of SDK core into a separate, wire-incompatible `ModelContextProtocol.Extensions.Tasks` package; the gateway no longer needs to suppress a backend `Tasks` capability.
-- Logging (`logging/setLevel`) and `resources/subscribe` are deprecated by the spec (SEP-2577 / SEP-2575) and rejected on `2026-07-28` connections, but the gateway intentionally keeps proxying them for down-level clients/backends (`#pragma warning disable MCP9005` at those sites; tests pin `protocolVersion: "2025-06-18"`).
-- `Tool.inputSchema` is required and validated on deserialization; the gateway fetches `tools/list` as raw JSON and coerces missing/invalid schemas to `{"type":"object"}` (`GatewayProxyConfigurator.EnsureToolInputSchemas`) so down-level backends and schema-stripping interceptors can't fail the request.
-- MRTR (multi-round-trip requests) is not forwarded; the gateway's server reports `IsMrtrSupported == false`.
+- Logging (`logging/setLevel`) and `resources/subscribe` are deprecated (SEP-2577 / SEP-2575) and rejected on `2026-07-28` connections. The gateway keeps proxying them for down-level peers (`#pragma warning disable MCP9005`). The two hops negotiate versions independently: when the backend hop is `2026-07-28`+, the gateway answers `logging/setLevel` itself (found with the MCP Inspector CLI).
+- Per-request protocol `_meta` (`protocolVersion`, `clientInfo`, `clientCapabilities`, `logLevel`) is hop-by-hop: the gateway strips it before forwarding (`GatewayProxyConfigurator.WithoutHopByHopMeta`). The SDK client overwrites version/client info but *merges* capabilities.
+- `Tool.inputSchema` is required and validated on deserialization; the gateway coerces missing/invalid schemas to `{"type":"object"}` (`EnsureToolInputSchemas`).
+- MRTR and server→client requests (sampling, elicitation, roots) are not forwarded.
 
-**`InterceptingMcpClient` is composition**: `McpClient` has an internal constructor; subclassing is `[Experimental]`. We wrap it as a concrete class exposing `.Inner` for direct access.
+**`InterceptingMcpClient` is composition**: `McpClient` has an internal constructor; subclassing is `[Experimental]`. We wrap it and expose `.Inner`.
 
-## Chain execution order (SEP-2624)
-- **Request phase (sending)**: Mutations (sequential by priority ↑) → Validations (parallel) → Sinks (fire-and-forget)
-- **Response phase (receiving)**: Validations (parallel) → Sinks (fire-and-forget) → Mutations (sequential by priority ↑)
-- Lower `PriorityHint` executes first; scalar (both phases) or per-phase `{request, response}` form, unset phase resolves to 0; ties broken alphabetically by name
+## Execution model (`Client/InterceptorExecutionEngine.cs`)
+- **Direction, not phase, decides order** (#29). `Sending`: mutations (sequential by priority ↑, name tie-break) → validations (parallel) → sinks (background). `Receiving`: validations → sinks → mutations. `InterceptorInvokerRole.Client` maps request→sending; `Server` maps request→receiving. Gateways default to `Client`.
+- **Policy resolution**: override → declared → SEP default, per field (`InterceptorOverrides`: mode, failOpen, priorityHint, timeoutMs, hooks). Hook overrides may only narrow (`InterceptorOverrides.ValidateFor`). `InterceptorPolicy` adds `Include` (fail-closed selection), per-interceptor `Config`, `DefaultTimeoutMs`.
+- **Timeouts**: per-interceptor timeout is routed by failOpen; the aggregate `TimeoutMs` cancels the rest and fails the operation regardless of failOpen.
+- **Validations** all complete; every blocking error is collected into `ValidationErrors`. Verdict rule lives in `ValidationVerdict` (fail-secure reading of #51: top-level severity, else worst message, else block).
+- **Mutations** are atomic (`FinalPayload` = original on failure); a wrong result type fails closed.
+- **Sinks** are fire-and-forget on a `DeepClone` of the payload; not included in `Results`.
+- `InterceptorInvocation` per applied interceptor: resolved mode/failOpen + source (SEP Security Best Practice 3), outcome, effect.
+
+## Public API map
+| Type | Role |
+|------|------|
+| `InterceptorOrchestrator` | Discover across servers + execute (SDK orchestration; the SEP has no chain primitive) |
+| `InterceptorBinding` | Descriptor + hosting `McpClient` + overrides + config |
+| `InterceptorPolicy` / `InterceptorOverrides` | Invoker-side policy |
+| `InterceptorExecutionRequest` / `InterceptorExecutionResult` | One event/phase in, aggregate out |
+| `McpInterceptorException` / `McpInterceptorValidationException` | `McpProtocolException` subclasses (-32602 + `data.validationErrors`; -32603; -32000) |
+| `McpClientInterceptorExtensions` | `ListInterceptorsAsync`, `ListAllInterceptorsAsync` (paginates), `InvokeInterceptorAsync` (with optional expected type, #50), `ExecuteInterceptorsAsync` |
 
 ## JSON-RPC methods
 | Method | Params → Result |
 |--------|----------------|
 | `interceptors/list` | `ListInterceptorsRequestParams` → `ListInterceptorsResult` |
-| `interceptor/invoke` | `InvokeInterceptorRequestParams` → `InterceptorResult` (polymorphic) |
+| `interceptor/invoke` | `InvokeInterceptorRequestParams` → `InterceptorResult` (polymorphic on `type`: `validation`, `mutation`, `sink`) |
 
-## `InterceptorResult` polymorphism
-Uses `[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]` with `"validation"`, `"mutation"`, `"sink"` discriminators. Serialization/deserialization handles this automatically via STJ source-gen in `InterceptorJsonContext`.
+`timeoutMs` / `durationMs` use lenient converters (accept fractional numbers, write integers; #49).
 
 ## Parameter binding (ReflectionMcpServerInterceptor)
-Interceptor methods auto-bind from `InvokeInterceptorRequestParams`:
-- `JsonNode payload` → `.Payload`
-- `JsonNode config` → `.Config`
-- `string event` / `string eventName` → `.Event`
-- `InterceptorPhase phase` → `.Phase`
-- `InvokeInterceptorContext` → `.Context`
-- `CancellationToken`, `McpServer`, `IServiceProvider` → framework
-- Return `bool` → wrapped as `ValidationInterceptorResult { Valid = result }`
+`JsonNode payload`, `JsonNode config`, `string event`/`eventName`, `InterceptorPhase`, `InvokeInterceptorContext`, `InvokeInterceptorRequestParams`, `CancellationToken`, `McpServer`, `IServiceProvider`. Return `InterceptorResult` subclasses or `bool`, sync or `Task`/`ValueTask`. Invoked with `BindingFlags.DoNotWrapExceptions` so errors carry the real message. Attribute supports `Version` and `ConfigSchema` (JSON text).
 
-## SDK reference paths (local at /mnt/d/code/ai/mcp/csharp-sdk)
-- `src/ModelContextProtocol.Core/Server/McpServerTool.cs` — pattern we follow
-- `src/ModelContextProtocol.Core/Server/McpMessageFilter.cs` — our hook point
-- `src/ModelContextProtocol.Core/Protocol/ServerCapabilities.cs` — Extensions dict
-- `src/ModelContextProtocol.Core/McpSession.Methods.cs` — public SendRequestAsync
-- `src/ModelContextProtocol/McpServerBuilderExtensions.cs` — builder pattern
-- `src/ModelContextProtocol.Core/McpJsonUtilities.cs` — JSON context chaining pattern
-
-## Transparent gateway/proxy (`Gateway/`)
-
-**`McpInterceptorGateway`**: Configures an `McpServer` as a transparent proxy. Reads backend `ServerCapabilities`, registers handler delegates (`CallToolHandler`, `ListToolsHandler`, etc.) that route through interceptor chains before forwarding to the backend. By default the gateway is transparent-only; SEP passthrough is opt-in via `ExposeInterceptorProtocol = true`. To connecting clients, the proxy appears to be the backend server.
-
-**`InterceptorChainRunner`** (internal): Shared interception logic used by both `InterceptingMcpClient` and `McpInterceptorGateway`. Multiple interceptor clients form a single merged chain per the SEP: interceptors discovered from every client (parallel `interceptors/list`, fail-closed) are sorted globally by priority hint (alphabetical tie-break) and each is invoked on the client hosting it. Public API: `Client/InterceptorChain.cs` (`DiscoverAsync` + `ExecuteAsync` over `IEnumerable<McpClient>`); duplicate names across servers are not deduplicated.
-
-**Gateway split**: `GatewayProxyConfigurator` owns transparent MCP proxy wiring, `GatewayInterceptorProtocolBridge` owns optional SEP passthrough wiring, and `GatewayConnectionForwardingRegistrar` owns connection-bound notification forwarding registration.
-
-**`McpInterceptorGatewayOptions`**: Configuration — `BackendClient`, optional preconnected `InterceptorClients`, optional external `InterceptorServerConnections`, optional dynamic `InterceptorServerConnectionResolver`, `Events` filter, `TimeoutMs`, `DefaultContext`, optional `ServerInfo` override, and `ExposeInterceptorProtocol`.
-
-**External interceptor connections**: `McpInterceptorGateway.CreateAsync(...)` can create interceptor clients from standard SDK transports (`IClientTransport`) via `McpInterceptorServerConnectionOptions`. Dynamic per-request transparent resolution is supported via `InterceptorServerConnectionResolver` using the SDK's `MessageContext` plus SEP event name.
-
-**Builder extension**: `IMcpServerBuilder.WithInterceptorGateway(options)` and `WithInterceptorGateway(Func<IServiceProvider, McpInterceptorGatewayOptions>)` for DI/builder scenarios. Builder-based wiring still expects already-connected interceptor clients; async external transport setup should use `McpInterceptorGateway.CreateAsync(...)`.
-
-**Notification forwarding**: `gateway.RegisterNotificationForwarding(proxyServer)` subscribes to backend `tools/list_changed`, `prompts/list_changed`, `resources/list_changed` and re-sends through the proxy.
-
-**Why handler delegates (not message filters) for the proxy**: The SDK's `With*Handler` methods automatically set `ServerCapabilities`, are type-safe, and are the intended extension point. Message filters are still used for interceptor protocol passthrough (`interceptors/list`, `interceptor/invoke`).
-
-**Tool call error handling note**: When an interceptor validation aborts a `tools/call`, the gateway throws `McpInterceptorValidationException`. The SDK catches this and returns `CallToolResult { IsError = true }` (not a JSON-RPC error), since tool execution errors are returned as results by design.
-
-## `InterceptingMcpClient` wrapped methods
-- `CallToolAsync` — `tools/call`
-- `ListToolsAsync` — `tools/list`
-- `ListPromptsAsync` — `prompts/list`
-- `GetPromptAsync` — `prompts/get`
-- `ListResourcesAsync` — `resources/list`
-- `ReadResourceAsync` — `resources/read`
-- `SubscribeToResourceAsync` — `resources/subscribe`
-- `ListInterceptorsAsync` — direct passthrough to interceptor client
-
-## LLM completion payloads (`Protocol/LlmCompletionPayload.cs`)
-- `LlmCompletionRequestPayload` — model, messages, maxTokens, temperature, metadata
-- `LlmCompletionResponsePayload` — model, message, stopReason, usage, metadata
-- `LlmMessage` — role + content
-- `LlmUsage` — inputTokens + outputTokens
-- Registered in `InterceptorJsonContext` for source-gen serialization
-- Not wired into `InterceptingMcpClient` — these are for custom gateway use
+## Transparent gateway (`Gateway/`)
+- `McpInterceptorGateway` coordinates; `GatewayProxyConfigurator` mirrors backend capabilities and registers one generic raw-JSON forwarding handler per backend method (event name = method name, so completions/templates/unsubscribe are interceptable too); `GatewayInterceptorProtocolBridge` is the opt-in SEP passthrough (`ExposeInterceptorProtocol`); `GatewayConnectionForwardingRegistrar` handles per-session notification forwarding for the DI path.
+- `InterceptorPhaseRunner` (shared with `InterceptingMcpClient`) caches discovery per interceptor client (`InterceptorDiscoveryCache`, default 1 min, weak-keyed), binds the policy, runs the engine, calls `OnInterceptorsExecuted`, throws `McpInterceptorException` on failure, and builds per-request context (timestamp, trace, session, authenticated user).
+- **Rejected `tools/call`**: returned as `CallToolResult { IsError = true }` with a readable reason and SEP details under `_meta["io.modelcontextprotocol/interceptors"]` (`ToolCallRejectionMode.ErrorResult`, default), or as the SEP JSON-RPC error (`ProtocolError`). Other methods always get the JSON-RPC error. Background: the SDK hides non-`McpException` messages ("An error occurred invoking 'x'."), and clients reliably show tool error results to the model.
+- External connections: `CreateAsync` + `InterceptorServerConnections`; per-request `InterceptorServerConnectionResolver` (transparent path only).
 
 ## Samples
-- `InterceptorServerSample` — stdio server hosting 3 interceptors
-- `GatewaySample` — single gateway: client → interceptor → everything server
-- `InterceptorClientSample` — client API: list, invoke, execute chain directly
-- `GatewayChainSample` — chained gateways: security layer → logging layer → server
-- `TransparentProxySample` — stdio proxy server: clients connect to it as if it were the backend, all requests routed through interceptors
-- `ConfigDrivenGatewaySample` — sample-only config-driven host composed from the gateway primitives; demonstrates static and dynamic external interceptor resolution with transport-configured backend/interceptor clients
+See `samples/README.md`. Start with `WhyInterceptorsDemo` (scripted story; real MCP; `--fast`, `--export-html`) and `InterceptorProxy` (JSON-configured sidecar; `--check`; verified with the MCP Inspector CLI and the reference filesystem server).
+
+## SDK reference
+Local checkout: `~/code/mcp/csharp-sdk` (may be ahead of 2.1.0; read with `git show v2.1.0:<path>`).
+- `src/ModelContextProtocol.Core/Server/McpServerImpl.cs` — tool error handling, MRTR
+- `src/ModelContextProtocol.Core/McpSessionHandler.cs` — exception → JSON-RPC error mapping, per-request `_meta` injection
+- `src/ModelContextProtocol.Core/Server/McpMessageFilter.cs` — our hook point
+- `src/ModelContextProtocol.Core/McpJsonUtilities.cs` — JSON context chaining pattern

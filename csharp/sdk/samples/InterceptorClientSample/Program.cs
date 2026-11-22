@@ -10,7 +10,7 @@ using ModelContextProtocol.Interceptors.Protocol;
 // Demonstrates the client-side interceptor API:
 //   1. Listing available interceptors
 //   2. Invoking a single interceptor directly
-//   3. Executing a full interceptor chain
+//   3. Running every applicable interceptor for an event (SDK orchestration)
 //
 // Uses the InterceptorServerSample as the backend.
 // ──────────────────────────────────────────────────────────────────────
@@ -105,32 +105,32 @@ if (piiResult is ValidationInterceptorResult piiValidation)
     }
 }
 
-// ── Demo 5: Execute full chain ───────────────────────────────────────
+// ── Demo 5: Run all applicable interceptors ──────────────────────────
 Console.WriteLine();
-Console.WriteLine("── Demo 5: Execute chain (email + PII check) ──");
+Console.WriteLine("── Demo 5: Run interceptors (email + PII check) ──");
 
-var chainPayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Email bob@corp.com about SSN"}}""")!;
-var chainResult = await client.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
+var payload5 = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Email bob@corp.com about SSN"}}""")!;
+var result5 = await client.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
 {
     Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
-    Payload = chainPayload,
+    Payload = payload5,
     Context = new InvokeInterceptorContext
     {
         TraceId = Guid.NewGuid().ToString("N"),
     },
 });
 
-Console.WriteLine($"  Status: {chainResult.Status}");
-Console.WriteLine($"  Duration: {chainResult.TotalDurationMs:F1}ms");
-Console.WriteLine($"  Results: {chainResult.Results?.Count ?? 0} interceptor(s) ran");
+Console.WriteLine($"  Status: {result5.Status}");
+Console.WriteLine($"  Duration: {result5.TotalDurationMs:F1}ms");
+Console.WriteLine($"  Results: {result5.Results?.Count ?? 0} interceptor(s) ran");
 
-if (chainResult.AbortedAt is { } abort)
+if (result5.AbortedAt is { } abort)
 {
     Console.WriteLine($"  Aborted at: {abort.Interceptor} ({abort.Reason})");
 }
 
-foreach (var r in chainResult.Results ?? [])
+foreach (var r in result5.Results ?? [])
 {
     var typeName = r switch
     {
@@ -142,20 +142,20 @@ foreach (var r in chainResult.Results ?? [])
     Console.WriteLine($"    {r.InterceptorName,-20} type={typeName,-15} duration={r.DurationMs:F1}ms");
 }
 
-// ── Demo 6: Execute chain with clean data ────────────────────────────
+// ── Demo 6: Run interceptors on clean data ───────────────────────────
 Console.WriteLine();
-Console.WriteLine("── Demo 6: Execute chain (clean data, should pass) ──");
+Console.WriteLine("── Demo 6: Run interceptors (clean data, should pass) ──");
 
-var cleanChainPayload = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Contact bob@corp.com please"}}""")!;
-var cleanChainResult = await client.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
+var payload6 = JsonNode.Parse("""{"name":"echo","arguments":{"message":"Contact bob@corp.com please"}}""")!;
+var result6 = await client.ExecuteInterceptorsAsync(new InterceptorExecutionRequest
 {
     Event = InterceptionEvents.ToolsCall,
     Phase = InterceptorPhase.Request,
-    Payload = cleanChainPayload,
+    Payload = payload6,
 });
 
-Console.WriteLine($"  Status: {cleanChainResult.Status}");
-Console.WriteLine($"  Final payload: {cleanChainResult.FinalPayload}");
+Console.WriteLine($"  Status: {result6.Status}");
+Console.WriteLine($"  Final payload: {result6.FinalPayload}");
 
 Console.WriteLine();
 Console.WriteLine("=== Done ===");

@@ -9,11 +9,11 @@ The package should expose two distinct surfaces:
 1. `WithInterceptors(...)` / interceptor server: pure SEP surface
 2. `McpInterceptorGateway`: transparent proxy by default
 3. Gateway SEP passthrough: opt-in advanced mode
-4. Shared chain execution/runtime: reused by both surfaces
+4. Shared execution runtime: reused by both surfaces
 
 This lets the package support both:
 
-1. SEP-aware clients that explicitly use `interceptors/list` and `interceptor/invoke` (chain execution is SDK-side orchestration over those two)
+1. SEP-aware clients that explicitly use `interceptors/list` and `interceptor/invoke` (running several interceptors is SDK-side orchestration over those two)
 2. Transparent infrastructure deployments where clients do not need any code changes
 
 ## Phase 1: Split Gateway Modes
@@ -68,7 +68,7 @@ Changes:
 
 1. Extract the built-in MCP proxying logic into a dedicated internal component
 2. Extract interceptor protocol passthrough into a dedicated internal bridge component
-3. Keep `InterceptorChainRunner` and related chain semantics shared
+3. Keep `InterceptorPhaseRunner` and the execution engine shared
 4. Centralize interceptor extension capability key handling behind one internal constant/provider
 
 Current implementation note:
@@ -151,7 +151,7 @@ Likely direction:
 
 1. Introduce an interceptor client/provider abstraction in addition to direct `InterceptorClients`
 2. Support static, per-request, or per-identity interceptor resolution
-3. Keep chain semantics unchanged regardless of interceptor source
+3. Keep execution semantics unchanged regardless of interceptor source
 
 Current implementation note:
 

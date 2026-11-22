@@ -1,287 +1,225 @@
 # ModelContextProtocol.Interceptors
 
-C# implementation of the [MCP Interceptors Extension (SEP-2624)](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2624) — gateway-level interceptors for the Model Context Protocol.
+C# implementation of the [MCP Interceptors extension (SEP-2624)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624),
+built on the official [C# MCP SDK](https://github.com/modelcontextprotocol/csharp-sdk) (2.1, MCP `2026-07-28`).
 
-Architecture work is tracked in [`docs/ARCHITECTURE_PHASES.md`](docs/ARCHITECTURE_PHASES.md).
-SEP follow-up notes from the implementation are captured in [`docs/SEP_PROPOSAL_NOTES.md`](docs/SEP_PROPOSAL_NOTES.md).
+## Why interceptors?
 
-## Overview
+An agent talks to MCP servers that someone else wrote. Everything a server returns goes straight
+into the model's context, and everything the model decides to do goes straight back out as a tool
+call. MCP has no standard place to check either direction, so every client, gateway and server
+vendor builds its own guardrails, in its own language, with its own configuration.
 
-This package enables creating interceptor servers that sit between MCP clients and servers, providing validation, mutation, and sink (non-blocking observational) capabilities without modifying either the client or server.
+An **interceptor** is that place. It is hosted on an ordinary MCP server (an *interceptor server*)
+and called over MCP with two methods, `interceptors/list` and `interceptor/invoke`. **Validators**
+gate a message; **mutators** rewrite it. The invoker (a client, gateway or server) runs them at
+fixed points, in an order that respects the trust boundary. Guardrails are written once, in any
+language, and plugged in anywhere.
 
-```
-Client  ──▶  Interceptor Server  ──▶  Server
-        ◀──  (validates/mutates)  ◀──  (tools)
-```
+**See it:** `dotnet run --project samples/WhyInterceptorsDemo` is a three-minute story. An agent is
+tricked into leaking data through a third-party server, then the same agent and server run behind
+an interceptor proxy. To try it with your own agent, see
+[InterceptorProxy](samples/InterceptorProxy). All samples are listed in [samples/README.md](samples/README.md).
 
-## Quick Start
-
-### Creating an Interceptor Server
+## Writing an interceptor server
 
 ```csharp
 var builder = Host.CreateApplicationBuilder(args);
-
 builder.Services.AddMcpServer()
     .WithStdioServerTransport()
-    .WithInterceptors<MyInterceptors>();
-
-var app = builder.Build();
-await app.RunAsync();
+    .WithInterceptors<SecurityGuard>();
+await builder.Build().RunAsync();
 
 [McpServerInterceptorType]
-public class MyInterceptors
+public sealed class SecurityGuard
 {
-    [McpServerInterceptor(Name = "pii-validator", Type = InterceptorType.Validation,
-        Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Request)]
-    public static ValidationInterceptorResult ValidatePii(JsonNode payload)
+    [McpServerInterceptor(Name = "exfiltration-guard", Type = InterceptorType.Validation,
+        Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Request,
+        ConfigSchema = """{"type":"object","properties":{"allowedDomains":{"type":"array"}}}""")]
+    public static ValidationInterceptorResult BlockUnapprovedDomains(JsonNode payload, JsonNode? config)
     {
-        // Check for PII patterns
-        return ValidationInterceptorResult.Success();
+        // ...inspect payload["arguments"]...
+        return ValidationInterceptorResult.Failure(new ValidationMessage
+        {
+            Path = "$.arguments.url",
+            Message = "evil.example is not an approved destination",
+            Severity = ValidationSeverity.Error,
+        });
     }
 
-    [McpServerInterceptor(Name = "email-redactor", Type = InterceptorType.Mutation,
-        Events = [InterceptionEvents.ToolsCall], PriorityHint = -1000)]
-    public static MutationInterceptorResult RedactEmails(JsonNode payload)
-    {
-        // Modify the payload
-        return new MutationInterceptorResult { Modified = true, Payload = modifiedPayload };
-    }
+    [McpServerInterceptor(Name = "pii-redactor", Type = InterceptorType.Mutation,
+        Events = [InterceptionEvents.ToolsCall], Phase = InterceptorPhase.Response, PriorityHint = -50_000)]
+    public static MutationInterceptorResult Redact(JsonNode payload) =>
+        new() { Modified = true, Payload = /* rewritten payload */ payload };
 }
 ```
 
-`PriorityHint` applies to both phases; use `RequestPriorityHint`/`ResponsePriorityHint` instead to
-order a mutation differently per phase (unset phases default to 0).
+Interceptor methods bind parameters by type and name:
 
-### Consuming Interceptors from a Client
+| Parameter | Bound from |
+| --- | --- |
+| `JsonNode payload` | the intercepted message |
+| `JsonNode config` | invoker-supplied configuration (`config`) |
+| `string event` / `string eventName` | the lifecycle event, e.g. `tools/call` |
+| `InterceptorPhase phase` | `Request` or `Response` |
+| `InvokeInterceptorContext` | principal, trace, timestamp, session |
+| `InvokeInterceptorRequestParams` | the whole invocation |
+| `CancellationToken`, `McpServer`, `IServiceProvider` | the framework |
 
-```csharp
-// Connect to the interceptor server
-var interceptorClient = await McpClient.CreateAsync(interceptorTransport);
+Methods return an `InterceptorResult` subclass or `bool` (a validation verdict), synchronously or
+as `Task`/`ValueTask`. `PriorityHint` applies to both phases; use `RequestPriorityHint` /
+`ResponsePriorityHint` to order a mutator differently per phase. `Version` and `ConfigSchema` are
+advertised in `interceptors/list`.
 
-// List available interceptors
-var interceptors = await interceptorClient.ListInterceptorsAsync();
+## Invoking interceptors
 
-// Invoke a single interceptor
-var result = await interceptorClient.InvokeInterceptorAsync(new InvokeInterceptorRequestParams
-{
-    Name = "pii-validator",
-    Event = InterceptionEvents.ToolsCall,
-    Phase = InterceptorPhase.Request,
-    Payload = JsonNode.Parse("""{"name":"call-tool","arguments":{"query":"test"}}""")!,
-});
+There are three ways to apply interceptors to MCP traffic. All three share one execution engine.
 
-// Execute a full chain (SDK-level orchestration: discovers via `interceptors/list`,
-// then dispatches each applicable interceptor via `interceptor/invoke`)
-var chainResult = await interceptorClient.ExecuteChainAsync(new ExecuteChainRequestParams
-{
-    Event = InterceptionEvents.ToolsCall,
-    Phase = InterceptorPhase.Request,
-    Payload = myPayload,
-});
+### A transparent gateway (no client or server changes)
 
-// Or span multiple interceptor servers: interceptors are discovered from every server,
-// merged into one chain sorted globally by priority hint, and each is invoked on the
-// server that hosts it
-var multiResult = await InterceptorChain.ExecuteAsync(
-    [interceptorClientA, interceptorClientB],
-    new ExecuteChainRequestParams
-    {
-        Event = InterceptionEvents.ToolsCall,
-        Phase = InterceptorPhase.Request,
-        Payload = myPayload,
-    });
-```
-
-### Gateway Pattern (Client-Side)
-
-Use `InterceptingMcpClient` when your code is the caller and you want to route operations through interceptors before they reach the server:
+`McpInterceptorGateway` configures an `McpServer` that looks exactly like a backend server and runs
+interceptors on every forwarded request and response. Clients connect to it instead of the backend.
 
 ```csharp
-// Connect to both the interceptor server and the actual MCP server
-var interceptorClient = await McpClient.CreateAsync(interceptorTransport);
-var mcpClient = await McpClient.CreateAsync(mcpTransport);
-
-// Create the gateway wrapper
-var gateway = new InterceptingMcpClient(mcpClient, new InterceptingMcpClientOptions
-{
-    InterceptorClient = interceptorClient,
-    Events = [InterceptionEvents.ToolsCall],
-});
-
-// All tool calls now flow through interceptors automatically
-var result = await gateway.CallToolAsync("my-tool", new Dictionary<string, object?> { ["query"] = "test" });
-```
-
-### Transparent Proxy (Server-Side)
-
-Use `McpInterceptorGateway` to create an MCP server that transparently proxies requests through interceptors to a backend server. Connecting clients see the proxy as the backend itself — no client-side changes needed.
-
-By default, the gateway is transparent-only: it does not advertise or expose the SEP interceptor protocol to connecting clients. If you want the gateway to also expose `interceptors/list` and `interceptor/invoke`, enable that explicitly with `ExposeInterceptorProtocol = true`.
-
-```
-Client  ──▶  Proxy Server  ──▶  Interceptor Server  ──▶  Backend Server
-        ◀──  (transparent)  ◀──  (validates/mutates)  ◀──  (tools, etc.)
-```
-
-```csharp
-// Connect to the backend and interceptor servers
-await using var backend = await McpClient.CreateAsync(backendTransport);
-await using var interceptors = await McpClient.CreateAsync(interceptorTransport);
-
-// Create the gateway
 await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOptions
 {
-    BackendClient = backend,
-    InterceptorClients = [interceptors],
-    Events = [InterceptionEvents.ToolsCall], // null = intercept all events
-    ExposeInterceptorProtocol = false,
+    BackendClient = backend,                 // McpClient connected to the real server
+    InterceptorClients = [securityGuard],    // McpClients connected to interceptor servers
+    Policy = policy,                         // see "Policy" below
+    InvokerRole = InterceptorInvokerRole.Client,
+    OnInterceptorsExecuted = result => auditLog.Write(result),
 });
 
-// Configure and start the proxy server on stdio
 var serverOptions = new McpServerOptions();
 gateway.ConfigureServerOptions(serverOptions);
-
-await using var server = McpServer.Create(
-    new StdioServerTransport("my-proxy"), serverOptions);
+await using var server = McpServer.Create(new StdioServerTransport("proxy"), serverOptions);
 gateway.RegisterNotificationForwarding(server);
 await server.RunAsync();
 ```
 
-The proxy mirrors the backend's advertised capability graph and forwards `*_list_changed` notifications for the supported list surfaces. Multiple interceptor clients form a single merged chain per the SEP — interceptors from all servers are sorted globally by priority hint (alphabetical tie-break) and each is invoked on the server that hosts it.
+[InterceptorProxy](samples/InterceptorProxy) wraps this in a JSON-configured executable. For
+dependency injection, use `IMcpServerBuilder.WithInterceptorGateway(...)`. To connect interceptor
+servers from transports, use `McpInterceptorGateway.CreateAsync` with `InterceptorServerConnections`.
+To choose interceptor servers per request (for example by user), set
+`InterceptorServerConnectionResolver`.
 
-If you want the gateway to connect to external SEP-exposing interceptor servers itself, use the async factory and provide standard MCP client transports:
+By default the gateway does not expose the interceptor protocol itself. Set
+`ExposeInterceptorProtocol = true` to pass `interceptors/list` and `interceptor/invoke` through.
+
+### An agent-side wrapper
 
 ```csharp
-await using var gateway = await McpInterceptorGateway.CreateAsync(new McpInterceptorGatewayOptions
+await using var client = new InterceptingMcpClient(mcpClient, new InterceptingMcpClientOptions
 {
-    BackendClient = backend,
-    InterceptorServerConnections =
-    [
-        new McpInterceptorServerConnectionOptions
-        {
-            Transport = new StdioClientTransport(new StdioClientTransportOptions
-            {
-                Command = "dotnet",
-                Arguments = ["run", "--project", "path/to/interceptor-server"],
-            }),
-        },
-    ],
+    InterceptorClients = [securityGuard],
+    Policy = policy,
+});
+
+var result = await client.CallToolAsync("fetch_url", new Dictionary<string, object?> { ["url"] = url });
+```
+
+`CallToolAsync`, `ListToolsAsync`, `ListPromptsAsync`, `GetPromptAsync`, `ListResourcesAsync`,
+`ReadResourceAsync` and `SubscribeToResourceAsync` run interceptors in both phases. Mutations to
+list results apply.
+
+### Directly
+
+```csharp
+var interceptors = await securityGuard.ListAllInterceptorsAsync();
+var verdict = await securityGuard.InvokeInterceptorAsync(new InvokeInterceptorRequestParams { ... });
+
+// Run every applicable interceptor across several servers, per the SEP execution model:
+var orchestrator = await InterceptorOrchestrator.DiscoverAsync([guardA, guardB], policy);
+var result = await orchestrator.ExecuteAsync(new InterceptorExecutionRequest
+{
+    Event = InterceptionEvents.ToolsCall,
+    Phase = InterceptorPhase.Request,
+    Payload = payload,
 });
 ```
 
-This follows the same transport-driven pattern as `McpClient.CreateAsync(...)`: you supply `IClientTransport` instances such as `StdioClientTransport`, `HttpClientTransport`, or `StreamClientTransport`, along with optional `McpClientOptions` and logging via `McpInterceptorServerConnectionOptions`.
+## Execution model
 
-For dynamic transparent middleware scenarios, the gateway can also resolve external interceptor connections per request:
+For each event and phase, the invoker applies the interceptors whose hooks match, from every
+interceptor server, in one global order.
+
+| | Sending a message | Receiving a message |
+| --- | --- | --- |
+| Order | mutate (sequential) → validate (parallel) → send | validate (parallel) → mutate (sequential) → process |
+| Why | validators see the final bytes that cross the boundary | validators are a barrier before anything acts on untrusted data |
+
+- **Direction is not phase.** A client *sends* requests and *receives* responses; a server does the
+  opposite. Set `InvokerRole` on a gateway (`Client` by default: it protects an agent from the server
+  it calls), or `Direction` on an `InterceptorExecutionRequest`.
+- **Mutators** run by resolved priority (lower first, then name). They are atomic: if one fails
+  closed, none apply.
+- **Validators** all complete before the verdict, and every blocking error is reported. A result
+  blocks when `valid` is false and its severity is `error`. Top-level `severity` wins, then the
+  most severe message; an invalid result with no severity blocks (fail-secure). This tracks the
+  open question in experimental-ext-interceptors#51; see `ValidationVerdict`.
+- **Failures** (errors, unusable results, per-interceptor timeouts) block unless the interceptor is
+  fail-open. Audit-mode interceptors never block: validators report *would block*, and mutators are
+  computed but not applied.
+- An **aggregate timeout** (`TimeoutMs`) cancels the remaining invocations and fails the operation.
+- **Sinks** (the proposed third type in experimental-ext-interceptors#28) are dispatched in the
+  background on a snapshot of the payload. The operation never waits for them.
+
+## Policy: capability vs. policy
+
+An interceptor server declares what each interceptor *can* do (type, hooks, `configSchema`) and its
+defaults. The invoker decides how it *runs*, with `InterceptorPolicy`:
 
 ```csharp
-await using var gateway = new McpInterceptorGateway(new McpInterceptorGatewayOptions
+var policy = new InterceptorPolicy
 {
-    BackendClient = backend,
-    InterceptorClients = [staticSecurityLayer], // optional: resolver-only mode is also supported
-    InterceptorServerConnectionResolver = (context, @event, ct) =>
+    Include = new HashSet<string> { "exfiltration-guard", "pii-redactor" }, // fail closed if missing
+    DefaultTimeoutMs = 5_000,
+    Overrides =
     {
-        if (@event == InterceptionEvents.ToolsCall && context.User?.Identity?.Name == "alice")
-        {
-            return ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>(
-            [
-                new McpInterceptorServerConnectionOptions
-                {
-                    ConnectionId = "alice-logging",
-                    Transport = new StdioClientTransport(new StdioClientTransportOptions
-                    {
-                        Command = "dotnet",
-                        Arguments = ["run", "--project", "path/to/alice-interceptor-server"],
-                    }),
-                },
-            ]);
-        }
-
-        return ValueTask.FromResult<IReadOnlyList<McpInterceptorServerConnectionOptions>>([]);
+        // SEP-2624 InterceptorOverrides: mode, failOpen, priorityHint, timeoutMs, hooks (narrow only)
+        ["exfiltration-guard"] = new() { Mode = InterceptorMode.Audit },
     },
-});
-```
-
-The resolver receives the SDK's existing `MessageContext` plus the SEP event name. This lets you base resolution on existing request data such as `context.User`, `context.Items`, scoped services, or transport-specific information without introducing a separate gateway-specific identity abstraction.
-
-In this first version, dynamic resolution is supported for the transparent proxy path only. SEP passthrough (`ExposeInterceptorProtocol = true`) still requires statically configured interceptor clients.
-
-**With DI / builder pattern:**
-
-```csharp
-builder.Services.AddMcpServer()
-    .WithInterceptorGateway(new McpInterceptorGatewayOptions
+    Config =
     {
-        BackendClient = backend,
-        InterceptorClients = [interceptors],
-    });
+        ["exfiltration-guard"] = JsonNode.Parse("""{"allowedDomains":["acme.example"]}""")!,
+    },
+};
 ```
 
-The builder extension handles notification forwarding automatically, registering once per session for multi-connection transports (HTTP) and once for single-connection transports (stdio).
+Every run returns an `InterceptorExecutionResult` whose `Invocations` record, for each interceptor,
+the resolved `Mode` and `FailOpen`, whether each came from an override, the declaration or the SEP
+default (SEP Security Best Practice 3), and its `Effect` (`Blocked`, `Modified`, `WouldBlock`, …).
+Gateways and wrappers pass each result to `OnInterceptorsExecuted`; `ILoggerFactory` logging records
+the same.
 
-You can also configure the gateway from DI using a service-provider-based overload:
+## When interceptors reject an operation
 
-```csharp
-builder.Services.AddMcpServer()
-    .WithInterceptorGateway(sp => new McpInterceptorGatewayOptions
-    {
-        BackendClient = sp.GetRequiredService<BackendMcpClientHolder>().Client,
-        InterceptorClients = [sp.GetRequiredService<InterceptorMcpClientHolder>().Client],
-    });
+- **Agent-side wrapper:** throws `McpInterceptorValidationException` (all `ValidationErrors`) or
+  `McpInterceptorException` (mutation failure, timeout). Both carry the `ExecutionResult`.
+- **Gateway:** a rejected `tools/call` becomes a tool result with `isError: true`, a readable reason
+  for the model, and the SEP's details under `_meta["io.modelcontextprotocol/interceptors"]`.
+  Clients pass tool errors to the model, so the agent can explain the block. Set
+  `ToolCallRejection = ToolCallRejectionMode.ProtocolError` for the SEP's JSON-RPC error instead
+  (`-32602 Interceptor validation failed` with `data.validationErrors`; `-32603` for mutation
+  failures, `-32000` for timeouts). Other methods always return the JSON-RPC error.
+
+## Interoperability notes
+
+- Result `type` need not be the first JSON property.
+- `timeoutMs` and `durationMs` accept fractional numbers and are written as integers (#49).
+- A result without `type` is read as the type declared in `interceptors/list` (#50).
+- The gateway strips per-request protocol metadata (`protocolVersion`, `clientInfo`,
+  `clientCapabilities`, `logLevel`) before forwarding: it describes the client's hop, not the
+  gateway's.
+- `interceptors/list` results are cached per interceptor server (`DiscoveryCacheDuration`, one
+  minute by default; `RefreshInterceptors()` clears the cache), so proxying an operation costs one
+  `interceptor/invoke` per applicable interceptor.
+
+## Build and test
+
+```bash
+dotnet build
+dotnet test
 ```
 
-Internally, the builder path wires notification forwarding once per logical connection. Current transports may expose a session identifier, but that is treated as an implementation detail rather than a public architectural concept.
-
-The builder-based gateway configuration currently expects already-connected interceptor clients. External interceptor server connections that need async transport setup should use `McpInterceptorGateway.CreateAsync(...)`.
-
-If you want to see how these primitives can be composed into a config-driven host without the library defining a config format, see `samples/ConfigDrivenGatewaySample`. The sample shows transport-agnostic outbound connectivity for backend/interceptor servers (including Streamable HTTP). Its JSON schema is sample-only.
-
-If you want to host the gateway itself over Streamable HTTP instead of stdio, compose `McpInterceptorGateway` with the core SDK's ASP.NET transport support (`AddMcpServer().WithHttpTransport()` and `MapMcp()`).
-
-To expose the SEP interceptor protocol through the gateway as an advanced mode, set:
-
-```csharp
-ExposeInterceptorProtocol = true
-```
-
-**Claude Desktop integration** — point it at a proxy binary:
-
-```json
-{
-  "mcpServers": {
-    "my-server-with-interceptors": {
-      "command": "dotnet",
-      "args": ["run", "--project", "path/to/TransparentProxySample"]
-    }
-  }
-}
-```
-
-## Interceptor Types
-
-| Type | Execution | Purpose |
-|------|-----------|---------|
-| **Validation** | Parallel | Validates payloads. Error severity aborts the chain. |
-| **Mutation** | Sequential (by priority) | Transforms payloads. Output chains to next mutation. |
-| **Sink** | Parallel (fire-and-forget) | Non-blocking, non-mutating reactions to context (logging, telemetry, avatar/voice triggers). Failures are swallowed. |
-
-## Chain Execution Order
-
-**Request phase (sending):** Mutations → Validations → Sinks → send
-**Response phase (receiving):** Validations → Sinks → Mutations → process
-
-## Parameter Binding
-
-Interceptor methods support automatic parameter binding:
-
-| Parameter Type | Bound From |
-|---------------|------------|
-| `JsonNode payload` | `InvokeInterceptorRequestParams.Payload` |
-| `JsonNode config` | `InvokeInterceptorRequestParams.Config` |
-| `string event` | `InvokeInterceptorRequestParams.Event` |
-| `InterceptorPhase phase` | `InvokeInterceptorRequestParams.Phase` |
-| `InvokeInterceptorContext` | `InvokeInterceptorRequestParams.Context` |
-| `CancellationToken` | Framework cancellation token |
-| `McpServer` | Current server instance |
-| `IServiceProvider` | Request-scoped DI container |
-
-Methods can return `InterceptorResult` (or any subclass), `bool` (wrapped as `ValidationInterceptorResult`), or `Task<T>`/`ValueTask<T>` variants of these.
+Architecture notes are in [`docs/ARCHITECTURE_PHASES.md`](docs/ARCHITECTURE_PHASES.md).

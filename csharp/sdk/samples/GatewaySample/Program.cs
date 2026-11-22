@@ -6,7 +6,7 @@ using ModelContextProtocol.Interceptors.Protocol;
 // ──────────────────────────────────────────────────────────────────────
 // Gateway Sample
 //
-// Demonstrates a full gateway chain:
+// Demonstrates an agent-side gateway:
 //   Client ──▶ Interceptor Server (PII validator + email redactor) ──▶ Everything Server
 //
 // The interceptor server hosts three interceptors:
