@@ -1,0 +1,21 @@
+{
+  // Puts the Security Guard's pii-redactor in front of the reference filesystem server
+  // (TypeScript, from npm). Card numbers and tax IDs in files never reach the model.
+  //
+  //   FS_ROOT=/path/to/a/folder dotnet bin/Debug/net9.0/InterceptorProxy.dll filesystem.json --check
+  "backend": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "${FS_ROOT}"]
+  },
+
+  "interceptorServers": {
+    "security-guard": {
+      "command": "dotnet",
+      "args": ["../WhyInterceptorsDemo/bin/Debug/net9.0/WhyInterceptorsDemo.dll", "--guard-server"]
+    }
+  },
+
+  "policy": {
+    "include": ["pii-redactor"]
+  }
+}

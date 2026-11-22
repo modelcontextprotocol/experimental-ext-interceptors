@@ -1,0 +1,41 @@
+{
+  // Wraps the WhyInterceptorsDemo's "Acme Workspace" server with its "Security Guard"
+  // interceptor server. Build first: dotnet build (from csharp/sdk).
+  // Relative paths and "cwd" resolve against this file's directory.
+  "name": "acme-workspace",
+
+  "backend": {
+    "command": "dotnet",
+    "args": ["../WhyInterceptorsDemo/bin/Debug/net9.0/WhyInterceptorsDemo.dll", "--workspace-server"]
+  },
+
+  "interceptorServers": {
+    "security-guard": {
+      "command": "dotnet",
+      "args": [
+        "../WhyInterceptorsDemo/bin/Debug/net9.0/WhyInterceptorsDemo.dll",
+        "--guard-server",
+        "--audit-log", "guard-audit.jsonl"
+      ]
+    }
+  },
+
+  // "client": protect the agent from the server it calls (mutate, then validate what is sent;
+  // validate, then mutate what comes back). Use "server" to protect a server you own.
+  "invokerRole": "client",
+
+  "auditLog": "proxy-audit.jsonl",
+
+  "policy": {
+    // Fail closed if the guard is missing rather than silently running without it.
+    "include": ["exfiltration-guard", "pii-redactor", "audit-trail"],
+    "defaultTimeoutMs": 5000,
+    "interceptors": {
+      "exfiltration-guard": {
+        // Try "audit" to see what it would block without blocking anything.
+        "mode": "active",
+        "config": { "allowedDomains": ["acme.example", "contoso.example"] }
+      }
+    }
+  }
+}

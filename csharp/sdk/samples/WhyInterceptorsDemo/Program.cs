@@ -29,19 +29,19 @@ using WhyInterceptorsDemo;
 switch (args)
 {
     case ["--workspace-server", ..]:
-        await RunStdioServerAsync(builder => builder.WithTools<AcmeWorkspaceTools>());
+        await RunStdioServerAsync("acme-workspace", builder => builder.WithTools<AcmeWorkspaceTools>());
         return 0;
 
     case ["--guard-server", .. var rest]:
-        SecurityGuardInterceptors.AuditLogPath = OptionValue(rest, "--audit-log");
-        await RunStdioServerAsync(builder => builder.WithInterceptors<SecurityGuardInterceptors>());
+        SecurityGuardInterceptors.AuditLogPath = OptionValue(rest, "--audit-log") is { } path ? Path.GetFullPath(path) : null;
+        await RunStdioServerAsync("security-guard", builder => builder.WithInterceptors<SecurityGuardInterceptors>());
         return 0;
 
     default:
         return await Story.RunAsync(args);
 }
 
-static async Task RunStdioServerAsync(Action<IMcpServerBuilder> configure)
+static async Task RunStdioServerAsync(string name, Action<IMcpServerBuilder> configure)
 {
     var builder = Host.CreateApplicationBuilder();
 
@@ -50,7 +50,9 @@ static async Task RunStdioServerAsync(Action<IMcpServerBuilder> configure)
     builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
     builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
-    var mcp = builder.Services.AddMcpServer().WithStdioServerTransport();
+    var mcp = builder.Services
+        .AddMcpServer(options => options.ServerInfo = new() { Name = name, Version = "1.0.0" })
+        .WithStdioServerTransport();
     configure(mcp);
     await builder.Build().RunAsync();
 }
