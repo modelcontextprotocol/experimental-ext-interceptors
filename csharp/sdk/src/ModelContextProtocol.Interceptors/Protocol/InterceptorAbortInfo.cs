@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Interceptors.Protocol;
 
 /// <summary>
-/// Information about which interceptor caused a chain execution to abort.
+/// Which interceptor rejected an operation, and why.
 /// </summary>
 public sealed class InterceptorAbortInfo
 {

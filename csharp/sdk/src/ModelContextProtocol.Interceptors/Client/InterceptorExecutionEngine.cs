@@ -63,22 +63,9 @@ internal static class InterceptorExecutionEngine
         ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
-        ArgumentNullException.ThrowIfNull(request);
+        ValidateRequest(request);
 
-        if (request.TimeoutMs is <= 0)
-        {
-            throw new ArgumentException($"The aggregate timeout must be a positive number of milliseconds, not {request.TimeoutMs}.", nameof(request));
-        }
-
-        if (request.Phase is not (InterceptorPhase.Request or InterceptorPhase.Response))
-        {
-            throw new ArgumentException(
-                $"Execution phase must be '{nameof(InterceptorPhase.Request)}' or '{nameof(InterceptorPhase.Response)}'; " +
-                $"'{request.Phase}' is an attribute-only convenience value that is invalid at execution time.",
-                nameof(request));
-        }
-
-        var direction = request.Direction ?? InterceptorInvokerRole.Client.GetDirection(request.Phase);
+        var direction = DirectionOf(request);
         var state = new ExecutionState(request, direction, logger ?? NullLogger.Instance, cancellationToken);
         var stopwatch = Stopwatch.StartNew();
 
@@ -130,6 +117,39 @@ internal static class InterceptorExecutionEngine
         stopwatch.Stop();
         return state.ToResult(stopwatch.ElapsedMilliseconds);
     }
+
+    /// <summary>Throws if <paramref name="request"/> cannot be executed.</summary>
+    internal static void ValidateRequest(InterceptorExecutionRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.TimeoutMs is <= 0)
+        {
+            throw new ArgumentException($"The aggregate timeout must be a positive number of milliseconds, not {request.TimeoutMs}.", nameof(request));
+        }
+
+        if (request.Phase is not (InterceptorPhase.Request or InterceptorPhase.Response))
+        {
+            throw new ArgumentException(
+                $"Execution phase must be '{nameof(InterceptorPhase.Request)}' or '{nameof(InterceptorPhase.Response)}'; " +
+                $"'{request.Phase}' is an attribute-only convenience value that is invalid at execution time.",
+                nameof(request));
+        }
+    }
+
+    /// <summary>
+    /// The result for a run whose aggregate timeout elapsed before any interceptor was invoked, for example
+    /// during discovery.
+    /// </summary>
+    internal static InterceptorExecutionResult TimedOut(InterceptorExecutionRequest request, string reason, long elapsedMs)
+    {
+        var state = new ExecutionState(request, DirectionOf(request), NullLogger.Instance, CancellationToken.None);
+        state.Fail(InterceptorExecutionStatus.Timeout, new InterceptorAbortInfo { Interceptor = "*", Reason = reason, Type = "timeout" });
+        return state.ToResult(elapsedMs);
+    }
+
+    private static InterceptorDirection DirectionOf(InterceptorExecutionRequest request) =>
+        request.Direction ?? InterceptorInvokerRole.Client.GetDirection(request.Phase);
 
     /// <returns><see langword="true"/> if execution should continue.</returns>
     private static async ValueTask<bool> RunMutationsAsync(
@@ -488,6 +508,7 @@ internal static class InterceptorExecutionEngine
     private sealed class ExecutionState(InterceptorExecutionRequest request, InterceptorDirection direction, ILogger logger, CancellationToken callerToken)
     {
         public InterceptorExecutionRequest Request { get; } = request;
+        public InterceptorDirection Direction { get; } = direction;
         public ILogger Logger { get; } = logger;
         public CancellationToken CallerToken { get; } = callerToken;
         public List<Task> SinkTasks { get; } = [];
@@ -540,7 +561,7 @@ internal static class InterceptorExecutionEngine
             Status = _status,
             Event = Request.Event,
             Phase = Request.Phase,
-            Direction = direction,
+            Direction = Direction,
             Results = Results,
             Invocations = Invocations,
             OriginalPayload = Request.Payload,

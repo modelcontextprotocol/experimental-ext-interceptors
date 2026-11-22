@@ -29,7 +29,12 @@ public sealed class InterceptorExecutionResult
     /// Gets or sets the results returned by validators and mutators, including those running in
     /// audit mode. Sinks run in the background and are not included.
     /// </summary>
+    /// <remarks>
+    /// Serialized without mutation payloads, which can hold pre-redaction content. The objects in this
+    /// list keep them.
+    /// </remarks>
     [JsonPropertyName("results")]
+    [JsonConverter(typeof(PayloadFreeInterceptorResultListConverter))]
     public IList<InterceptorResult> Results { get; set; } = [];
 
     /// <summary>Gets or sets one record per applied interceptor, in execution order.</summary>
@@ -42,6 +47,8 @@ public sealed class InterceptorExecutionResult
     /// </summary>
     /// <remarks>
     /// Not serialized: an audit log written from this result must not capture pre-redaction content.
+    /// For the same reason, serialized <see cref="Results"/> and <see cref="InterceptorInvocation.Result"/>
+    /// omit mutation payloads.
     /// </remarks>
     [JsonIgnore]
     public JsonNode? OriginalPayload { get; set; }

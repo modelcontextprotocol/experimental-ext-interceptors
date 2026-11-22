@@ -130,16 +130,58 @@ internal sealed partial class ProxyConfig
         return policy;
     }
 
-    /// <summary>Reads a config file, expanding <c>${VAR}</c> from the environment.</summary>
+    /// <summary>Reads a config file, expanding <c>${VAR}</c> in string values from the environment.</summary>
     public static ProxyConfig Load(string path)
     {
-        var text = EnvironmentReference().Replace(File.ReadAllText(path), match =>
-            Environment.GetEnvironmentVariable(match.Groups[1].Value)
-            ?? throw new InvalidOperationException($"Environment variable '{match.Groups[1].Value}' referenced in {path} is not set."));
+        var root = JsonNode.Parse(
+            File.ReadAllText(path),
+            documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true })
+            ?? throw new InvalidOperationException($"{path} is empty.");
 
-        return JsonSerializer.Deserialize<ProxyConfig>(text, SerializerOptions)
+        // Expand after parsing, so a value such as C:\temp or one containing a quote arrives unchanged
+        // rather than being read as JSON escapes.
+        ExpandEnvironment(root, path);
+
+        return root.Deserialize<ProxyConfig>(SerializerOptions)
             ?? throw new InvalidOperationException($"{path} is empty.");
     }
+
+    private static void ExpandEnvironment(JsonNode node, string path)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var key in obj.Select(p => p.Key).ToList())
+                {
+                    if (obj[key] is JsonValue value && value.GetValueKind() == JsonValueKind.String)
+                    {
+                        obj[key] = Expand(value.GetValue<string>(), path);
+                    }
+                    else if (obj[key] is { } child)
+                    {
+                        ExpandEnvironment(child, path);
+                    }
+                }
+                break;
+            case JsonArray array:
+                for (var i = 0; i < array.Count; i++)
+                {
+                    if (array[i] is JsonValue value && value.GetValueKind() == JsonValueKind.String)
+                    {
+                        array[i] = Expand(value.GetValue<string>(), path);
+                    }
+                    else if (array[i] is { } child)
+                    {
+                        ExpandEnvironment(child, path);
+                    }
+                }
+                break;
+        }
+    }
+
+    private static string Expand(string text, string path) => EnvironmentReference().Replace(text, match =>
+        Environment.GetEnvironmentVariable(match.Groups[1].Value)
+        ?? throw new InvalidOperationException($"Environment variable '{match.Groups[1].Value}' referenced in {path} is not set."));
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {

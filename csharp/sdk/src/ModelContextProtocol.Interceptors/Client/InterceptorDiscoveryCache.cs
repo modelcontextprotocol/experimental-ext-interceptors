@@ -11,16 +11,20 @@ namespace ModelContextProtocol.Interceptors.Client;
 /// <remarks>
 /// The SEP has no <c>list_changed</c> notification for interceptors, so entries simply expire.
 /// Clients are held weakly: a per-request interceptor client that is disposed and collected drops out.
+/// Concurrent callers on a cold or expired entry share one listing.
 /// </remarks>
 internal sealed class InterceptorDiscoveryCache
 {
     private readonly ConditionalWeakTable<McpClient, Entry> _entries = new();
+    private readonly Lock _gate = new();
     private readonly TimeSpan _duration;
+    private readonly TimeSpan _discoveryTimeout;
     private readonly TimeProvider _timeProvider;
 
-    internal InterceptorDiscoveryCache(TimeSpan? duration, TimeProvider? timeProvider = null)
+    internal InterceptorDiscoveryCache(TimeSpan? duration, TimeProvider? timeProvider = null, TimeSpan? discoveryTimeout = null)
     {
         _duration = duration ?? DefaultDuration;
+        _discoveryTimeout = discoveryTimeout ?? DefaultDiscoveryTimeout;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -28,45 +32,79 @@ internal sealed class InterceptorDiscoveryCache
     internal static TimeSpan DefaultDuration { get; } = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// Upper bound for one shared discovery. It is not tied to any caller's token, so without a bound a
-    /// stalled <c>interceptors/list</c> would stay pending forever.
+    /// Upper bound for one discovery. A shared discovery is not tied to any caller's token, and a caller may
+    /// set no deadline at all, so without a bound a stalled <c>interceptors/list</c> would stay pending forever.
     /// </summary>
-    internal static TimeSpan DiscoveryTimeout { get; } = TimeSpan.FromSeconds(30);
+    internal static TimeSpan DefaultDiscoveryTimeout { get; } = TimeSpan.FromSeconds(30);
 
     internal async ValueTask<IList<Interceptor>> GetAsync(McpClient client, CancellationToken cancellationToken)
     {
         if (_duration <= TimeSpan.Zero)
         {
-            return await client.ListAllInterceptorsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            // Caching is off, but the discovery bound still applies.
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(_discoveryTimeout);
+            return await client.ListAllInterceptorsAsync(cancellationToken: cts.Token).ConfigureAwait(false);
         }
 
-        var now = _timeProvider.GetUtcNow();
-        if (!_entries.TryGetValue(client, out var entry) || entry.ExpiresAt <= now || entry.Discovery.IsFaulted || entry.Discovery.IsCanceled)
+        Entry entry;
+        lock (_gate)
         {
-            // Not tied to the caller's token: concurrent callers share the discovery, and one caller
-            // cancelling must not fail the others.
-            entry = new Entry(DiscoverAsync(client), now + _duration);
-            _entries.AddOrUpdate(client, entry);
+            var now = _timeProvider.GetUtcNow();
+            if (!_entries.TryGetValue(client, out entry!) || !entry.IsUsable(now))
+            {
+                entry = new Entry(client, now + _duration, _discoveryTimeout);
+                _entries.AddOrUpdate(client, entry);
+            }
         }
 
+        // The listing starts outside the lock, exactly once per entry. It is not tied to the caller's token:
+        // concurrent callers share it, and one caller cancelling must not fail the others.
+        var discovery = entry.Discovery;
         try
         {
-            return await entry.Discovery.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return await discovery.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch when (entry.Discovery.IsFaulted)
+        catch when (discovery.IsFaulted || discovery.IsCanceled)
         {
-            _entries.Remove(client);
+            Remove(client, entry);
             throw;
         }
     }
 
-    internal void Invalidate() => _entries.Clear();
-
-    private static async Task<IList<Interceptor>> DiscoverAsync(McpClient client)
+    internal void Invalidate()
     {
-        using var cts = new CancellationTokenSource(DiscoveryTimeout);
-        return await client.ListAllInterceptorsAsync(cancellationToken: cts.Token).ConfigureAwait(false);
+        lock (_gate)
+        {
+            _entries.Clear();
+        }
     }
 
-    private sealed record Entry(Task<IList<Interceptor>> Discovery, DateTimeOffset ExpiresAt);
+    /// <summary>Removes <paramref name="entry"/> unless a newer entry has already replaced it.</summary>
+    private void Remove(McpClient client, Entry entry)
+    {
+        lock (_gate)
+        {
+            if (_entries.TryGetValue(client, out var current) && ReferenceEquals(current, entry))
+            {
+                _entries.Remove(client);
+            }
+        }
+    }
+
+    private sealed class Entry(McpClient client, DateTimeOffset expiresAt, TimeSpan timeout)
+    {
+        private readonly Lazy<Task<IList<Interceptor>>> _discovery = new(() => DiscoverAsync(client, timeout));
+
+        public Task<IList<Interceptor>> Discovery => _discovery.Value;
+
+        public bool IsUsable(DateTimeOffset now) =>
+            expiresAt > now && !(_discovery.IsValueCreated && (_discovery.Value.IsFaulted || _discovery.Value.IsCanceled));
+
+        private static async Task<IList<Interceptor>> DiscoverAsync(McpClient client, TimeSpan timeout)
+        {
+            using var cts = new CancellationTokenSource(timeout);
+            return await client.ListAllInterceptorsAsync(cancellationToken: cts.Token).ConfigureAwait(false);
+        }
+    }
 }

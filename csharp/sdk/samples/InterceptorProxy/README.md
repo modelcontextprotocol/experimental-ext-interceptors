@@ -108,8 +108,8 @@ Set `"toolCallRejection": "protocolError"` to get the SEP's JSON-RPC error
 
 ## Configuration
 
-The format belongs to this sample, not to the library. JSON with comments; `${VAR}` expands
-environment variables; relative paths and `cwd` resolve against the config file's directory.
+The format belongs to this sample, not to the library. JSON with comments; `${VAR}` in a string value
+expands to an environment variable; relative paths and `cwd` resolve against the config file's directory.
 
 ```jsonc
 {

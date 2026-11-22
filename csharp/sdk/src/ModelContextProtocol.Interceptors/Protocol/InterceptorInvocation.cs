@@ -59,7 +59,9 @@ public sealed class InterceptorInvocation
     public InterceptorEffect Effect { get; set; }
 
     /// <summary>Gets the interceptor's result, when the invocation completed.</summary>
+    /// <remarks>Serialized without a mutation payload, which can hold pre-redaction content.</remarks>
     [JsonPropertyName("result")]
+    [JsonConverter(typeof(PayloadFreeInterceptorResultConverter))]
     public InterceptorResult? Result { get; set; }
 
     /// <summary>Gets the failure reason, when the invocation failed or timed out.</summary>

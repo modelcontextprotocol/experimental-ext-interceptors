@@ -38,7 +38,7 @@ public sealed partial class SecurityGuardInterceptors
 
         foreach (var (path, url) in UrlsIn(payload["arguments"], "$.arguments"))
         {
-            if (allowed.Any(domain => url.Host == domain || url.Host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase)))
+            if (allowed.Any(domain => url.Host.Equals(domain, StringComparison.OrdinalIgnoreCase) || url.Host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
@@ -183,7 +183,8 @@ public sealed partial class SecurityGuardInterceptors
         return node;
     }
 
-    [GeneratedRegex(@"https?://[^\s""'<>]+")]
+    // Schemes are case-insensitive: HTTPS://... must not slip past the allowlist.
+    [GeneratedRegex(@"https?://[^\s""'<>]+", RegexOptions.IgnoreCase)]
     private static partial Regex UrlPattern();
 
     [GeneratedRegex(@"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")]

@@ -260,6 +260,7 @@ public class GatewayBehaviorTests
     [Theory]
     [InlineData("""{"name":"x","event":"tools/call","phase":"request","payload":{},"timeoutMs":5000.0}""", 5000)]
     [InlineData("""{"name":"x","event":"tools/call","phase":"request","payload":{},"timeoutMs":1499.5}""", 1500)]
+    [InlineData("""{"name":"x","event":"tools/call","phase":"request","payload":{},"timeoutMs":0.1}""", 1)]
     public void InvokeParams_AcceptFractionalTimeout(string json, int expected)
     {
         var parsed = JsonSerializer.Deserialize<InvokeInterceptorRequestParams>(json, InterceptorJsonUtilities.DefaultOptions)!;
@@ -399,7 +400,142 @@ public class GatewayBehaviorTests
         Assert.Contains("twice", ex.Message);
     }
 
+    [Fact]
+    public async Task DiscoveryCache_ConcurrentCallersShareOneListing()
+    {
+        var listCalls = 0;
+        var (server, client) = await InterceptorServer([ExfiltrationGuard()], async ct =>
+        {
+            Interlocked.Increment(ref listCalls);
+            await Task.Delay(200, ct);
+        });
+        await using var _ = server;
+        await using var __ = client;
+        var cache = new InterceptorDiscoveryCache(TimeSpan.FromMinutes(1));
+
+        using var start = new ManualResetEventSlim();
+        var callers = Enumerable.Range(0, 8).Select(_ => Task.Run(async () =>
+        {
+            start.Wait();
+            return await cache.GetAsync(client, CancellationToken.None);
+        })).ToList();
+        start.Set();
+        var listed = await Task.WhenAll(callers);
+
+        Assert.Equal(1, Volatile.Read(ref listCalls));
+        Assert.All(listed, interceptors => Assert.Equal("exfiltration-guard", Assert.Single(interceptors).Name));
+    }
+
+    [Fact]
+    public async Task DiscoveryCache_WithCachingOff_StillBoundsDiscovery()
+    {
+        var (server, client) = await InterceptorServer([], ct => Task.Delay(Timeout.Infinite, ct));
+        await using var _ = server;
+        await using var __ = client;
+        var cache = new InterceptorDiscoveryCache(TimeSpan.Zero, discoveryTimeout: TimeSpan.FromMilliseconds(200));
+
+        var discovery = cache.GetAsync(client, CancellationToken.None).AsTask();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => discovery.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task OrchestratorExecute_AggregateTimeoutCoversDiscovery()
+    {
+        // Discovery and the validator each take 400 ms: within a 600 ms budget separately, not together.
+        var slowValidator = Interceptor("slow-check", InterceptorType.Validation, [InterceptionEvents.ToolsCall], async (_, ct) =>
+        {
+            await Task.Delay(400, ct);
+            return ValidationInterceptorResult.Success();
+        }, phase: InterceptorPhase.Request);
+        var (server, client) = await InterceptorServer([slowValidator], ct => Task.Delay(400, ct));
+        await using var _ = server;
+        await using var __ = client;
+
+        var result = await InterceptorOrchestrator.ExecuteAsync([client], new InterceptorExecutionRequest
+        {
+            Event = InterceptionEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = new JsonObject { ["name"] = "echo" },
+            TimeoutMs = 600,
+        });
+
+        Assert.Equal(InterceptorExecutionStatus.Timeout, result.Status);
+    }
+
+    [Fact]
+    public async Task OrchestratorExecute_StalledDiscovery_ReturnsTimeout()
+    {
+        var (server, client) = await InterceptorServer([], ct => Task.Delay(Timeout.Infinite, ct));
+        await using var _ = server;
+        await using var __ = client;
+
+        var result = await InterceptorOrchestrator.ExecuteAsync([client], new InterceptorExecutionRequest
+        {
+            Event = InterceptionEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = new JsonObject(),
+            TimeoutMs = 300,
+        }).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(InterceptorExecutionStatus.Timeout, result.Status);
+        Assert.Contains("discovery", result.AbortedAt!.Reason);
+        Assert.Null(result.FinalPayload);
+    }
+
+    [Fact]
+    public void SerializedExecutionResult_OmitsMutationPayloads()
+    {
+        var normalized = new MutationInterceptorResult
+        {
+            InterceptorName = "normalizer",
+            Phase = InterceptorPhase.Response,
+            Modified = true,
+            Payload = JsonNode.Parse("""{"content":"card 4111 1111 1111 1111"}"""),
+        };
+        var execution = new InterceptorExecutionResult
+        {
+            Status = InterceptorExecutionStatus.MutationFailed,
+            Event = InterceptionEvents.ToolsCall,
+            Phase = InterceptorPhase.Response,
+            Results = [normalized],
+            Invocations =
+            [
+                new InterceptorInvocation { Interceptor = "normalizer", Type = InterceptorType.Mutation, Result = normalized },
+                new InterceptorInvocation { Interceptor = "pii-redactor", Type = InterceptorType.Mutation, Outcome = InterceptorInvocationOutcome.Failed },
+            ],
+        };
+
+        var json = JsonSerializer.Serialize(execution, InterceptorJsonUtilities.DefaultOptions);
+
+        Assert.DoesNotContain("4111", json);
+        Assert.DoesNotContain("\"payload\"", json);
+        var read = JsonSerializer.Deserialize<InterceptorExecutionResult>(json, InterceptorJsonUtilities.DefaultOptions)!;
+        Assert.True(Assert.IsType<MutationInterceptorResult>(read.Results[0]).Modified);
+        Assert.True(Assert.IsType<MutationInterceptorResult>(read.Invocations[0].Result).Modified);
+
+        // In memory, and on the interceptor/invoke wire, the payload is still there.
+        Assert.NotNull(((MutationInterceptorResult)execution.Results[0]).Payload);
+        Assert.Contains("4111", JsonSerializer.Serialize<InterceptorResult>(normalized, InterceptorJsonUtilities.DefaultOptions));
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>An interceptor server whose <c>interceptors/list</c> runs <paramref name="beforeList"/> first.</summary>
+    private static Task<(McpServer, McpClient)> InterceptorServer(McpServerInterceptor[] interceptors, Func<CancellationToken, Task> beforeList) =>
+        McpInterceptorGatewayTests.GatewayTestFixture.CreateServerClientPairForTesting("test-interceptors", options =>
+        {
+            options.Filters.Message.IncomingFilters.Add(next => async (context, ct) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: InterceptorRequestMethods.InterceptorsList })
+                {
+                    await beforeList(ct);
+                }
+
+                await next(context, ct);
+            });
+            new InterceptorServerOptionsSetup(interceptors).Configure(options);
+        });
 
     private static McpServerInterceptor ExfiltrationGuard() =>
         Interceptor("exfiltration-guard", InterceptorType.Validation, [InterceptionEvents.ToolsCall], (req, _) =>
