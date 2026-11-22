@@ -37,6 +37,16 @@ public sealed class InterceptorExecutionResult
     public IList<InterceptorInvocation> Invocations { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets the payload as it was before any interceptor ran, for observers that want to show
+    /// what mutations changed.
+    /// </summary>
+    /// <remarks>
+    /// Not serialized: an audit log written from this result must not capture pre-redaction content.
+    /// </remarks>
+    [JsonIgnore]
+    public JsonNode? OriginalPayload { get; set; }
+
+    /// <summary>
     /// Gets or sets the payload after all applied mutations. When the operation was rejected, this is
     /// the original payload: mutations are atomic, so either all apply or none do.
     /// </summary>

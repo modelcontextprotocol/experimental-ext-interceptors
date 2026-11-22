@@ -166,9 +166,50 @@ internal sealed class GatewayProxyConfigurator
         return Deserialize<TResult>(finalResult, method, "interceptor mutations");
     }
 
-    private async ValueTask<JsonNode> SendToBackendAsync(string method, JsonNode payload, CancellationToken ct) =>
-        await _backend.SendRequestAsync<JsonNode, JsonNode>(method, payload, _jsonOptions, cancellationToken: ct).ConfigureAwait(false)
-        ?? new JsonObject();
+    private async ValueTask<JsonNode> SendToBackendAsync(string method, JsonNode payload, CancellationToken ct)
+    {
+        var outgoing = WithoutHopByHopMeta(payload);
+        return await _backend.SendRequestAsync<JsonNode, JsonNode>(method, outgoing, _jsonOptions, cancellationToken: ct).ConfigureAwait(false)
+            ?? new JsonObject();
+    }
+
+    /// <summary>
+    /// Per-request protocol metadata (protocol version, client info, client capabilities, log level)
+    /// describes the downstream client's session with the gateway, not the gateway's session with the
+    /// backend. Strip it before forwarding; the backend client injects its own. The SDK would overwrite
+    /// version and client info anyway, but it merges capabilities, so a downstream client's
+    /// capability opt-ins would otherwise reach the backend as if the gateway supported them.
+    /// </summary>
+    internal static JsonNode WithoutHopByHopMeta(JsonNode payload)
+    {
+        if (payload is not JsonObject obj || obj["_meta"] is not JsonObject meta ||
+            !HopByHopMetaKeys.Any(meta.ContainsKey))
+        {
+            return payload;
+        }
+
+        var copy = (JsonObject)obj.DeepClone();
+        var copiedMeta = (JsonObject)copy["_meta"]!;
+        foreach (var key in HopByHopMetaKeys)
+        {
+            copiedMeta.Remove(key);
+        }
+
+        if (copiedMeta.Count == 0)
+        {
+            copy.Remove("_meta");
+        }
+
+        return copy;
+    }
+
+    private static readonly string[] HopByHopMetaKeys =
+    [
+        MetaKeys.ProtocolVersion,
+        MetaKeys.ClientInfo,
+        MetaKeys.ClientCapabilities,
+        MetaKeys.LogLevel,
+    ];
 
     private TResult Deserialize<TResult>(JsonNode node, string method, string source)
         where TResult : class

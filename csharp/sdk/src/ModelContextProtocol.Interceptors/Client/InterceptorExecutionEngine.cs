@@ -527,6 +527,7 @@ internal static class InterceptorExecutionEngine
             Direction = direction,
             Results = Results,
             Invocations = Invocations,
+            OriginalPayload = Request.Payload,
             // Mutations are atomic: a rejected operation keeps its original payload.
             FinalPayload = _status == InterceptorExecutionStatus.Success ? CurrentPayload : Request.Payload,
             ValidationSummary = Summary,

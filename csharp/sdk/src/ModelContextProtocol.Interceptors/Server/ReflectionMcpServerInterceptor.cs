@@ -44,7 +44,9 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
         CancellationToken cancellationToken = default)
     {
         var args = _parameterBinder(request, server, services, cancellationToken);
-        var result = _method.Invoke(_target, args);
+        // Surface the interceptor's own exception rather than a TargetInvocationException wrapper,
+        // so the error an invoker sees names the real cause.
+        var result = _method.Invoke(_target, BindingFlags.DoNotWrapExceptions, binder: null, args, culture: null);
 
         // Handle async methods
         if (result is Task task)
