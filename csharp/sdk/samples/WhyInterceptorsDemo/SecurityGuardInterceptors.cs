@@ -133,8 +133,8 @@ public sealed partial class SecurityGuardInterceptors
     private static readonly Lock AuditLock = new();
 
     /// <summary>
-    /// Finds the URLs in every string value under <paramref name="node"/>. A URL-like candidate that does not
-    /// parse is returned as <see langword="null"/>, so that the caller blocks it.
+    /// Finds the URLs in every string under <paramref name="node"/>, property names included. A URL-like
+    /// candidate that does not parse is returned as <see langword="null"/>, so that the caller blocks it.
     /// </summary>
     private static IEnumerable<(string Path, Uri? Url)> UrlsIn(JsonNode? node, string path)
     {
@@ -143,6 +143,7 @@ public sealed partial class SecurityGuardInterceptors
             case JsonObject obj:
                 foreach (var (key, value) in obj)
                 {
+                    foreach (var found in UrlsInText(key, $"{path}.{key}")) yield return found;
                     foreach (var found in UrlsIn(value, $"{path}.{key}")) yield return found;
                 }
                 break;
@@ -153,22 +154,27 @@ public sealed partial class SecurityGuardInterceptors
                 }
                 break;
             case JsonValue value when value.GetValueKind() == JsonValueKind.String:
-                var text = value.GetValue<string>();
-
-                // A value that is itself a URL is read whole, with the parser fetch_url uses. Reading pieces of it
-                // would disagree with that parser: "https://acme.example'@evil.example/" has host evil.example.
-                if (Uri.TryCreate(text, UriKind.Absolute, out var whole) && whole.Host.Length > 0)
-                {
-                    yield return (path, whole);
-                }
-
-                // URLs inside longer text, such as a message body. A candidate runs to the next whitespace,
-                // without closing punctuation.
-                foreach (Match match in UrlPattern().Matches(text))
-                {
-                    yield return (path, Uri.TryCreate(match.Value.TrimEnd(ClosingPunctuation), UriKind.Absolute, out var url) ? url : null);
-                }
+                foreach (var found in UrlsInText(value.GetValue<string>(), path)) yield return found;
                 break;
+        }
+    }
+
+    private static IEnumerable<(string Path, Uri? Url)> UrlsInText(string text, string path)
+    {
+        // A value that is itself a URL is read whole, with the parser fetch_url uses. Reading pieces of it
+        // would disagree with that parser: "https://acme.example'@evil.example/" has host evil.example.
+        if (Uri.TryCreate(text, UriKind.Absolute, out var whole) && whole.Host.Length > 0)
+        {
+            yield return (path, whole);
+        }
+
+        // URLs inside longer text, such as a message body. Every place a URL starts is checked, so that one URL
+        // cannot hide another written right after it: "[a](https://acme.example/),[b](https://evil.example/)".
+        // A candidate runs to the next whitespace, without closing punctuation.
+        foreach (Match match in UrlStart().Matches(text))
+        {
+            var candidate = match.Groups["url"].Value.TrimEnd(ClosingPunctuation);
+            yield return (path, Uri.TryCreate(candidate, UriKind.Absolute, out var url) ? url : null);
         }
     }
 
@@ -208,10 +214,11 @@ public sealed partial class SecurityGuardInterceptors
         return node;
     }
 
-    // Any scheme, in any case, with either slash: HTTPS://..., ftp://... and http:/\... must not slip past the
-    // allowlist. A scheme here has at least two characters, so a Windows drive letter is never read as one.
-    [GeneratedRegex(@"[a-z][a-z0-9+.-]+:[/\\]{2}\S+", RegexOptions.IgnoreCase)]
-    private static partial Regex UrlPattern();
+    // Where a URL starts: any scheme, in any case, with either slash (HTTPS://..., ftp://..., http:/\...), and
+    // not in the middle of a word, so "ttps://" inside "https://" is not a second start. The lookahead lets
+    // matches overlap. A scheme here has at least two characters, so a Windows drive letter is never read as one.
+    [GeneratedRegex(@"(?<![a-z])(?=(?<url>[a-z][a-z0-9+.-]+:[/\\]{2}\S+))", RegexOptions.IgnoreCase)]
+    private static partial Regex UrlStart();
 
     private static readonly char[] ClosingPunctuation = ['.', ',', ';', ':', '!', '?', ')', ']', '}', '>', '"', '\''];
 

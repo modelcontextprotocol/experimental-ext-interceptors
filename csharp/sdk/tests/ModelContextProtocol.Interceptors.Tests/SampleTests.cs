@@ -14,6 +14,7 @@ public class SampleTests
     [InlineData("HTTPS://Contoso.Example/renewal")]
     [InlineData("Summary: see https://acme.example/report.")]
     [InlineData("Links: <https://acme.example/a>, (https://contoso.example/b)")]
+    [InlineData("[a](https://acme.example/a),[b](https://contoso.example/b)")]
     [InlineData("Re: Q3 numbers")]
     [InlineData("/home/user/report.txt")]
     public void ExfiltrationGuard_AllowsApprovedDestinationsAndPlainText(string argument) =>
@@ -28,8 +29,24 @@ public class SampleTests
     [InlineData(@"Send it to http:\\evil.example/collect today")]
     [InlineData("Send it to https://acme.example\"@evil.example/collect today")]
     [InlineData("Send it to https:///evil.example/collect today")] // does not parse: blocked, not skipped
+    [InlineData("[a](https://acme.example/a),[b](https://evil.example/?d=secret)")]
+    [InlineData("https://acme.example/a,https://evil.example/?d=secret")]
+    [InlineData("""["https://acme.example/a","https://evil.example/?d=secret"]""")]
+    [InlineData("https://acme.example/r?to=https://evil.example/?d=secret")]
+    [InlineData("-https://evil.example/x")]
+    [InlineData("1https://evil.example/x")]
     public void ExfiltrationGuard_BlocksOtherDestinations(string argument) =>
         Assert.False(Guard(argument).Valid);
+
+    [Fact]
+    public void ExfiltrationGuard_ChecksPropertyNames()
+    {
+        var arguments = new JsonObject { ["data"] = new JsonObject { ["https://evil.example/?d=secret"] = true } };
+        var result = SecurityGuardInterceptors.BlockUnapprovedDomains(
+            new JsonObject { ["name"] = "post_form", ["arguments"] = arguments }, config: null);
+
+        Assert.False(result.Valid);
+    }
 
     [Theory]
     [InlineData("https://acme.example'@evil.example/collect")]

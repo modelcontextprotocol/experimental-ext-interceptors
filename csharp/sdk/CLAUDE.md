@@ -64,7 +64,7 @@ dotnet run --project samples/WhyInterceptorsDemo -- --fast   # end-to-end smoke 
 
 ## Samples
 See `samples/README.md`. Start with `WhyInterceptorsDemo` (scripted story; real MCP; `--fast`, `--export-html`) and `InterceptorProxy` (JSON-configured sidecar; `--check`; verified with the MCP Inspector CLI and the reference filesystem server).
-The test project compiles in the demo's guard and tools and the proxy's `ProxyConfig.cs` (`SampleTests`): the guard parses a whole argument value with `System.Uri`, as `fetch_url` does, and blocks URL-like text it cannot parse.
+The test project compiles in the demo's guard and tools and the proxy's `ProxyConfig.cs` (`SampleTests`): the guard parses a whole argument value with `System.Uri`, as `fetch_url` does, checks every place a URL starts in text (property names included), and blocks URL-like text it cannot parse.
 
 ## SDK reference
 Local checkout: `~/code/mcp/csharp-sdk` (may be ahead of 2.1.0; read with `git show v2.1.0:<path>`).
