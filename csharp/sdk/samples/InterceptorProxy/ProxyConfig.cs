@@ -92,13 +92,23 @@ internal sealed partial class ProxyConfig
             return new StdioClientTransport(new StdioClientTransportOptions
             {
                 Name = name,
-                Command = Command,
+                Command = ResolveCommand(Command, baseDirectory),
                 Arguments = Args,
                 EnvironmentVariables = Env,
                 WorkingDirectory = Path.GetFullPath(Cwd ?? ".", baseDirectory),
                 StandardErrorLines = line => onStderr($"[{name}] {line}"),
             });
         }
+
+        /// <summary>
+        /// Resolves a command that contains a directory, such as <c>./bin/guard</c>, against the config file's
+        /// directory. <c>cwd</c> sets the child's working directory, not where its executable is looked up.
+        /// A bare name such as <c>dotnet</c> is left to the PATH lookup.
+        /// </summary>
+        internal static string ResolveCommand(string command, string baseDirectory) =>
+            command.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0
+                ? Path.GetFullPath(command, baseDirectory)
+                : command;
     }
 
     /// <summary>Builds the invoker policy the gateway applies.</summary>

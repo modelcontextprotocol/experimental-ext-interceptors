@@ -38,15 +38,16 @@ public sealed partial class SecurityGuardInterceptors
 
         foreach (var (path, url) in UrlsIn(payload["arguments"], "$.arguments"))
         {
+            // Fail closed: a destination the guard cannot read is not one it can approve.
+            if (url is null)
+            {
+                return Blocked(path, "This value contains a URL that could not be parsed, so its destination cannot be approved.");
+            }
+
             // The allowlist is for web destinations. A URL with any other scheme is blocked, not skipped.
             if (url.Scheme is not ("http" or "https"))
             {
-                return ValidationInterceptorResult.Failure(new ValidationMessage
-                {
-                    Path = path,
-                    Severity = ValidationSeverity.Error,
-                    Message = $"{url.Scheme} URLs are not allowed; only http and https destinations can be approved.",
-                });
+                return Blocked(path, $"{url.Scheme} URLs are not allowed; only http and https destinations can be approved.");
             }
 
             if (allowed.Any(domain => url.Host.Equals(domain, StringComparison.OrdinalIgnoreCase) || url.Host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase)))
@@ -55,17 +56,15 @@ public sealed partial class SecurityGuardInterceptors
             }
 
             var carried = EmailPattern().Matches(Uri.UnescapeDataString(url.Query)).Count;
-            return ValidationInterceptorResult.Failure(new ValidationMessage
-            {
-                Path = path,
-                Severity = ValidationSeverity.Error,
-                Message = $"{url.Host} is not an approved destination" +
-                          (carried > 0 ? $", and the request carries {carried} email address(es)." : "."),
-            });
+            return Blocked(path, $"{url.Host} is not an approved destination" +
+                                 (carried > 0 ? $", and the request carries {carried} email address(es)." : "."));
         }
 
         return ValidationInterceptorResult.Success();
     }
+
+    private static ValidationInterceptorResult Blocked(string path, string message) =>
+        ValidationInterceptorResult.Failure(new ValidationMessage { Path = path, Severity = ValidationSeverity.Error, Message = message });
 
     /// <summary>
     /// Mutator: redacts card numbers and tax IDs from tool results before they reach the model,
@@ -133,7 +132,11 @@ public sealed partial class SecurityGuardInterceptors
 
     private static readonly Lock AuditLock = new();
 
-    private static IEnumerable<(string Path, Uri Url)> UrlsIn(JsonNode? node, string path)
+    /// <summary>
+    /// Finds the URLs in every string value under <paramref name="node"/>. A URL-like candidate that does not
+    /// parse is returned as <see langword="null"/>, so that the caller blocks it.
+    /// </summary>
+    private static IEnumerable<(string Path, Uri? Url)> UrlsIn(JsonNode? node, string path)
     {
         switch (node)
         {
@@ -150,9 +153,20 @@ public sealed partial class SecurityGuardInterceptors
                 }
                 break;
             case JsonValue value when value.GetValueKind() == JsonValueKind.String:
-                foreach (Match match in UrlPattern().Matches(value.GetValue<string>()))
+                var text = value.GetValue<string>();
+
+                // A value that is itself a URL is read whole, with the parser fetch_url uses. Reading pieces of it
+                // would disagree with that parser: "https://acme.example'@evil.example/" has host evil.example.
+                if (Uri.TryCreate(text, UriKind.Absolute, out var whole) && whole.Host.Length > 0)
                 {
-                    if (Uri.TryCreate(match.Value, UriKind.Absolute, out var url)) yield return (path, url);
+                    yield return (path, whole);
+                }
+
+                // URLs inside longer text, such as a message body. A candidate runs to the next whitespace,
+                // without closing punctuation.
+                foreach (Match match in UrlPattern().Matches(text))
+                {
+                    yield return (path, Uri.TryCreate(match.Value.TrimEnd(ClosingPunctuation), UriKind.Absolute, out var url) ? url : null);
                 }
                 break;
         }
@@ -194,9 +208,12 @@ public sealed partial class SecurityGuardInterceptors
         return node;
     }
 
-    // Any scheme, in any case: HTTPS://... or ftp://... must not slip past the allowlist.
-    [GeneratedRegex(@"[a-z][a-z0-9+.-]*://[^\s""'<>]+", RegexOptions.IgnoreCase)]
+    // Any scheme, in any case, with either slash: HTTPS://..., ftp://... and http:/\... must not slip past the
+    // allowlist. A scheme here has at least two characters, so a Windows drive letter is never read as one.
+    [GeneratedRegex(@"[a-z][a-z0-9+.-]+:[/\\]{2}\S+", RegexOptions.IgnoreCase)]
     private static partial Regex UrlPattern();
+
+    private static readonly char[] ClosingPunctuation = ['.', ',', ';', ':', '!', '?', ')', ']', '}', '>', '"', '\''];
 
     [GeneratedRegex(@"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")]
     private static partial Regex EmailPattern();

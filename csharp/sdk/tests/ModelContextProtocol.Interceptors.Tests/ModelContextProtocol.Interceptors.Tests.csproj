@@ -19,4 +19,11 @@
     <ProjectReference Include="..\..\src\ModelContextProtocol.Interceptors\ModelContextProtocol.Interceptors.csproj" />
   </ItemGroup>
 
+  <!-- Sample code with security-relevant logic, compiled in so SampleTests can cover it. -->
+  <ItemGroup>
+    <Compile Include="..\..\samples\WhyInterceptorsDemo\SecurityGuardInterceptors.cs" Link="Samples\SecurityGuardInterceptors.cs" />
+    <Compile Include="..\..\samples\WhyInterceptorsDemo\AcmeWorkspaceTools.cs" Link="Samples\AcmeWorkspaceTools.cs" />
+    <Compile Include="..\..\samples\InterceptorProxy\ProxyConfig.cs" Link="Samples\ProxyConfig.cs" />
+  </ItemGroup>
+
 </Project>

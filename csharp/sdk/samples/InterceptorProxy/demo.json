@@ -1,7 +1,8 @@
 {
   // Wraps the WhyInterceptorsDemo's "Acme Workspace" server with its "Security Guard"
   // interceptor server. Build first: dotnet build (from csharp/sdk).
-  // Relative paths and "cwd" resolve against this file's directory.
+  // A relative "command" path, "cwd" and "auditLog" resolve against this file's directory.
+  // Servers start in that directory, so the relative paths in "args" do too.
   "name": "acme-workspace",
 
   "backend": {

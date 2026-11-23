@@ -109,7 +109,9 @@ Set `"toolCallRejection": "protocolError"` to get the SEP's JSON-RPC error
 ## Configuration
 
 The format belongs to this sample, not to the library. JSON with comments; `${VAR}` in a string value
-expands to an environment variable; relative paths and `cwd` resolve against the config file's directory.
+expands to an environment variable. A relative `command` path (such as `./bin/guard`, but not a bare name such as
+`dotnet`), `cwd` and `auditLog` resolve against the config file's directory. Each server starts in its `cwd`, which
+defaults to that directory, so relative paths in `args` resolve against it.
 
 ```jsonc
 {
