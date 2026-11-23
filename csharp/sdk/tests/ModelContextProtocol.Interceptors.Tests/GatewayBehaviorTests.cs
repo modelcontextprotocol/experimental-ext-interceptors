@@ -519,7 +519,87 @@ public class GatewayBehaviorTests
         Assert.Contains("4111", JsonSerializer.Serialize<InterceptorResult>(normalized, InterceptorJsonUtilities.DefaultOptions));
     }
 
+    [Fact]
+    public async Task DiscoveryCache_JoinsListingInProgress_AndExpiresFromCompletion()
+    {
+        var listCalls = 0;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client) = await InterceptorServer([ExfiltrationGuard()], async ct =>
+        {
+            Interlocked.Increment(ref listCalls);
+            await release.Task.WaitAsync(ct);
+        });
+        await using var _ = server;
+        await using var __ = client;
+        var clock = new SkippableClock();
+        var cache = new InterceptorDiscoveryCache(TimeSpan.FromMinutes(1), clock);
+
+        var first = cache.GetAsync(client, CancellationToken.None).AsTask();
+        clock.Skip(TimeSpan.FromMinutes(2)); // older than the TTL, but still in progress
+        var second = cache.GetAsync(client, CancellationToken.None).AsTask();
+        release.SetResult();
+        await Task.WhenAll(first, second);
+        Assert.Equal(1, Volatile.Read(ref listCalls));
+
+        await cache.GetAsync(client, CancellationToken.None); // the TTL counts from completion
+        Assert.Equal(1, Volatile.Read(ref listCalls));
+
+        clock.Skip(TimeSpan.FromMinutes(2));
+        await cache.GetAsync(client, CancellationToken.None);
+        Assert.Equal(2, Volatile.Read(ref listCalls));
+    }
+
+    [Fact]
+    public async Task PhaseRunner_RejectsWhenDiscoveryUsesTheWholeBudget()
+    {
+        // Discovery succeeds, but by the clock it took longer than the whole budget. With no applicable
+        // interceptors, a fresh millisecond would have let the operation through after the deadline.
+        var clock = new SkippableClock();
+        var (server, client) = await InterceptorServer([], _ => { clock.Skip(TimeSpan.FromSeconds(10)); return Task.CompletedTask; });
+        await using var _ = server;
+        await using var __ = client;
+        var runner = new InterceptorPhaseRunner(new InterceptorRuntimeSettings { AggregateTimeoutMs = 5_000, TimeProvider = clock });
+
+        var ex = await Assert.ThrowsAsync<McpInterceptorException>(() => runner.RunPhaseAsync(
+            [client], InterceptionEvents.ToolsCall, InterceptorPhase.Request, new JsonObject(), context: null, CancellationToken.None).AsTask());
+
+        Assert.Equal((McpErrorCode)(-32000), ex.ErrorCode);
+    }
+
+    [Fact]
+    public async Task OrchestratorExecute_ReturnsTimeout_WhenDiscoveryUsesTheWholeBudget()
+    {
+        var clock = new SkippableClock();
+        var (server, client) = await InterceptorServer([], _ => { clock.Skip(TimeSpan.FromSeconds(10)); return Task.CompletedTask; });
+        await using var _ = server;
+        await using var __ = client;
+
+        var result = await InterceptorOrchestrator.ExecuteAsync([client], new InterceptorExecutionRequest
+        {
+            Event = InterceptionEvents.ToolsCall,
+            Phase = InterceptorPhase.Request,
+            Payload = new JsonObject(),
+            TimeoutMs = 5_000,
+        }, policy: null, clock, CancellationToken.None);
+
+        Assert.Equal(InterceptorExecutionStatus.Timeout, result.Status);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>Real timers, but a clock the test can move forward.</summary>
+    private sealed class SkippableClock : TimeProvider
+    {
+        private long _offsetTicks;
+
+        public void Skip(TimeSpan by) => Interlocked.Add(ref _offsetTicks, by.Ticks);
+
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Offset;
+
+        public override long GetTimestamp() => base.GetTimestamp() + (long)(Offset.TotalSeconds * TimestampFrequency);
+
+        private TimeSpan Offset => TimeSpan.FromTicks(Interlocked.Read(ref _offsetTicks));
+    }
 
     /// <summary>An interceptor server whose <c>interceptors/list</c> runs <paramref name="beforeList"/> first.</summary>
     private static Task<(McpServer, McpClient)> InterceptorServer(McpServerInterceptor[] interceptors, Func<CancellationToken, Task> beforeList) =>

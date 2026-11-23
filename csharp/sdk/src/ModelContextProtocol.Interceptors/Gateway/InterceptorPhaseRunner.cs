@@ -20,6 +20,7 @@ internal sealed record InterceptorRuntimeSettings
     public Action<InterceptorExecutionResult>? Observer { get; init; }
     public TimeSpan? DiscoveryCacheDuration { get; init; }
     public ILogger? Logger { get; init; }
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
 
 /// <summary>
@@ -47,7 +48,7 @@ internal sealed class InterceptorPhaseRunner
 
         _settings = settings;
         _policy = settings.Policy ?? new InterceptorPolicy();
-        _discovery = new InterceptorDiscoveryCache(settings.DiscoveryCacheDuration);
+        _discovery = new InterceptorDiscoveryCache(settings.DiscoveryCacheDuration, settings.TimeProvider);
         _logger = settings.Logger ?? NullLogger.Instance;
     }
 
@@ -77,12 +78,19 @@ internal sealed class InterceptorPhaseRunner
         CancellationToken cancellationToken,
         ICollection<Task>? pendingSinks = null)
     {
-        // The aggregate timeout covers discovery too: a stalled interceptors/list must not hang the operation.
-        var stopwatch = Stopwatch.StartNew();
+        // The aggregate timeout covers discovery too: a stalled interceptors/list must not hang the operation,
+        // and the interceptors get only what discovery left of the budget.
+        var started = _settings.TimeProvider.GetTimestamp();
         var bindings = await BindAsync(interceptorClients, cancellationToken).ConfigureAwait(false);
-        var remainingMs = _settings.AggregateTimeoutMs is int aggregate
-            ? Math.Max(1, aggregate - (int)stopwatch.ElapsedMilliseconds)
-            : (int?)null;
+        int? remainingMs = null;
+        if (_settings.AggregateTimeoutMs is int aggregate)
+        {
+            remainingMs = aggregate - (int)_settings.TimeProvider.GetElapsedTime(started).TotalMilliseconds;
+            if (remainingMs <= 0)
+            {
+                throw DiscoveryTimeout();
+            }
+        }
 
         var result = await InterceptorExecutionEngine.ExecuteAsync(
             InterceptorOrchestrator.CreateEntries(bindings),
@@ -150,9 +158,7 @@ internal sealed class InterceptorPhaseRunner
         }
         catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
         {
-            throw new McpInterceptorException(
-                $"Interceptor execution timeout: interceptor discovery did not complete within {_settings.AggregateTimeoutMs}ms.",
-                (McpErrorCode)(-32000));
+            throw DiscoveryTimeout();
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -172,6 +178,10 @@ internal sealed class InterceptorPhaseRunner
             throw new McpInterceptorException(ex.Message, McpErrorCode.InternalError);
         }
     }
+
+    private McpInterceptorException DiscoveryTimeout() => new(
+        $"Interceptor execution timeout: interceptor discovery did not complete within {_settings.AggregateTimeoutMs}ms.",
+        (McpErrorCode)(-32000));
 
     private void Notify(InterceptorExecutionResult result)
     {

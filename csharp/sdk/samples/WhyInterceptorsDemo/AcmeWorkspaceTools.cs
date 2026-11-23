@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace WhyInterceptorsDemo;
@@ -45,6 +46,8 @@ public sealed class AcmeWorkspaceTools
         """;
 
     [McpServerTool(Name = "fetch_url"), Description("Fetch a web page or call a web API.")]
-    public static string FetchUrl([Description("The URL to fetch")] string url) =>
-        $"HTTP 200 OK from {new Uri(url).Host} — {url.Length} bytes sent, {{\"status\":\"synced\"}}";
+    public static string FetchUrl([Description("The http or https URL to fetch")] string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is ("http" or "https")
+            ? $"HTTP 200 OK from {uri.Host} — {url.Length} bytes sent, {{\"status\":\"synced\"}}"
+            : throw new McpException("Only absolute http and https URLs are supported.");
 }

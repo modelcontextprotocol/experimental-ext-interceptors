@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Protocol;
@@ -82,11 +81,19 @@ public sealed class InterceptorOrchestrator
     /// the invocations get what is left of it, and if it elapses during discovery the result has
     /// <see cref="InterceptorExecutionStatus.Timeout"/> status.
     /// </remarks>
-    public static async ValueTask<InterceptorExecutionResult> ExecuteAsync(
+    public static ValueTask<InterceptorExecutionResult> ExecuteAsync(
         IEnumerable<McpClient> servers,
         InterceptorExecutionRequest request,
         InterceptorPolicy? policy = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ExecuteAsync(servers, request, policy, TimeProvider.System, cancellationToken);
+
+    internal static async ValueTask<InterceptorExecutionResult> ExecuteAsync(
+        IEnumerable<McpClient> servers,
+        InterceptorExecutionRequest request,
+        InterceptorPolicy? policy,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
     {
         InterceptorExecutionEngine.ValidateRequest(request);
 
@@ -96,7 +103,12 @@ public sealed class InterceptorOrchestrator
             return await orchestrator.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
         }
 
-        var stopwatch = Stopwatch.StartNew();
+        var started = timeProvider.GetTimestamp();
+        InterceptorExecutionResult TimedOut() => InterceptorExecutionEngine.TimedOut(
+            request,
+            $"Interceptor discovery for '{request.Event}' did not complete within the aggregate timeout.",
+            (long)timeProvider.GetElapsedTime(started).TotalMilliseconds);
+
         InterceptorOrchestrator discovered;
         using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
@@ -107,11 +119,15 @@ public sealed class InterceptorOrchestrator
             }
             catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
-                return InterceptorExecutionEngine.TimedOut(
-                    request,
-                    $"Interceptor discovery for '{request.Event}' did not complete within the aggregate timeout.",
-                    stopwatch.ElapsedMilliseconds);
+                return TimedOut();
             }
+        }
+
+        // Discovery can finish just as the budget runs out; the interceptors must not get a fresh one.
+        var remainingMs = timeoutMs - (int)timeProvider.GetElapsedTime(started).TotalMilliseconds;
+        if (remainingMs <= 0)
+        {
+            return TimedOut();
         }
 
         var remaining = new InterceptorExecutionRequest
@@ -120,7 +136,7 @@ public sealed class InterceptorOrchestrator
             Phase = request.Phase,
             Direction = request.Direction,
             Payload = request.Payload,
-            TimeoutMs = Math.Max(1, timeoutMs - (int)stopwatch.ElapsedMilliseconds),
+            TimeoutMs = remainingMs,
             Context = request.Context,
         };
         return await discovered.ExecuteAsync(remaining, cancellationToken).ConfigureAwait(false);

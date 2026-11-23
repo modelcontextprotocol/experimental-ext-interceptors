@@ -38,6 +38,17 @@ public sealed partial class SecurityGuardInterceptors
 
         foreach (var (path, url) in UrlsIn(payload["arguments"], "$.arguments"))
         {
+            // The allowlist is for web destinations. A URL with any other scheme is blocked, not skipped.
+            if (url.Scheme is not ("http" or "https"))
+            {
+                return ValidationInterceptorResult.Failure(new ValidationMessage
+                {
+                    Path = path,
+                    Severity = ValidationSeverity.Error,
+                    Message = $"{url.Scheme} URLs are not allowed; only http and https destinations can be approved.",
+                });
+            }
+
             if (allowed.Any(domain => url.Host.Equals(domain, StringComparison.OrdinalIgnoreCase) || url.Host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
@@ -183,8 +194,8 @@ public sealed partial class SecurityGuardInterceptors
         return node;
     }
 
-    // Schemes are case-insensitive: HTTPS://... must not slip past the allowlist.
-    [GeneratedRegex(@"https?://[^\s""'<>]+", RegexOptions.IgnoreCase)]
+    // Any scheme, in any case: HTTPS://... or ftp://... must not slip past the allowlist.
+    [GeneratedRegex(@"[a-z][a-z0-9+.-]*://[^\s""'<>]+", RegexOptions.IgnoreCase)]
     private static partial Regex UrlPattern();
 
     [GeneratedRegex(@"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")]

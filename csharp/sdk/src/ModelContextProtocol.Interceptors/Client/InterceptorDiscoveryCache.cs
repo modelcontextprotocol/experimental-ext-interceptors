@@ -11,7 +11,8 @@ namespace ModelContextProtocol.Interceptors.Client;
 /// <remarks>
 /// The SEP has no <c>list_changed</c> notification for interceptors, so entries simply expire.
 /// Clients are held weakly: a per-request interceptor client that is disposed and collected drops out.
-/// Concurrent callers on a cold or expired entry share one listing.
+/// Concurrent callers share one listing, and a listing still in progress is always joined, however long
+/// it has run. A result expires the configured duration after its listing completed.
 /// </remarks>
 internal sealed class InterceptorDiscoveryCache
 {
@@ -53,7 +54,7 @@ internal sealed class InterceptorDiscoveryCache
             var now = _timeProvider.GetUtcNow();
             if (!_entries.TryGetValue(client, out entry!) || !entry.IsUsable(now))
             {
-                entry = new Entry(client, now + _duration, _discoveryTimeout);
+                entry = new Entry(client, _duration, _discoveryTimeout, _timeProvider);
                 _entries.AddOrUpdate(client, entry);
             }
         }
@@ -92,19 +93,40 @@ internal sealed class InterceptorDiscoveryCache
         }
     }
 
-    private sealed class Entry(McpClient client, DateTimeOffset expiresAt, TimeSpan timeout)
+    /// <summary>One shared listing and, once it succeeds, its result until it expires.</summary>
+    private sealed class Entry
     {
-        private readonly Lazy<Task<IList<Interceptor>>> _discovery = new(() => DiscoverAsync(client, timeout));
+        private readonly Lazy<Task<IList<Interceptor>>> _discovery;
+        private DateTimeOffset _expiresAt;
+
+        public Entry(McpClient client, TimeSpan duration, TimeSpan timeout, TimeProvider timeProvider)
+        {
+            _discovery = new(async () =>
+            {
+                using var cts = new CancellationTokenSource(timeout);
+                var interceptors = await client.ListAllInterceptorsAsync(cancellationToken: cts.Token).ConfigureAwait(false);
+
+                // Written before the task completes, and read only after observing that it completed.
+                _expiresAt = timeProvider.GetUtcNow() + duration;
+                return interceptors;
+            });
+        }
 
         public Task<IList<Interceptor>> Discovery => _discovery.Value;
 
-        public bool IsUsable(DateTimeOffset now) =>
-            expiresAt > now && !(_discovery.IsValueCreated && (_discovery.Value.IsFaulted || _discovery.Value.IsCanceled));
-
-        private static async Task<IList<Interceptor>> DiscoverAsync(McpClient client, TimeSpan timeout)
+        /// <summary>
+        /// A listing in progress is always usable: it is bounded by the discovery timeout, and starting
+        /// another would only add load to a slow server. A completed one is usable until it expires.
+        /// </summary>
+        public bool IsUsable(DateTimeOffset now)
         {
-            using var cts = new CancellationTokenSource(timeout);
-            return await client.ListAllInterceptorsAsync(cancellationToken: cts.Token).ConfigureAwait(false);
+            if (!_discovery.IsValueCreated)
+            {
+                return true;
+            }
+
+            var discovery = _discovery.Value;
+            return !discovery.IsCompleted || (discovery.IsCompletedSuccessfully && _expiresAt > now);
         }
     }
 }
