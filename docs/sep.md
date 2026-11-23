@@ -604,6 +604,9 @@ See [Execution Model](#execution-model) for mutator execution semantics.
   jsonrpc: "2.0",
   id: 2,
   result: {
+    interceptor: "example-validator",
+    type: "validation",
+    phase: "request",
     valid: false,
     severity: "error",
     messages: [
@@ -665,6 +668,9 @@ See [Execution Model](#execution-model) for mutator execution semantics.
   jsonrpc: "2.0",
   id: 3,
   result: {
+    interceptor: "example-mutator",
+    type: "mutation",
+    phase: "request",
     modified: true,
     payload: {
       messages: [
