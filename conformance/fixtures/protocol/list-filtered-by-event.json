@@ -1,0 +1,62 @@
+{
+  "id": "protocol/list-filtered-by-event",
+  "kind": "protocol",
+  "requirement": "SEP-2624/interceptors-list.event-filter",
+  "description": "interceptors/list?event= returns only interceptors hooking that event.",
+  "interceptors": [
+    {
+      "name": "conf/allow-all",
+      "type": "validation",
+      "behavior": "allow-all",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    },
+    {
+      "name": "conf/wildcard-auditor",
+      "type": "validation",
+      "behavior": "allow-all",
+      "events": [
+        "*"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "list",
+      "event": "prompts/get",
+      "expect": {
+        "result": {
+          "interceptors": [
+            {
+              "name": "conf/wildcard-auditor",
+              "type": "validation",
+              "hooks": [
+                {
+                  "events": [
+                    "*"
+                  ],
+                  "phase": "request"
+                },
+                {
+                  "events": [
+                    "*"
+                  ],
+                  "phase": "response"
+                }
+              ]
+            }
+          ]
+        },
+        "canonical": "{\"interceptors\":[{\"hooks\":[{\"events\":[\"*\"],\"phase\":\"request\"},{\"events\":[\"*\"],\"phase\":\"response\"}],\"name\":\"conf/wildcard-auditor\",\"type\":\"validation\"}]}"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}

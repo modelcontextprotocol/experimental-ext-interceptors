@@ -1,0 +1,77 @@
+{
+  "id": "behavior/session-isolation",
+  "kind": "behavior",
+  "requirement": "SEC/cross-boundary-exfiltration.session-isolation",
+  "description": "Taint recorded in one session must not affect another: session B may send a value session A read (no cross-session bleed).",
+  "interceptors": [
+    {
+      "name": "security/cross-boundary-guard",
+      "type": "validation",
+      "behavior": "cross-boundary-guard",
+      "events": [
+        "tools/call"
+      ],
+      "phases": "both"
+    }
+  ],
+  "steps": [
+    {
+      "op": "apply",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "read_file",
+        "arguments": {
+          "path": "/workspace/.env"
+        }
+      },
+      "context": {
+        "sessionId": "session-a"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    },
+    {
+      "op": "apply",
+      "event": "tools/call",
+      "phase": "response",
+      "payload": {
+        "content": [
+          {
+            "type": "text",
+            "text": "AKIA5MZXN8QRF3WBY6OE"
+          }
+        ]
+      },
+      "context": {
+        "sessionId": "session-a"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    },
+    {
+      "op": "apply",
+      "event": "tools/call",
+      "phase": "request",
+      "payload": {
+        "name": "write_query",
+        "arguments": {
+          "query": "AKIA5MZXN8QRF3WBY6OE"
+        }
+      },
+      "context": {
+        "sessionId": "session-b"
+      },
+      "expect": {
+        "decision": "allow"
+      }
+    }
+  ],
+  "volatile": [
+    "durationMs",
+    "totalDurationMs",
+    "info"
+  ]
+}
