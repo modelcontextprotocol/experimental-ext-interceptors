@@ -43,12 +43,12 @@ public class ProtocolTypesSerializationTests
     }
 
     [Fact]
-    public void InterceptorChainStatus_SerializesAsString()
+    public void InterceptorExecutionStatus_SerializesAsString()
     {
-        Assert.Equal("\"success\"", JsonSerializer.Serialize(InterceptorChainStatus.Success, Options));
-        Assert.Equal("\"validation_failed\"", JsonSerializer.Serialize(InterceptorChainStatus.ValidationFailed, Options));
-        Assert.Equal("\"mutation_failed\"", JsonSerializer.Serialize(InterceptorChainStatus.MutationFailed, Options));
-        Assert.Equal("\"timeout\"", JsonSerializer.Serialize(InterceptorChainStatus.Timeout, Options));
+        Assert.Equal("\"success\"", JsonSerializer.Serialize(InterceptorExecutionStatus.Success, Options));
+        Assert.Equal("\"validation_failed\"", JsonSerializer.Serialize(InterceptorExecutionStatus.ValidationFailed, Options));
+        Assert.Equal("\"mutation_failed\"", JsonSerializer.Serialize(InterceptorExecutionStatus.MutationFailed, Options));
+        Assert.Equal("\"timeout\"", JsonSerializer.Serialize(InterceptorExecutionStatus.Timeout, Options));
     }
 
     [Fact]
@@ -351,31 +351,32 @@ public class ProtocolTypesSerializationTests
     }
 
     [Fact]
-    public void ExecuteChainRequestParams_RoundTrips()
+    public void InterceptorExecutionRequest_RoundTrips()
     {
-        var request = new ExecuteChainRequestParams
+        var request = new InterceptorExecutionRequest
         {
             Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Payload = JsonNode.Parse("""{"test":true}""")!,
-            InterceptorNames = ["pii-validator", "content-filter"],
+            Direction = InterceptorDirection.Receiving,
             TimeoutMs = 10000,
         };
 
         var json = JsonSerializer.Serialize(request, Options);
-        var deserialized = JsonSerializer.Deserialize<ExecuteChainRequestParams>(json, Options)!;
+        var deserialized = JsonSerializer.Deserialize<InterceptorExecutionRequest>(json, Options)!;
 
         Assert.Equal(InterceptionEvents.ToolsCall, deserialized.Event);
-        Assert.Equal(2, deserialized.InterceptorNames!.Count);
+        Assert.Equal(InterceptorDirection.Receiving, deserialized.Direction);
+        Assert.Contains("\"direction\":\"receiving\"", json);
         Assert.Equal(10000, deserialized.TimeoutMs);
     }
 
     [Fact]
-    public void InterceptorChainResult_RoundTrips()
+    public void InterceptorExecutionResult_RoundTrips()
     {
-        var chainResult = new InterceptorChainResult
+        var chainResult = new InterceptorExecutionResult
         {
-            Status = InterceptorChainStatus.Success,
+            Status = InterceptorExecutionStatus.Success,
             Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Results =
@@ -395,14 +396,14 @@ public class ProtocolTypesSerializationTests
                 },
             ],
             FinalPayload = JsonNode.Parse("""{"redacted":true}"""),
-            ValidationSummary = new ChainValidationSummary { Errors = 0, Warnings = 1, Infos = 2 },
+            ValidationSummary = new ValidationSummary { Errors = 0, Warnings = 1, Infos = 2 },
             TotalDurationMs = 150,
         };
 
         var json = JsonSerializer.Serialize(chainResult, Options);
-        var deserialized = JsonSerializer.Deserialize<InterceptorChainResult>(json, Options)!;
+        var deserialized = JsonSerializer.Deserialize<InterceptorExecutionResult>(json, Options)!;
 
-        Assert.Equal(InterceptorChainStatus.Success, deserialized.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, deserialized.Status);
         Assert.Equal(2, deserialized.Results.Count);
         Assert.IsType<MutationInterceptorResult>(deserialized.Results[0]);
         Assert.IsType<ValidationInterceptorResult>(deserialized.Results[1]);
@@ -412,16 +413,16 @@ public class ProtocolTypesSerializationTests
     }
 
     [Fact]
-    public void InterceptorChainResult_WithAbort_RoundTrips()
+    public void InterceptorExecutionResult_WithAbort_RoundTrips()
     {
-        var chainResult = new InterceptorChainResult
+        var chainResult = new InterceptorExecutionResult
         {
-            Status = InterceptorChainStatus.ValidationFailed,
+            Status = InterceptorExecutionStatus.ValidationFailed,
             Event = InterceptionEvents.ToolsCall,
             Phase = InterceptorPhase.Request,
             Results = [],
             TotalDurationMs = 50,
-            AbortedAt = new ChainAbortInfo
+            AbortedAt = new InterceptorAbortInfo
             {
                 Interceptor = "strict-validator",
                 Reason = "Required field missing",
@@ -430,9 +431,9 @@ public class ProtocolTypesSerializationTests
         };
 
         var json = JsonSerializer.Serialize(chainResult, Options);
-        var deserialized = JsonSerializer.Deserialize<InterceptorChainResult>(json, Options)!;
+        var deserialized = JsonSerializer.Deserialize<InterceptorExecutionResult>(json, Options)!;
 
-        Assert.Equal(InterceptorChainStatus.ValidationFailed, deserialized.Status);
+        Assert.Equal(InterceptorExecutionStatus.ValidationFailed, deserialized.Status);
         Assert.NotNull(deserialized.AbortedAt);
         Assert.Equal("strict-validator", deserialized.AbortedAt!.Interceptor);
     }

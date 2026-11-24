@@ -63,6 +63,25 @@ public class GatewayComponentsTests
     }
 
     [Fact]
+    public void WithoutHopByHopMeta_StripsPerRequestProtocolMetadataOnly()
+    {
+        var payload = JsonNode.Parse("""
+            {"name":"echo","_meta":{
+              "io.modelcontextprotocol/protocolVersion":"2026-07-28",
+              "io.modelcontextprotocol/clientInfo":{"name":"agent","version":"1"},
+              "io.modelcontextprotocol/clientCapabilities":{"extensions":{"x":{}}},
+              "progressToken":"p1"}}
+            """)!;
+
+        var forwarded = GatewayProxyConfigurator.WithoutHopByHopMeta(payload);
+
+        Assert.Equal("""{"name":"echo","_meta":{"progressToken":"p1"}}""", forwarded.ToJsonString());
+        Assert.NotNull(payload["_meta"]!["io.modelcontextprotocol/clientInfo"]); // interceptors still saw it
+        Assert.Equal("""{"name":"echo"}""",
+            GatewayProxyConfigurator.WithoutHopByHopMeta(JsonNode.Parse("""{"name":"echo","_meta":{"io.modelcontextprotocol/clientInfo":{}}}""")!).ToJsonString());
+    }
+
+    [Fact]
     public void EnsureToolInputSchemas_IgnoresPayloadWithoutToolsArray()
     {
         var payload = JsonNode.Parse("""{"resources":[]}""");
@@ -94,9 +113,8 @@ public class GatewayComponentsTests
         var configurator = new GatewayProxyConfigurator(
             fixture.BackendClient,
             provider,
-            events: null,
-            timeoutMs: null,
-            defaultContext: null,
+            new InterceptorPhaseRunner(new InterceptorRuntimeSettings()),
+            ToolCallRejectionMode.ErrorResult,
             InterceptorJsonUtilities.DefaultOptions);
 
         var serverOptions = new McpServerOptions();

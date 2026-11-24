@@ -15,6 +15,15 @@ public sealed class McpServerInterceptorAttribute : Attribute
     /// <summary>Gets or sets a description of this interceptor.</summary>
     public string? Description { get; set; }
 
+    /// <summary>Gets or sets the semantic version of this interceptor.</summary>
+    public string? Version { get; set; }
+
+    /// <summary>
+    /// Gets or sets the JSON Schema, as JSON text, for the <c>config</c> invokers may pass on each
+    /// invocation. Advertised as <c>configSchema</c> in <c>interceptors/list</c>.
+    /// </summary>
+    public string? ConfigSchema { get; set; }
+
     /// <summary>Gets or sets the event types this interceptor handles.</summary>
     public string[] Events { get; set; } = [InterceptionEvents.All];
 

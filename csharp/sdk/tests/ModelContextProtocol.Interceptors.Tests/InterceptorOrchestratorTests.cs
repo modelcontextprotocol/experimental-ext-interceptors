@@ -11,9 +11,9 @@ using Xunit;
 namespace ModelContextProtocol.Interceptors.Tests;
 
 /// <summary>
-/// Tests for the public <see cref="InterceptorChain"/> API over real in-memory interceptor servers.
+/// Tests for the public <see cref="InterceptorOrchestrator"/> API over real in-memory interceptor servers.
 /// </summary>
-public class InterceptorChainTests
+public class InterceptorOrchestratorTests
 {
     [Fact]
     public async Task DiscoverAsync_MergesEntriesFromAllServersWithServerAttribution()
@@ -22,11 +22,11 @@ public class InterceptorChainTests
             serverAInterceptors: [MutationDescriptor("a-mutator", priorityHint: 10)],
             serverBInterceptors: [MutationDescriptor("b-mutator", priorityHint: -10)]);
 
-        var chain = await InterceptorChain.DiscoverAsync([fixture.ClientA, fixture.ClientB]);
+        var orchestrator = await InterceptorOrchestrator.DiscoverAsync([fixture.ClientA, fixture.ClientB]);
 
-        Assert.Equal(2, chain.Entries.Count);
-        var entryA = Assert.Single(chain.Entries, e => e.Interceptor.Name == "a-mutator");
-        var entryB = Assert.Single(chain.Entries, e => e.Interceptor.Name == "b-mutator");
+        Assert.Equal(2, orchestrator.Bindings.Count);
+        var entryA = Assert.Single(orchestrator.Bindings, e => e.Interceptor.Name == "a-mutator");
+        var entryB = Assert.Single(orchestrator.Bindings, e => e.Interceptor.Name == "b-mutator");
         Assert.Same(fixture.ClientA, entryA.Server);
         Assert.Same(fixture.ClientB, entryB.Server);
     }
@@ -48,16 +48,16 @@ public class InterceptorChainTests
                 return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = obj });
             });
 
-        var result = await InterceptorChain.ExecuteAsync(
+        var result = await InterceptorOrchestrator.ExecuteAsync(
             [fixture.ClientA, fixture.ClientB],
-            new ExecuteChainRequestParams
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{}""")!,
             });
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.Equal(2, result.Results.Count);
         var order = result.FinalPayload!["order"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
         Assert.Equal(["b-early", "a-late"], order);
@@ -73,9 +73,9 @@ public class InterceptorChainTests
 
         await Assert.ThrowsAsync<McpProtocolException>(async () =>
         {
-            await InterceptorChain.ExecuteAsync(
+            await InterceptorOrchestrator.ExecuteAsync(
                 [fixture.ClientA, fixture.ClientB],
-                new ExecuteChainRequestParams
+                new InterceptorExecutionRequest
                 {
                     Event = InterceptionEvents.ToolsCall,
                     Phase = InterceptorPhase.Request,
@@ -85,7 +85,7 @@ public class InterceptorChainTests
     }
 
     [Fact]
-    public async Task SingleClientExecuteChainAsync_StillWorksThroughMergedPath()
+    public async Task SingleClientExecuteInterceptorsAsync_StillWorksThroughMergedPath()
     {
         await using var fixture = await TwoServerFixture.CreateAsync(
             serverAInterceptors: [MutationDescriptor("solo-mutator", priorityHint: 0)],
@@ -97,15 +97,15 @@ public class InterceptorChainTests
                 return new ValueTask<InterceptorResult>(new MutationInterceptorResult { Modified = true, Payload = obj });
             });
 
-        var result = await fixture.ClientA.ExecuteChainAsync(
-            new ExecuteChainRequestParams
+        var result = await fixture.ClientA.ExecuteInterceptorsAsync(
+            new InterceptorExecutionRequest
             {
                 Event = InterceptionEvents.ToolsCall,
                 Phase = InterceptorPhase.Request,
                 Payload = JsonNode.Parse("""{"original":true}""")!,
             });
 
-        Assert.Equal(InterceptorChainStatus.Success, result.Status);
+        Assert.Equal(InterceptorExecutionStatus.Success, result.Status);
         Assert.True(result.FinalPayload!["mutated"]!.GetValue<bool>());
         Assert.True(result.FinalPayload["original"]!.GetValue<bool>());
     }

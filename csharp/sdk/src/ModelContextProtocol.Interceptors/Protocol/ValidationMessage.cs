@@ -17,5 +17,9 @@ public sealed class ValidationMessage
 
     /// <summary>Gets or sets the severity of this validation message.</summary>
     [JsonPropertyName("severity")]
-    public ValidationSeverity Severity { get; set; }
+    /// <remarks>
+    /// The SEP requires a severity on every message. When one is missing, <see cref="Client.ValidationVerdict"/>
+    /// reads it as <c>error</c> in an invalid result and <c>info</c> in a valid one (fail-secure).
+    /// </remarks>
+    public ValidationSeverity? Severity { get; set; }
 }

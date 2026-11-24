@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 /// <summary>
 /// Summary of validation results across all interceptors in a chain execution.
 /// </summary>
-public sealed class ChainValidationSummary
+public sealed class ValidationSummary
 {
     /// <summary>Gets or sets the number of error-level validation messages.</summary>
     [JsonPropertyName("errors")]

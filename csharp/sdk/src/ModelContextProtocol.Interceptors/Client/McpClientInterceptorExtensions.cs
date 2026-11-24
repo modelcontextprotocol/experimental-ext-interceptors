@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Interceptors.Protocol;
 
@@ -9,18 +11,52 @@ namespace ModelContextProtocol.Interceptors.Client;
 public static class McpClientInterceptorExtensions
 {
     /// <summary>
-    /// Lists all interceptors available on the remote server.
+    /// Sends one <c>interceptors/list</c> request to the remote server.
     /// </summary>
     public static ValueTask<ListInterceptorsResult> ListInterceptorsAsync(
         this McpClient client,
         ListInterceptorsRequestParams? requestParams = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(client);
+
         return client.SendRequestAsync<ListInterceptorsRequestParams, ListInterceptorsResult>(
             InterceptorRequestMethods.InterceptorsList,
             requestParams ?? new ListInterceptorsRequestParams(),
             InterceptorJsonUtilities.DefaultOptions,
             cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Lists every interceptor on the remote server, following <c>nextCursor</c> across pages.
+    /// </summary>
+    public static async ValueTask<IList<Interceptor>> ListAllInterceptorsAsync(
+        this McpClient client,
+        string? eventFilter = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+
+        var interceptors = new List<Interceptor>();
+        var seenCursors = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        do
+        {
+            var page = await client.ListInterceptorsAsync(
+                new ListInterceptorsRequestParams { Event = eventFilter, Cursor = cursor },
+                cancellationToken).ConfigureAwait(false);
+            interceptors.AddRange(page.Interceptors);
+            cursor = page.NextCursor;
+            if (cursor is not null && !seenCursors.Add(cursor))
+            {
+                throw new McpProtocolException(
+                    $"interceptors/list returned the cursor '{cursor}' twice; stopping to avoid an endless listing.",
+                    McpErrorCode.InternalError);
+            }
+        }
+        while (!string.IsNullOrEmpty(cursor));
+
+        return interceptors;
     }
 
     /// <summary>
@@ -31,6 +67,7 @@ public static class McpClientInterceptorExtensions
         InvokeInterceptorRequestParams requestParams,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(requestParams);
 
         return client.SendRequestAsync<InvokeInterceptorRequestParams, InterceptorResult>(
@@ -41,22 +78,63 @@ public static class McpClientInterceptorExtensions
     }
 
     /// <summary>
-    /// Executes a chain of interceptors against the remote server using the SEP execution model.
+    /// Invokes a single interceptor whose type is already known from <c>interceptors/list</c>.
+    /// A result that omits <c>type</c> is read as <paramref name="expectedType"/>.
     /// </summary>
     /// <remarks>
-    /// Per the SEP, chain execution is a convenience utility provided by SDKs — not a wire JSON-RPC
-    /// method. This call discovers applicable interceptors via <c>interceptors/list</c> and then
-    /// dispatches each one via <c>interceptor/invoke</c>, orchestrating ordering, parallelism,
-    /// audit-mode, and fail-open semantics locally.
+    /// The SEP's response examples omit <c>type</c>, <c>interceptor</c> and <c>phase</c>
+    /// (experimental-ext-interceptors#50), so servers written from them interoperate only if the
+    /// invoker falls back to the declared type.
     /// </remarks>
-    public static ValueTask<InterceptorChainResult> ExecuteChainAsync(
+    public static async ValueTask<InterceptorResult> InvokeInterceptorAsync(
         this McpClient client,
-        ExecuteChainRequestParams requestParams,
+        InvokeInterceptorRequestParams requestParams,
+        InterceptorType expectedType,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(requestParams);
 
-        return InterceptorChain.ExecuteAsync([client], requestParams, cancellationToken);
+        var node = await client.SendRequestAsync<InvokeInterceptorRequestParams, JsonNode>(
+            InterceptorRequestMethods.InterceptorInvoke,
+            requestParams,
+            InterceptorJsonUtilities.DefaultOptions,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (node is JsonObject obj && !obj.ContainsKey("type"))
+        {
+            obj["type"] = expectedType switch
+            {
+                InterceptorType.Validation => "validation",
+                InterceptorType.Mutation => "mutation",
+                InterceptorType.Sink => "sink",
+                _ => throw new ArgumentOutOfRangeException(nameof(expectedType)),
+            };
+        }
+
+        return node.Deserialize<InterceptorResult>(InterceptorJsonUtilities.DefaultOptions)
+            ?? throw new JsonException($"Interceptor '{requestParams.Name}' returned a null result.");
+    }
+
+    /// <summary>
+    /// Runs the interceptors on the remote server that apply to one lifecycle event, using the SEP
+    /// execution model.
+    /// </summary>
+    /// <remarks>
+    /// SEP-2624 defines no aggregate invocation method. This helper discovers the server's
+    /// interceptors via <c>interceptors/list</c> and invokes each applicable one via
+    /// <c>interceptor/invoke</c>, applying ordering, parallelism, audit mode and fail-open locally.
+    /// To span several servers, use <see cref="InterceptorOrchestrator"/>.
+    /// </remarks>
+    public static ValueTask<InterceptorExecutionResult> ExecuteInterceptorsAsync(
+        this McpClient client,
+        InterceptorExecutionRequest request,
+        InterceptorPolicy? policy = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(request);
+
+        return InterceptorOrchestrator.ExecuteAsync([client], request, policy, cancellationToken);
     }
 }

@@ -44,7 +44,9 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
         CancellationToken cancellationToken = default)
     {
         var args = _parameterBinder(request, server, services, cancellationToken);
-        var result = _method.Invoke(_target, args);
+        // Surface the interceptor's own exception rather than a TargetInvocationException wrapper,
+        // so the error an invoker sees names the real cause.
+        var result = _method.Invoke(_target, BindingFlags.DoNotWrapExceptions, binder: null, args, culture: null);
 
         // Handle async methods
         if (result is Task task)
@@ -78,6 +80,10 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
         {
             return await vtSink.ConfigureAwait(false);
         }
+        else if (result is ValueTask<bool> vtBool)
+        {
+            result = await vtBool.ConfigureAwait(false);
+        }
 
         return await _resultConverter(result).ConfigureAwait(false);
     }
@@ -109,6 +115,8 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
         {
             Name = attr.Name ?? method.Name,
             Description = attr.Description,
+            Version = attr.Version,
+            ConfigSchema = ParseConfigSchema(attr.ConfigSchema, method.Name),
             Type = attr.Type,
             Hooks = hooks,
             Mode = attr.Mode == InterceptorMode.Active ? null : attr.Mode,
@@ -128,6 +136,29 @@ internal sealed class ReflectionMcpServerInterceptor : McpServerInterceptor
         var resultConverter = BuildResultConverter(method, attr.Type);
 
         return new ReflectionMcpServerInterceptor(interceptor, metadata, method, target, parameterBinder, resultConverter);
+    }
+
+    private static System.Text.Json.JsonElement? ParseConfigSchema(string? schema, string methodName)
+    {
+        if (string.IsNullOrWhiteSpace(schema))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(schema);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                throw new InvalidOperationException($"The ConfigSchema of interceptor method '{methodName}' must be a JSON object.");
+            }
+
+            return document.RootElement.Clone();
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new InvalidOperationException($"The ConfigSchema of interceptor method '{methodName}' is not valid JSON: {ex.Message}", ex);
+        }
     }
 
     private static PriorityHint? ResolvePriorityHint(McpServerInterceptorAttribute attr, string methodName)

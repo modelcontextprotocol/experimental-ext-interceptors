@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 /// <see cref="InterceptorHook"/> entries — one for <see cref="Request"/> and one for
 /// <see cref="Response"/> — when constructing the protocol-level <see cref="Interceptor"/>.
 /// Wire-level types (<see cref="InterceptorHook"/>, <see cref="InterceptorResult"/>,
-/// <see cref="ExecuteChainRequestParams"/>, <see cref="InvokeInterceptorRequestParams"/>) only
+/// <see cref="InterceptorExecutionRequest"/>, <see cref="InvokeInterceptorRequestParams"/>) only
 /// ever carry <see cref="Request"/> or <see cref="Response"/>.
 /// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter<InterceptorPhase>))]

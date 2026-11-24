@@ -30,6 +30,7 @@ public sealed class InvokeInterceptorRequestParams
 
     /// <summary>Gets or sets the execution timeout in milliseconds.</summary>
     [JsonPropertyName("timeoutMs")]
+    [JsonConverter(typeof(LenientInt32MillisecondsConverter))]
     public int? TimeoutMs { get; set; }
 
     /// <summary>Gets or sets the request context (principal, trace, session).</summary>

@@ -5,8 +5,8 @@ namespace ModelContextProtocol.Interceptors.Protocol;
 /// <summary>
 /// Defines the overall status of an interceptor chain execution.
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<InterceptorChainStatus>))]
-public enum InterceptorChainStatus
+[JsonConverter(typeof(JsonStringEnumConverter<InterceptorExecutionStatus>))]
+public enum InterceptorExecutionStatus
 {
     /// <summary>All interceptors executed successfully.</summary>
     [JsonStringEnumMemberName("success")]

@@ -1,7 +1,5 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Interceptors.Client;
 using ModelContextProtocol.Interceptors.Protocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -9,14 +7,15 @@ using ModelContextProtocol.Server;
 namespace ModelContextProtocol.Interceptors.Gateway;
 
 /// <summary>
-/// A transparent MCP gateway that proxies requests through interceptor chains
-/// before forwarding to a backend MCP server.
+/// A transparent MCP gateway that runs interceptors on every request and response before
+/// forwarding to a backend MCP server.
 /// </summary>
 /// <remarks>
 /// <para>
 /// This class configures an <see cref="McpServer"/> to act as a transparent proxy. To connecting
-/// clients, it appears to be the backend server itself, but all requests are routed through
-/// configured interceptor servers for validation, mutation, and sink interceptors.
+/// clients it looks like the backend server itself, while every request and response is passed
+/// through the interceptors hosted on the configured interceptor servers. Neither the client nor the
+/// backend needs to know interceptors exist.
 /// </para>
 /// <para>
 /// Usage:
@@ -32,9 +31,9 @@ namespace ModelContextProtocol.Interceptors.Gateway;
 public sealed class McpInterceptorGateway : IAsyncDisposable
 {
     private readonly McpInterceptorGatewayOptions _options;
-    private readonly IReadOnlyList<McpClient> _interceptorClients;
     private readonly List<IAsyncDisposable> _ownedClients = new();
     private readonly GatewayInterceptorClientProvider _interceptorClientProvider;
+    private readonly InterceptorPhaseRunner _runner;
     private readonly GatewayProxyConfigurator _proxyConfigurator;
     private readonly GatewayInterceptorProtocolBridge _protocolBridge;
     private readonly List<IAsyncDisposable> _notificationRegistrations = new();
@@ -43,41 +42,8 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
     /// <summary>Creates a new <see cref="McpInterceptorGateway"/>.</summary>
     /// <param name="options">Configuration for the gateway.</param>
     public McpInterceptorGateway(McpInterceptorGatewayOptions options)
+        : this(options, GetConfiguredInterceptorClients(options))
     {
-        ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(options.BackendClient);
-
-        _interceptorClients = GetConfiguredInterceptorClients(options);
-        if (options.ExposeInterceptorProtocol && options.InterceptorServerConnectionResolver is not null)
-        {
-            throw new ArgumentException(
-                $"{nameof(McpInterceptorGatewayOptions.InterceptorServerConnectionResolver)} is only supported for the transparent proxy path. " +
-                $"Disable {nameof(McpInterceptorGatewayOptions.ExposeInterceptorProtocol)} or provide static interceptor clients for SEP passthrough.",
-                nameof(options));
-        }
-
-        if (_interceptorClients.Count == 0 && options.InterceptorServerConnectionResolver is null)
-        {
-            throw new ArgumentException(
-                $"At least one of {nameof(McpInterceptorGatewayOptions.InterceptorClients)}, {nameof(McpInterceptorGatewayOptions.InterceptorServerConnections)}, " +
-                $"or {nameof(McpInterceptorGatewayOptions.InterceptorServerConnectionResolver)} is required.",
-                nameof(options));
-        }
-
-        _options = options;
-        var jsonOptions = InterceptorJsonUtilities.DefaultOptions;
-        _interceptorClientProvider = new GatewayInterceptorClientProvider(
-            _interceptorClients,
-            options.InterceptorServerConnectionResolver);
-
-        _proxyConfigurator = new GatewayProxyConfigurator(
-            options.BackendClient,
-            _interceptorClientProvider,
-            options.Events,
-            options.TimeoutMs,
-            options.DefaultContext,
-            jsonOptions);
-        _protocolBridge = new GatewayInterceptorProtocolBridge(_interceptorClients, jsonOptions);
     }
 
     private McpInterceptorGateway(McpInterceptorGatewayOptions options, IReadOnlyList<McpClient> interceptorClients)
@@ -102,18 +68,28 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
         }
 
         _options = options;
-        _interceptorClients = interceptorClients;
         var jsonOptions = InterceptorJsonUtilities.DefaultOptions;
         _interceptorClientProvider = new GatewayInterceptorClientProvider(
             interceptorClients,
             options.InterceptorServerConnectionResolver);
 
+        _runner = new InterceptorPhaseRunner(new InterceptorRuntimeSettings
+        {
+            Events = options.Events,
+            Role = options.InvokerRole,
+            AggregateTimeoutMs = options.TimeoutMs,
+            DefaultContext = options.DefaultContext,
+            Policy = options.Policy,
+            Observer = options.OnInterceptorsExecuted,
+            DiscoveryCacheDuration = options.DiscoveryCacheDuration,
+            Logger = options.LoggerFactory?.CreateLogger<McpInterceptorGateway>(),
+        });
+
         _proxyConfigurator = new GatewayProxyConfigurator(
             options.BackendClient,
             _interceptorClientProvider,
-            options.Events,
-            options.TimeoutMs,
-            options.DefaultContext,
+            _runner,
+            options.ToolCallRejection,
             jsonOptions);
         _protocolBridge = new GatewayInterceptorProtocolBridge(interceptorClients, jsonOptions);
     }
@@ -173,11 +149,12 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
     /// <summary>
     /// Configures the given <see cref="McpServerOptions"/> with proxy handlers that forward
-    /// requests through interceptor chains to the backend server.
+    /// requests through interceptors to the backend server.
     /// </summary>
     /// <remarks>
     /// Capabilities are mirrored from the backend server. Only capabilities advertised by the
-    /// backend will have handlers registered. The interceptors extension capability is also advertised.
+    /// backend have handlers registered. The interceptors extension capability is advertised only when
+    /// <see cref="McpInterceptorGatewayOptions.ExposeInterceptorProtocol"/> is enabled.
     /// </remarks>
     public void ConfigureServerOptions(McpServerOptions serverOptions)
     {
@@ -189,6 +166,11 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
             _protocolBridge.Configure(serverOptions);
         }
     }
+
+    /// <summary>
+    /// Drops cached <c>interceptors/list</c> results, so the next operation re-discovers interceptors.
+    /// </summary>
+    public void RefreshInterceptors() => _runner.InvalidateDiscovery();
 
     /// <summary>
     /// Registers notification forwarding from the backend server to the proxy server.
@@ -205,30 +187,23 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
         if (backendCaps?.Tools?.ListChanged == true)
         {
-            AddNotificationRegistration(
-                backend.RegisterNotificationHandler(
-                    NotificationMethods.ToolListChangedNotification,
-                    (_, ct) => new ValueTask(proxyServer.SendNotificationAsync(
-                        NotificationMethods.ToolListChangedNotification, ct))));
+            Forward(NotificationMethods.ToolListChangedNotification);
         }
 
         if (backendCaps?.Prompts?.ListChanged == true)
         {
-            AddNotificationRegistration(
-                backend.RegisterNotificationHandler(
-                    NotificationMethods.PromptListChangedNotification,
-                    (_, ct) => new ValueTask(proxyServer.SendNotificationAsync(
-                        NotificationMethods.PromptListChangedNotification, ct))));
+            Forward(NotificationMethods.PromptListChangedNotification);
         }
 
         if (backendCaps?.Resources?.ListChanged == true)
         {
-            AddNotificationRegistration(
-                backend.RegisterNotificationHandler(
-                    NotificationMethods.ResourceListChangedNotification,
-                    (_, ct) => new ValueTask(proxyServer.SendNotificationAsync(
-                        NotificationMethods.ResourceListChangedNotification, ct))));
+            Forward(NotificationMethods.ResourceListChangedNotification);
         }
+
+        void Forward(string method) => AddNotificationRegistration(
+            backend.RegisterNotificationHandler(
+                method,
+                (_, ct) => new ValueTask(proxyServer.SendNotificationAsync(method, ct))));
     }
 
     /// <inheritdoc />
@@ -265,10 +240,7 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
 
     private static IReadOnlyList<McpClient> GetConfiguredInterceptorClients(McpInterceptorGatewayOptions options)
     {
-        if (options.InterceptorClients is { Count: > 0 } interceptorClients)
-        {
-            return interceptorClients;
-        }
+        ArgumentNullException.ThrowIfNull(options);
 
         if (options.InterceptorServerConnections is { Count: > 0 })
         {
@@ -276,7 +248,6 @@ public sealed class McpInterceptorGateway : IAsyncDisposable
                 $"{nameof(McpInterceptorGateway)}.{nameof(CreateAsync)} must be used when {nameof(McpInterceptorGatewayOptions.InterceptorServerConnections)} is configured.");
         }
 
-        return [];
+        return options.InterceptorClients is { Count: > 0 } interceptorClients ? interceptorClients : [];
     }
-
 }

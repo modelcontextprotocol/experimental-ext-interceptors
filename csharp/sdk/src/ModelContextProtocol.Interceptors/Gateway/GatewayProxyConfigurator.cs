@@ -7,28 +7,38 @@ using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Interceptors.Gateway;
 
+/// <summary>
+/// Wires the transparent proxy: mirrors the backend's capabilities and registers a handler for each
+/// backend request that runs interceptors around a raw JSON forward.
+/// </summary>
+/// <remarks>
+/// Each forwarded method is intercepted under an event named after the method (for example
+/// <c>tools/call</c>), as the working group agreed that any MCP JSON-RPC message is interceptable.
+/// Interceptors see requests and results as JSON. The hop itself goes through the SDK's typed
+/// request and result models, so fields the SDK does not model are not preserved.
+/// </remarks>
 internal sealed class GatewayProxyConfigurator
 {
+    /// <summary>The <c>_meta</c> key under which rejected tool calls carry structured details.</summary>
+    internal const string RejectionMetaKey = "io.modelcontextprotocol/interceptors";
+
     private readonly McpClient _backend;
     private readonly GatewayInterceptorClientProvider _interceptorClientProvider;
-    private readonly IList<string>? _events;
-    private readonly int? _timeoutMs;
-    private readonly InvokeInterceptorContext? _defaultContext;
+    private readonly InterceptorPhaseRunner _runner;
+    private readonly ToolCallRejectionMode _toolCallRejection;
     private readonly JsonSerializerOptions _jsonOptions;
 
     internal GatewayProxyConfigurator(
         McpClient backend,
         GatewayInterceptorClientProvider interceptorClientProvider,
-        IList<string>? events,
-        int? timeoutMs,
-        InvokeInterceptorContext? defaultContext,
+        InterceptorPhaseRunner runner,
+        ToolCallRejectionMode toolCallRejection,
         JsonSerializerOptions jsonOptions)
     {
         _backend = backend;
         _interceptorClientProvider = interceptorClientProvider;
-        _events = events;
-        _timeoutMs = timeoutMs;
-        _defaultContext = defaultContext;
+        _runner = runner;
+        _toolCallRejection = toolCallRejection;
         _jsonOptions = jsonOptions;
     }
 
@@ -49,298 +59,267 @@ internal sealed class GatewayProxyConfigurator
             ? CloneCapabilities(backendCaps)
             : serverOptions.Capabilities ?? new ServerCapabilities();
 
-        ConfigureTools(serverOptions, backendCaps);
-        ConfigurePrompts(serverOptions, backendCaps);
-        ConfigureResources(serverOptions, backendCaps);
-        ConfigureCompletions(serverOptions, backendCaps);
-        ConfigureLogging(serverOptions, backendCaps);
-    }
+        var handlers = serverOptions.Handlers;
 
-    private void ConfigureTools(McpServerOptions serverOptions, ServerCapabilities? backendCaps)
-    {
-        if (backendCaps?.Tools is null)
+        if (backendCaps?.Tools is not null)
         {
-            return;
+            handlers.ListToolsHandler = (request, ct) =>
+                ForwardAsync<ListToolsRequestParams, ListToolsResult>(request, RequestMethods.ToolsList, ct, EnsureToolInputSchemas);
+            handlers.CallToolHandler = CallToolAsync;
         }
 
-        serverOptions.Handlers.ListToolsHandler = async (request, ct) =>
+        if (backendCaps?.Prompts is not null)
         {
-            var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ToolsList, ct);
-            var chainRunner = CreateChainRunner(resolvedClients.Clients);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
-            {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ToolsList, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Request, requestStatus);
-                requestPayload = processed;
-            }
-
-            var mutatedParams = JsonSerializer.Deserialize<ListToolsRequestParams>(requestPayload, _jsonOptions)
-                ?? request.Params!;
-
-            // Fetch the backend result as raw JSON: deserializing into ListToolsResult rejects
-            // tools whose inputSchema is missing or invalid, which would fail the whole request
-            // for a down-level backend before the proxy could compensate.
-            var backendNode = await _backend.SendRequestAsync<ListToolsRequestParams, JsonNode>(
-                RequestMethods.ToolsList, mutatedParams, _jsonOptions, cancellationToken: ct);
-            EnsureToolInputSchemas(backendNode);
-            var result = JsonSerializer.Deserialize<ListToolsResult>(backendNode, _jsonOptions)
-                ?? throw new InvalidOperationException("The backend returned a null tools/list result.");
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsList))
-            {
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ToolsList, InterceptorPhase.Response, backendNode, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("tools/list", InterceptorPhase.Response, responseStatus);
-                EnsureToolInputSchemas(processed);
-                result = JsonSerializer.Deserialize<ListToolsResult>(processed, _jsonOptions) ?? result;
-            }
-
-            return result;
-        };
-
-        serverOptions.Handlers.CallToolHandler = async (request, ct) =>
-        {
-            var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ToolsCall, ct);
-            var chainRunner = CreateChainRunner(resolvedClients.Clients);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsCall))
-            {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ToolsCall, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("tools/call", InterceptorPhase.Request, requestStatus);
-                requestPayload = processed;
-            }
-
-            var mutatedParams = JsonSerializer.Deserialize<CallToolRequestParams>(requestPayload, _jsonOptions)
-                ?? request.Params!;
-            var result = await _backend.CallToolAsync(mutatedParams, ct);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.ToolsCall))
-            {
-                var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ToolsCall, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("tools/call", InterceptorPhase.Response, responseStatus);
-                result = JsonSerializer.Deserialize<CallToolResult>(processed, _jsonOptions) ?? result;
-            }
-
-            return result;
-        };
-    }
-
-    private void ConfigurePrompts(McpServerOptions serverOptions, ServerCapabilities? backendCaps)
-    {
-        if (backendCaps?.Prompts is null)
-        {
-            return;
+            handlers.ListPromptsHandler = (request, ct) =>
+                ForwardAsync<ListPromptsRequestParams, ListPromptsResult>(request, RequestMethods.PromptsList, ct);
+            handlers.GetPromptHandler = (request, ct) =>
+                ForwardAsync<GetPromptRequestParams, GetPromptResult>(request, RequestMethods.PromptsGet, ct);
         }
 
-        serverOptions.Handlers.ListPromptsHandler = async (request, ct) =>
+        if (backendCaps?.Resources is not null)
         {
-            var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.PromptsList, ct);
-            var chainRunner = CreateChainRunner(resolvedClients.Clients);
+            handlers.ListResourcesHandler = (request, ct) =>
+                ForwardAsync<ListResourcesRequestParams, ListResourcesResult>(request, RequestMethods.ResourcesList, ct);
+            handlers.ReadResourceHandler = (request, ct) =>
+                ForwardAsync<ReadResourceRequestParams, ReadResourceResult>(request, RequestMethods.ResourcesRead, ct);
+            handlers.ListResourceTemplatesHandler = (request, ct) =>
+                ForwardAsync<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>(request, RequestMethods.ResourcesTemplatesList, ct);
 
-            if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsList))
+            // resources/subscribe is deprecated upstream (SEP-2575) but still proxied for down-level peers.
+#pragma warning disable MCP9005
+            if (backendCaps.Resources.Subscribe == true)
             {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.PromptsList, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("prompts/list", InterceptorPhase.Request, requestStatus);
-                requestPayload = processed;
+                handlers.SubscribeToResourcesHandler = (request, ct) =>
+                    ForwardAsync<SubscribeRequestParams, EmptyResult>(request, RequestMethods.ResourcesSubscribe, ct);
+                handlers.UnsubscribeFromResourcesHandler = (request, ct) =>
+                    ForwardAsync<UnsubscribeRequestParams, EmptyResult>(request, RequestMethods.ResourcesUnsubscribe, ct);
             }
-
-            var mutatedParams = JsonSerializer.Deserialize<ListPromptsRequestParams>(requestPayload, _jsonOptions)
-                ?? request.Params!;
-            var result = await _backend.ListPromptsAsync(mutatedParams, ct);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsList))
-            {
-                var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.PromptsList, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("prompts/list", InterceptorPhase.Response, responseStatus);
-                result = JsonSerializer.Deserialize<ListPromptsResult>(processed, _jsonOptions) ?? result;
-            }
-
-            return result;
-        };
-
-        serverOptions.Handlers.GetPromptHandler = async (request, ct) =>
-        {
-            var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.PromptsGet, ct);
-            var chainRunner = CreateChainRunner(resolvedClients.Clients);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsGet))
-            {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.PromptsGet, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("prompts/get", InterceptorPhase.Request, requestStatus);
-                requestPayload = processed;
-            }
-
-            var mutatedParams = JsonSerializer.Deserialize<GetPromptRequestParams>(requestPayload, _jsonOptions)
-                ?? request.Params!;
-            var result = await _backend.GetPromptAsync(mutatedParams, ct);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.PromptsGet))
-            {
-                var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.PromptsGet, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("prompts/get", InterceptorPhase.Response, responseStatus);
-                result = JsonSerializer.Deserialize<GetPromptResult>(processed, _jsonOptions) ?? result;
-            }
-
-            return result;
-        };
-    }
-
-    private void ConfigureResources(McpServerOptions serverOptions, ServerCapabilities? backendCaps)
-    {
-        if (backendCaps?.Resources is null)
-        {
-            return;
+#pragma warning restore MCP9005
         }
 
-        serverOptions.Handlers.ListResourcesHandler = async (request, ct) =>
+        if (backendCaps?.Completions is not null)
         {
-            var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ResourcesList, ct);
-            var chainRunner = CreateChainRunner(resolvedClients.Clients);
+            handlers.CompleteHandler = (request, ct) =>
+                ForwardAsync<CompleteRequestParams, CompleteResult>(request, RequestMethods.CompletionComplete, ct);
+        }
 
-            if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesList))
-            {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ResourcesList, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("resources/list", InterceptorPhase.Request, requestStatus);
-                requestPayload = processed;
-            }
-
-            var mutatedParams = JsonSerializer.Deserialize<ListResourcesRequestParams>(requestPayload, _jsonOptions)
-                ?? request.Params!;
-            var result = await _backend.ListResourcesAsync(mutatedParams, ct);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesList))
-            {
-                var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ResourcesList, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("resources/list", InterceptorPhase.Response, responseStatus);
-                result = JsonSerializer.Deserialize<ListResourcesResult>(processed, _jsonOptions) ?? result;
-            }
-
-            return result;
-        };
-
-        serverOptions.Handlers.ReadResourceHandler = async (request, ct) =>
+        // Logging is deprecated upstream (SEP-2577) but the gateway keeps proxying it for down-level peers.
+#pragma warning disable MCP9005
+        if (backendCaps?.Logging is not null)
         {
-            var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-            await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ResourcesRead, ct);
-            var chainRunner = CreateChainRunner(resolvedClients.Clients);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesRead))
+            handlers.SetLoggingLevelHandler = async (request, ct) =>
             {
-                var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ResourcesRead, InterceptorPhase.Request, requestPayload, ct);
-                if (requestStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("resources/read", InterceptorPhase.Request, requestStatus);
-                requestPayload = processed;
-            }
-
-            var mutatedParams = JsonSerializer.Deserialize<ReadResourceRequestParams>(requestPayload, _jsonOptions)
-                ?? request.Params!;
-            var result = await _backend.ReadResourceAsync(mutatedParams, ct);
-
-            if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesRead))
-            {
-                var responsePayload = JsonSerializer.SerializeToNode(result, _jsonOptions)!;
-                var (processed, responseStatus) = await chainRunner.RunChainPhaseAsync(
-                    InterceptionEvents.ResourcesRead, InterceptorPhase.Response, responsePayload, ct);
-                if (responseStatus != InterceptorChainStatus.Success)
-                    InterceptorChainRunner.ThrowChainFailure("resources/read", InterceptorPhase.Response, responseStatus);
-                result = JsonSerializer.Deserialize<ReadResourceResult>(processed, _jsonOptions) ?? result;
-            }
-
-            return result;
-        };
-
-        serverOptions.Handlers.ListResourceTemplatesHandler = async (request, ct) =>
-            await _backend.ListResourceTemplatesAsync(request.Params!, ct);
-
-        if (backendCaps.Resources.Subscribe == true)
-        {
-            serverOptions.Handlers.SubscribeToResourcesHandler = async (request, ct) =>
-            {
-                var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions)!;
-                await using var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, InterceptionEvents.ResourcesSubscribe, ct);
-                var chainRunner = CreateChainRunner(resolvedClients.Clients);
-
-                if (chainRunner.ShouldIntercept(InterceptionEvents.ResourcesSubscribe))
+                // The two hops negotiate protocol versions independently. A down-level client may send
+                // logging/setLevel to a gateway whose backend session is on 2026-07-28 or later, where the
+                // method no longer exists (the level travels in per-request _meta instead). Forwarding
+                // would fail the client's request, so accept it here.
+                if (BackendSessionIsJuly2026OrLater)
                 {
-                    var (processed, requestStatus) = await chainRunner.RunChainPhaseAsync(
-                        InterceptionEvents.ResourcesSubscribe, InterceptorPhase.Request, requestPayload, ct);
-                    if (requestStatus != InterceptorChainStatus.Success)
-                        InterceptorChainRunner.ThrowChainFailure("resources/subscribe", InterceptorPhase.Request, requestStatus);
-                    requestPayload = processed;
+                    return new EmptyResult();
                 }
 
-                var mutatedParams = JsonSerializer.Deserialize<SubscribeRequestParams>(requestPayload, _jsonOptions)
-                    ?? request.Params!;
-                await _backend.SubscribeToResourceAsync(mutatedParams, ct);
-                return new EmptyResult();
+                return await ForwardAsync<SetLevelRequestParams, EmptyResult>(request, RequestMethods.LoggingSetLevel, ct).ConfigureAwait(false);
             };
+        }
+#pragma warning restore MCP9005
+    }
 
-            serverOptions.Handlers.UnsubscribeFromResourcesHandler = async (request, ct) =>
+    private bool BackendSessionIsJuly2026OrLater =>
+        _backend.NegotiatedProtocolVersion is { } version && string.CompareOrdinal(version, "2026-07-28") >= 0;
+
+    /// <summary>
+    /// Forwards a <c>tools/call</c>, reporting a rejection as a tool error result unless the gateway is
+    /// configured to return the SEP's protocol error.
+    /// </summary>
+    private async ValueTask<CallToolResult> CallToolAsync(RequestContext<CallToolRequestParams> request, CancellationToken ct)
+    {
+        try
+        {
+            return await ForwardAsync<CallToolRequestParams, CallToolResult>(request, RequestMethods.ToolsCall, ct).ConfigureAwait(false);
+        }
+        catch (McpInterceptorException ex) when (_toolCallRejection == ToolCallRejectionMode.ErrorResult)
+        {
+            return CreateRejectedToolResult(ex);
+        }
+    }
+
+    /// <summary>
+    /// Runs request-phase interceptors on the request, forwards it to the backend as JSON, then runs
+    /// response-phase interceptors on the result.
+    /// </summary>
+    private async ValueTask<TResult> ForwardAsync<TParams, TResult>(
+        RequestContext<TParams> request,
+        string method,
+        CancellationToken ct,
+        Action<JsonNode?>? normalizeResult = null)
+        where TResult : class
+    {
+        var eventName = method;
+        var requestPayload = JsonSerializer.SerializeToNode(request.Params, _jsonOptions) ?? new JsonObject();
+
+        if (!_runner.ShouldIntercept(eventName))
+        {
+            var passthrough = await SendToBackendAsync(method, requestPayload, ct).ConfigureAwait(false);
+            normalizeResult?.Invoke(passthrough);
+            return Deserialize<TResult>(passthrough, method, "backend");
+        }
+
+        var resolvedClients = await _interceptorClientProvider.ResolveAsync(request, eventName, ct).ConfigureAwait(false);
+        var pendingSinks = new List<Task>();
+        try
+        {
+            var context = _runner.CreateContext(request.Server.SessionId, request.User);
+
+            var forwardedRequest = await _runner.RunPhaseAsync(
+                resolvedClients.Clients, eventName, InterceptorPhase.Request, requestPayload, context, ct, pendingSinks).ConfigureAwait(false);
+
+            var backendResult = await SendToBackendAsync(method, forwardedRequest, ct).ConfigureAwait(false);
+            normalizeResult?.Invoke(backendResult);
+
+            var finalResult = await _runner.RunPhaseAsync(
+                resolvedClients.Clients, eventName, InterceptorPhase.Response, backendResult, context, ct, pendingSinks).ConfigureAwait(false);
+            normalizeResult?.Invoke(finalResult);
+
+            return Deserialize<TResult>(finalResult, method, "interceptor mutations");
+        }
+        finally
+        {
+            if (pendingSinks.Count == 0)
             {
-                await _backend.UnsubscribeFromResourceAsync(request.Params!, ct);
-                return new EmptyResult();
-            };
+                await resolvedClients.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                // Per-request interceptor clients stay open until the sinks dispatched on them finish;
+                // the response is not held up.
+                _ = DisposeAfterAsync(resolvedClients, pendingSinks);
+            }
         }
     }
 
-    private void ConfigureCompletions(McpServerOptions serverOptions, ServerCapabilities? backendCaps)
+    private static async Task DisposeAfterAsync(IAsyncDisposable resource, List<Task> pending)
     {
-        if (backendCaps?.Completions is null)
+        try
         {
-            return;
+            await Task.WhenAll(pending).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Sink failures are already logged by the engine.
         }
 
-        serverOptions.Handlers.CompleteHandler = async (request, ct) =>
-            await _backend.CompleteAsync(request.Params!, ct);
+        await resource.DisposeAsync().ConfigureAwait(false);
     }
 
-    // Logging is deprecated upstream (SEP-2577) but the gateway intentionally keeps proxying it
-    // for down-level clients/backends.
-#pragma warning disable MCP9005
-    private void ConfigureLogging(McpServerOptions serverOptions, ServerCapabilities? backendCaps)
+    private async ValueTask<JsonNode> SendToBackendAsync(string method, JsonNode payload, CancellationToken ct)
     {
-        if (backendCaps?.Logging is null)
+        var outgoing = WithoutHopByHopMeta(payload);
+        return await _backend.SendRequestAsync<JsonNode, JsonNode>(method, outgoing, _jsonOptions, cancellationToken: ct).ConfigureAwait(false)
+            ?? new JsonObject();
+    }
+
+    /// <summary>
+    /// Per-request protocol metadata (protocol version, client info, client capabilities, log level)
+    /// describes the downstream client's session with the gateway, not the gateway's session with the
+    /// backend. Strip it before forwarding; the backend client injects its own. The SDK would overwrite
+    /// version and client info anyway, but it merges capabilities, so a downstream client's
+    /// capability opt-ins would otherwise reach the backend as if the gateway supported them.
+    /// </summary>
+    internal static JsonNode WithoutHopByHopMeta(JsonNode payload)
+    {
+        if (payload is not JsonObject obj || obj["_meta"] is not JsonObject meta ||
+            !HopByHopMetaKeys.Any(meta.ContainsKey))
         {
-            return;
+            return payload;
         }
 
-        serverOptions.Handlers.SetLoggingLevelHandler = async (request, ct) =>
+        var copy = (JsonObject)obj.DeepClone();
+        var copiedMeta = (JsonObject)copy["_meta"]!;
+        foreach (var key in HopByHopMetaKeys)
         {
-            await _backend.SetLoggingLevelAsync(request.Params!, ct);
-            return new EmptyResult();
+            copiedMeta.Remove(key);
+        }
+
+        if (copiedMeta.Count == 0)
+        {
+            copy.Remove("_meta");
+        }
+
+        return copy;
+    }
+
+    private static readonly string[] HopByHopMetaKeys =
+    [
+        MetaKeys.ProtocolVersion,
+        MetaKeys.ClientInfo,
+        MetaKeys.ClientCapabilities,
+        MetaKeys.LogLevel,
+    ];
+
+    private TResult Deserialize<TResult>(JsonNode node, string method, string source)
+        where TResult : class
+    {
+        try
+        {
+            return node.Deserialize<TResult>(_jsonOptions)
+                ?? throw new JsonException("The result was null.");
+        }
+        catch (JsonException ex)
+        {
+            throw new McpProtocolException(
+                $"The {source} produced an invalid '{method}' result: {ex.Message}",
+                McpErrorCode.InternalError);
+        }
+    }
+
+    internal static CallToolResult CreateRejectedToolResult(McpInterceptorException exception)
+    {
+        var details = new JsonObject
+        {
+            ["code"] = (int)exception.ErrorCode,
+            ["message"] = exception.Message,
+        };
+
+        if (exception.ExecutionResult is { } result)
+        {
+            details["event"] = result.Event;
+            details["phase"] = result.Phase == InterceptorPhase.Response ? "response" : "request";
+            if (result.AbortedAt is { } abort)
+            {
+                details["failedInterceptor"] = abort.Interceptor;
+            }
+        }
+
+        if (exception is McpInterceptorValidationException validation)
+        {
+            details["validationErrors"] = JsonSerializer.SerializeToNode(
+                validation.ValidationErrors,
+                InterceptorJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IReadOnlyList<InterceptorValidationError>)));
+        }
+
+        return new CallToolResult
+        {
+            IsError = true,
+            Content = [new TextContentBlock { Text = DescribeRejection(exception) }],
+            Meta = new JsonObject { [RejectionMetaKey] = details },
         };
     }
-#pragma warning restore MCP9005
+
+    private static string DescribeRejection(McpInterceptorException exception)
+    {
+        var result = exception.ExecutionResult;
+        var stage = result?.Phase == InterceptorPhase.Response
+            ? "The tool ran, but its result was withheld"
+            : "The tool call was blocked before reaching the server";
+
+        if (exception is McpInterceptorValidationException { ValidationErrors.Count: > 0 } validation)
+        {
+            var reasons = string.Join(Environment.NewLine, validation.ValidationErrors.Select(e => $"- {e.Interceptor}: {e.Message}"));
+            return $"{stage} by interceptor policy.{Environment.NewLine}{reasons}";
+        }
+
+        return $"{stage} because an interceptor failed: {result?.AbortedAt?.Interceptor ?? "unknown"}: {result?.AbortedAt?.Reason ?? exception.Message}";
+    }
 
     /// <summary>
     /// SDK 2.x requires tools/list entries to carry an inputSchema that is a JSON object with
@@ -380,7 +359,4 @@ internal sealed class GatewayProxyConfigurator
         return JsonSerializer.Deserialize<ServerCapabilities>(node, _jsonOptions)
             ?? throw new InvalidOperationException("Failed to clone backend server capabilities.");
     }
-
-    private InterceptorChainRunner CreateChainRunner(IReadOnlyList<McpClient> interceptorClients) =>
-        new(interceptorClients, _events, _timeoutMs, _defaultContext);
 }
